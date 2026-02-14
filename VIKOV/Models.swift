@@ -67,14 +67,46 @@ struct Week: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Saved Category Template
+
+struct CategoryTemplate: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String
+    var symbol: String
+}
+
 // MARK: - Default Categories
 
-extension Category {
-    static let starters: [Category] = [
-        Category(name: "Errands", symbol: "cart"),
-        Category(name: "Work", symbol: "briefcase"),
-        Category(name: "Fitness", symbol: "figure.run"),
-        Category(name: "Study", symbol: "book"),
-        Category(name: "Appointments", symbol: "calendar.badge.clock"),
+extension CategoryTemplate {
+    static let starters: [CategoryTemplate] = [
+        CategoryTemplate(name: "Errands", symbol: "cart"),
+        CategoryTemplate(name: "Work", symbol: "briefcase"),
+        CategoryTemplate(name: "Fitness", symbol: "figure.run"),
+        CategoryTemplate(name: "Study", symbol: "book"),
+        CategoryTemplate(name: "Appointments", symbol: "calendar.badge.clock"),
     ]
+}
+
+// MARK: - Appearance
+
+enum AppearanceMode: String, Codable, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
 }

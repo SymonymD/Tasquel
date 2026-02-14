@@ -1,20 +1,31 @@
 import Foundation
 import Observation
+import SwiftUI
 
 @Observable
 final class ChecklistStore {
 
     var weeks: [Week] = []
     var selectedDate: Date = Date()
+    var savedCategories: [CategoryTemplate] = []
+    var appearanceMode: AppearanceMode = .system
+    var hasSeenWelcome: Bool = false
 
     var selectedWeek: Week? {
         let monday = Week.mondayOfWeek(containing: selectedDate)
         return weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }
     }
 
-    var isFirstLaunch: Bool {
-        guard let week = selectedWeek else { return true }
-        return week.categories.allSatisfy { $0.tasks.isEmpty }
+    var shouldShowWelcome: Bool {
+        !hasSeenWelcome
+    }
+
+    var colorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
     }
 
     private let fileURL: URL = {
@@ -22,7 +33,17 @@ final class ChecklistStore {
         return docs.appending(path: "checklist.json")
     }()
 
+    private let settingsURL: URL = {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appending(path: "settings.json")
+    }()
+
     init() {
+        loadSettings()
+        if savedCategories.isEmpty {
+            savedCategories = CategoryTemplate.starters
+            saveSettings()
+        }
         load()
         ensureWeekExists(for: Date())
     }
@@ -54,6 +75,64 @@ final class ChecklistStore {
         }
     }
 
+    // MARK: - Settings Persistence
+
+    private struct Settings: Codable {
+        var savedCategories: [CategoryTemplate]
+        var appearanceMode: AppearanceMode
+        var hasSeenWelcome: Bool
+    }
+
+    func loadSettings() {
+        guard FileManager.default.fileExists(atPath: settingsURL.path()) else { return }
+        do {
+            let data = try Data(contentsOf: settingsURL)
+            let settings = try JSONDecoder().decode(Settings.self, from: data)
+            savedCategories = settings.savedCategories
+            appearanceMode = settings.appearanceMode
+            hasSeenWelcome = settings.hasSeenWelcome
+        } catch {
+            print("Failed to load settings: \(error)")
+        }
+    }
+
+    func saveSettings() {
+        do {
+            let settings = Settings(
+                savedCategories: savedCategories,
+                appearanceMode: appearanceMode,
+                hasSeenWelcome: hasSeenWelcome
+            )
+            let data = try JSONEncoder().encode(settings)
+            try data.write(to: settingsURL, options: .atomic)
+        } catch {
+            print("Failed to save settings: \(error)")
+        }
+    }
+
+    func dismissWelcome() {
+        hasSeenWelcome = true
+        saveSettings()
+    }
+
+    func setAppearance(_ mode: AppearanceMode) {
+        appearanceMode = mode
+        saveSettings()
+    }
+
+    // MARK: - Saved Category Templates
+
+    func addSavedCategory(name: String, symbol: String) {
+        let template = CategoryTemplate(name: name, symbol: symbol)
+        savedCategories.append(template)
+        saveSettings()
+    }
+
+    func removeSavedCategory(_ templateID: UUID) {
+        savedCategories.removeAll { $0.id == templateID }
+        saveSettings()
+    }
+
     // MARK: - Week Management
 
     @discardableResult
@@ -65,12 +144,13 @@ final class ChecklistStore {
 
         var newWeek = Week(startDate: monday)
 
-        // For the current or future week, seed from previous week
         if let previousWeek = mostRecentWeekBefore(monday) {
             newWeek.categories = rollForwardCategories(from: previousWeek)
         } else {
-            // First ever week: seed with starter categories
-            newWeek.categories = Category.starters
+            // First ever week: seed from saved category templates
+            newWeek.categories = savedCategories.map {
+                Category(name: $0.name, symbol: $0.symbol)
+            }
         }
 
         weeks.append(newWeek)
@@ -90,12 +170,10 @@ final class ChecklistStore {
         source.categories.map { category in
             var newCategory = Category(name: category.name, symbol: category.symbol)
 
-            // Repeating tasks always carry forward (reset to incomplete)
             let repeatingTasks = category.tasks
                 .filter { $0.mode == .repeating }
                 .map { ChecklistTask(title: $0.title, mode: .repeating) }
 
-            // Carry-over tasks only carry forward if incomplete
             let carryOverTasks = category.tasks
                 .filter { $0.mode == .carryOver && !$0.isCompleted }
                 .map { ChecklistTask(title: $0.title, mode: .carryOver) }
@@ -118,10 +196,9 @@ final class ChecklistStore {
     // MARK: - Category CRUD
 
     func addCategory(name: String, symbol: String) {
-        guard var week = selectedWeek,
+        guard let week = selectedWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
-        week.categories.append(Category(name: name, symbol: symbol))
-        weeks[wi] = week
+        weeks[wi].categories.append(Category(name: name, symbol: symbol))
         save()
     }
 
@@ -130,6 +207,15 @@ final class ChecklistStore {
               let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
         weeks[wi].categories.removeAll { $0.id == categoryID }
         save()
+    }
+
+    func saveCategoryAsTemplate(_ categoryID: UUID) {
+        guard let week = selectedWeek,
+              let category = week.categories.first(where: { $0.id == categoryID }) else { return }
+        // Don't duplicate
+        if !savedCategories.contains(where: { $0.name == category.name }) {
+            addSavedCategory(name: category.name, symbol: category.symbol)
+        }
     }
 
     func renameCategory(_ categoryID: UUID, newName: String) {
