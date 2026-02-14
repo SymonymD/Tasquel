@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showAddCategory = false
     @State private var expandedCategories: Set<UUID> = []
+    @State private var isEditing = false
 
     var body: some View {
         NavigationStack {
@@ -32,7 +33,10 @@ struct ContentView: View {
                         withAnimation { store.navigateWeek(by: 1) }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button(isEditing ? "Done" : "Edit", systemImage: isEditing ? "checkmark.circle.fill" : "pencil") {
+                        withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
+                    }
                     Button("Settings", systemImage: "gearshape") {
                         showSettings = true
                     }
@@ -57,7 +61,7 @@ struct ContentView: View {
             )) {
                 Button("Got It") { store.dismissWelcome() }
             } message: {
-                Text("Your weekly checklist. Tap a category to expand it and add tasks.\n\nSwipe right on a task to toggle between Carry Over and Repeating modes.\n\nCarry Over tasks roll to next week if incomplete. Repeating tasks appear every week automatically.\n\nUse the calendar to plan ahead or review past weeks.")
+                Text("Your weekly checklist. Tap a category to expand it and add tasks.\n\nSwipe right on a task to toggle between Carry Over, Repeating, and One-Time modes.\n\nUse the edit button to manage categories, edit tasks, and add sub-tasks.")
             }
         }
         .preferredColorScheme(store.colorScheme)
@@ -79,17 +83,19 @@ struct ContentView: View {
                 categorySection(category)
             }
 
-            Section {
-                Button {
-                    showAddCategory = true
-                } label: {
-                    Label("Add Category", systemImage: "plus.circle")
-                        .foregroundStyle(.secondary)
+            if isEditing {
+                Section {
+                    Button {
+                        showAddCategory = true
+                    } label: {
+                        Label("Add Category", systemImage: "plus.circle")
+                    }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .animation(.snappy(duration: 0.3), value: week)
+        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
     }
 
     @ViewBuilder
@@ -124,7 +130,7 @@ struct ContentView: View {
             }
         )) {
             ForEach(category.tasks) { task in
-                TaskRow(task: task, categoryID: category.id, store: store)
+                TaskRow(task: task, categoryID: category.id, store: store, isEditing: isEditing)
             }
             .onDelete { indexSet in
                 for index in indexSet {
@@ -135,7 +141,7 @@ struct ContentView: View {
 
             AddTaskRow(categoryID: category.id, store: store)
         } header: {
-            CategoryHeader(category: category, store: store)
+            CategoryHeader(category: category, store: store, isEditing: isEditing)
         }
     }
 }
@@ -145,6 +151,9 @@ struct ContentView: View {
 struct CategoryHeader: View {
     let category: Category
     let store: ChecklistStore
+    let isEditing: Bool
+
+    @State private var showDeleteOptions = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -157,15 +166,47 @@ struct CategoryHeader: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            if isEditing {
+                Button {
+                    showDeleteOptions = true
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .contextMenu {
             Button("Save for Future Use", systemImage: "square.and.arrow.down") {
                 store.saveCategoryAsTemplate(category.id)
             }
             Divider()
-            Button("Delete Category", systemImage: "trash", role: .destructive) {
+            Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
                 withAnimation { store.deleteCategory(category.id) }
             }
+            Button("Delete Entirely", systemImage: "trash", role: .destructive) {
+                withAnimation {
+                    // Remove saved template too
+                    store.savedCategories.removeAll { $0.name == category.name }
+                    store.saveSettings()
+                    store.deleteCategory(category.id)
+                }
+            }
+        }
+        .confirmationDialog("Remove Category", isPresented: $showDeleteOptions, titleVisibility: .visible) {
+            Button("Remove from This Week") {
+                withAnimation { store.deleteCategory(category.id) }
+            }
+            Button("Delete Entirely (Remove Saved)", role: .destructive) {
+                withAnimation {
+                    store.savedCategories.removeAll { $0.name == category.name }
+                    store.saveSettings()
+                    store.deleteCategory(category.id)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remove \"\(category.name)\" from this week only, or delete it entirely including from saved categories?")
         }
     }
 }
@@ -176,32 +217,123 @@ struct TaskRow: View {
     let task: ChecklistTask
     let categoryID: UUID
     let store: ChecklistStore
+    let isEditing: Bool
+
+    @State private var isEditingTitle = false
+    @State private var editedTitle: String = ""
+    @State private var showSubtasks = false
+    @State private var newSubtaskTitle = ""
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    store.toggleTask(categoryID: categoryID, taskID: task.id)
+        VStack(alignment: .leading, spacing: 0) {
+            // Main task row
+            HStack(spacing: 12) {
+                if !isEditing {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            store.toggleTask(categoryID: categoryID, taskID: task.id)
+                        }
+                    } label: {
+                        Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(task.isCompleted ? .green : .secondary)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .buttonStyle(.plain)
                 }
-            } label: {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(task.isCompleted ? .green : .secondary)
-                    .contentTransition(.symbolEffect(.replace))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if isEditing && isEditingTitle {
+                        TextField("Task name", text: $editedTitle)
+                            .font(.body)
+                            .onSubmit {
+                                let title = editedTitle.trimmingCharacters(in: .whitespaces)
+                                if !title.isEmpty {
+                                    store.renameTask(categoryID: categoryID, taskID: task.id, newTitle: title)
+                                }
+                                isEditingTitle = false
+                            }
+                    } else {
+                        Text(task.title)
+                            .strikethrough(task.isCompleted, color: .secondary)
+                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                            .onTapGesture {
+                                if isEditing {
+                                    editedTitle = task.title
+                                    isEditingTitle = true
+                                }
+                            }
+                    }
+
+                    HStack(spacing: 8) {
+                        if isEditing {
+                            modePicker
+                        } else {
+                            Label(task.mode.label, systemImage: task.mode.symbol)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        if !task.subtasks.isEmpty {
+                            Text("\(task.completedSubtaskCount)/\(task.subtasks.count) sub-tasks")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                if isEditing {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { showSubtasks.toggle() }
+                    } label: {
+                        Image(systemName: "list.bullet.indent")
+                            .font(.subheadline)
+                            .foregroundStyle(showSubtasks ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                } else if !task.subtasks.isEmpty {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { showSubtasks.toggle() }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showSubtasks ? 90 : 0))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(task.title)
-                    .strikethrough(task.isCompleted, color: .secondary)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
+            // Subtasks (expanded)
+            if showSubtasks {
+                VStack(spacing: 0) {
+                    ForEach(task.subtasks) { subtask in
+                        SubTaskRow(
+                            subtask: subtask,
+                            categoryID: categoryID,
+                            taskID: task.id,
+                            store: store,
+                            isEditing: isEditing
+                        )
+                    }
 
-                Label(task.mode.label, systemImage: task.mode.symbol)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    // Add subtask
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        TextField("Add sub-task", text: $newSubtaskTitle)
+                            .font(.subheadline)
+                            .onSubmit(addSubtask)
+                    }
+                    .padding(.leading, 28)
+                    .padding(.vertical, 4)
+                }
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            Spacer()
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
@@ -212,11 +344,15 @@ struct TaskRow: View {
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                let newMode: TaskMode = task.mode == .carryOver ? .repeating : .carryOver
-                store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: newMode)
+                let modes = TaskMode.allCases
+                let currentIndex = modes.firstIndex(of: task.mode) ?? 0
+                let nextMode = modes[(currentIndex + 1) % modes.count]
+                store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: nextMode)
             } label: {
-                let target: TaskMode = task.mode == .carryOver ? .repeating : .carryOver
-                Label(target.label, systemImage: target.symbol)
+                let modes = TaskMode.allCases
+                let currentIndex = modes.firstIndex(of: task.mode) ?? 0
+                let nextMode = modes[(currentIndex + 1) % modes.count]
+                Label(nextMode.label, systemImage: nextMode.symbol)
             }
             .tint(.indigo)
         }
@@ -226,11 +362,25 @@ struct TaskRow: View {
                     Button {
                         store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
                     } label: {
-                        Label(mode.label, systemImage: mode.symbol)
+                        Label {
+                            Text(mode.label)
+                        } icon: {
+                            Image(systemName: mode.symbol)
+                        }
                         if task.mode == mode {
                             Image(systemName: "checkmark")
                         }
                     }
+                }
+            }
+            Section {
+                Button("Edit Title", systemImage: "pencil") {
+                    editedTitle = task.title
+                    isEditingTitle = true
+                    // inline editing handled by isEditingTitle
+                }
+                Button(showSubtasks ? "Hide Sub-Tasks" : "Show Sub-Tasks", systemImage: "list.bullet.indent") {
+                    withAnimation { showSubtasks.toggle() }
                 }
             }
             Section {
@@ -239,6 +389,112 @@ struct TaskRow: View {
                 }
             }
         }
+    }
+
+    private var modePicker: some View {
+        Menu {
+            ForEach(TaskMode.allCases, id: \.self) { mode in
+                Button {
+                    store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
+                } label: {
+                    Label {
+                        VStack(alignment: .leading) {
+                            Text(mode.label)
+                            Text(mode.hint)
+                        }
+                    } icon: {
+                        Image(systemName: mode.symbol)
+                    }
+                    if task.mode == mode {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        } label: {
+            Label(task.mode.label, systemImage: task.mode.symbol)
+                .font(.caption2)
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.blue.opacity(0.1), in: Capsule())
+        }
+    }
+
+    private func addSubtask() {
+        let title = newSubtaskTitle.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return }
+        withAnimation(.snappy(duration: 0.2)) {
+            store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
+        }
+        newSubtaskTitle = ""
+    }
+}
+
+// MARK: - Sub-Task Row
+
+struct SubTaskRow: View {
+    let subtask: SubTask
+    let categoryID: UUID
+    let taskID: UUID
+    let store: ChecklistStore
+    let isEditing: Bool
+
+    @State private var isEditingTitle = false
+    @State private var editedTitle = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+                }
+            } label: {
+                Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.subheadline)
+                    .foregroundStyle(subtask.isCompleted ? Color.green : Color.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if isEditing && isEditingTitle {
+                TextField("Sub-task", text: $editedTitle)
+                    .font(.subheadline)
+                    .onSubmit {
+                        let title = editedTitle.trimmingCharacters(in: .whitespaces)
+                        if !title.isEmpty {
+                            store.renameSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id, newTitle: title)
+                        }
+                        isEditingTitle = false
+                    }
+            } else {
+                Text(subtask.title)
+                    .font(.subheadline)
+                    .strikethrough(subtask.isCompleted, color: .secondary)
+                    .foregroundStyle(subtask.isCompleted ? .tertiary : .secondary)
+                    .onTapGesture {
+                        if isEditing {
+                            editedTitle = subtask.title
+                            isEditingTitle = true
+                        }
+                    }
+            }
+
+            Spacer()
+
+            if isEditing {
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+                    }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, 28)
+        .padding(.vertical, 2)
     }
 }
 
@@ -267,7 +523,12 @@ struct AddTaskRow: View {
                         Button {
                             newMode = mode
                         } label: {
-                            Label(mode.label, systemImage: mode.symbol)
+                            Label {
+                                Text(mode.label)
+                                Text(mode.hint)
+                            } icon: {
+                                Image(systemName: mode.symbol)
+                            }
                             if newMode == mode {
                                 Image(systemName: "checkmark")
                             }
@@ -358,13 +619,6 @@ struct AddCategorySheet: View {
                         }
 
                         HStack {
-                            Toggle("Save for future", isOn: .constant(true))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .disabled(true)
-                        }
-
-                        HStack {
                             Button("Cancel") {
                                 isCreatingNew = false
                                 newName = ""
@@ -406,7 +660,6 @@ struct AddCategorySheet: View {
     private func createNew() {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        // Save as template and add to current week
         store.addSavedCategory(name: name, symbol: newSymbol)
         store.addCategory(name: name, symbol: newSymbol)
         if let newCat = store.selectedWeek?.categories.last {
@@ -554,17 +807,17 @@ struct HelpSheet: View {
                     HelpRow(
                         symbol: "calendar",
                         title: "Navigate Weeks",
-                        detail: "Use the arrows or tap the calendar icon to jump to any week. Past weeks are read-only for review. Future weeks can be pre-populated."
+                        detail: "Use the arrows or tap the calendar icon to jump to any week. Future weeks can be pre-populated. Past weeks can be reviewed."
                     )
                     HelpRow(
                         symbol: "chevron.up.chevron.down",
                         title: "Categories",
-                        detail: "Tap a category header to expand or collapse it. Long-press to delete or save it as a template for future use."
+                        detail: "Tap a category header to expand or collapse. Long-press for options: save for future use, remove from this week, or delete entirely."
                     )
                     HelpRow(
-                        symbol: "plus.circle",
-                        title: "Add Tasks",
-                        detail: "Tap the \"Add task\" field inside any category. Press Return to add. Use the mode picker to choose Carry Over or Repeating before adding."
+                        symbol: "pencil",
+                        title: "Edit Mode",
+                        detail: "Tap the edit button to enter edit mode. From here you can add/remove categories, edit task titles and modes, and manage sub-tasks."
                     )
                 }
 
@@ -572,17 +825,35 @@ struct HelpSheet: View {
                     HelpRow(
                         symbol: "arrow.uturn.forward",
                         title: "Carry Over",
-                        detail: "Default mode. If a Carry Over task is not completed by end of the week, it automatically rolls forward to the next week. Completed tasks do not carry over."
+                        detail: "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."
                     )
                     HelpRow(
                         symbol: "repeat",
                         title: "Repeating",
-                        detail: "Repeating tasks appear every week regardless of completion. Great for recurring habits like \"Gym\" or \"Review budget\". They reset to unchecked each new week."
+                        detail: "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."
+                    )
+                    HelpRow(
+                        symbol: "1.circle",
+                        title: "One-Time",
+                        detail: "This week only. Will not carry forward or repeat, whether completed or not."
                     )
                     HelpRow(
                         symbol: "hand.draw",
                         title: "Changing Modes",
-                        detail: "Swipe right on any task to toggle between modes. Or long-press a task to choose from the context menu."
+                        detail: "Swipe right on any task to cycle through modes. In edit mode, tap the mode badge to pick. Or long-press a task for the context menu."
+                    )
+                }
+
+                Section("Sub-Tasks") {
+                    HelpRow(
+                        symbol: "list.bullet.indent",
+                        title: "Adding Sub-Tasks",
+                        detail: "In edit mode, tap the list icon on any task to expand its sub-tasks. Type in the field to add. Sub-tasks have their own checkboxes."
+                    )
+                    HelpRow(
+                        symbol: "checkmark.circle",
+                        title: "Completing Sub-Tasks",
+                        detail: "Tap any sub-task's circle to check it off. Sub-task progress shows as a count on the parent task."
                     )
                 }
 
@@ -590,12 +861,12 @@ struct HelpSheet: View {
                     HelpRow(
                         symbol: "square.and.arrow.down",
                         title: "Save for Future",
-                        detail: "Long-press a category header and choose \"Save for Future Use\" to add it to your template library. Saved categories appear when you tap Add Category."
+                        detail: "Long-press a category header and choose \"Save for Future Use\" to add it to your template library."
                     )
                     HelpRow(
                         symbol: "trash",
-                        title: "Delete",
-                        detail: "Long-press a category header to delete it and all its tasks from the current week. Swipe left on a saved category template to remove it from the library."
+                        title: "Removing Categories",
+                        detail: "In edit mode, tap the red minus on a category header. Choose to remove from this week only or delete entirely (removes saved template too)."
                     )
                 }
 

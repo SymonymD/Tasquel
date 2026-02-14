@@ -5,11 +5,13 @@ import Foundation
 enum TaskMode: String, Codable, CaseIterable {
     case carryOver
     case repeating
+    case oneTime
 
     var label: String {
         switch self {
         case .carryOver: "Carry Over"
         case .repeating: "Repeating"
+        case .oneTime: "One-Time"
         }
     }
 
@@ -17,8 +19,25 @@ enum TaskMode: String, Codable, CaseIterable {
         switch self {
         case .carryOver: "arrow.uturn.forward"
         case .repeating: "repeat"
+        case .oneTime: "1.circle"
         }
     }
+
+    var hint: String {
+        switch self {
+        case .carryOver: "Rolls to next week if incomplete"
+        case .repeating: "Appears every week automatically"
+        case .oneTime: "This week only, does not carry forward"
+        }
+    }
+}
+
+// MARK: - Sub-Task
+
+struct SubTask: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var title: String
+    var isCompleted: Bool = false
 }
 
 // MARK: - Models
@@ -28,6 +47,15 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var title: String
     var isCompleted: Bool = false
     var mode: TaskMode = .carryOver
+    var subtasks: [SubTask] = []
+
+    var allSubtasksCompleted: Bool {
+        subtasks.allSatisfy(\.isCompleted)
+    }
+
+    var completedSubtaskCount: Int {
+        subtasks.filter(\.isCompleted).count
+    }
 }
 
 struct Category: Codable, Identifiable, Equatable {

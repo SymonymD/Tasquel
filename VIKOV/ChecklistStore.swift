@@ -170,14 +170,17 @@ final class ChecklistStore {
         source.categories.map { category in
             var newCategory = Category(name: category.name, symbol: category.symbol)
 
+            // Repeating tasks always carry forward (reset to incomplete)
             let repeatingTasks = category.tasks
                 .filter { $0.mode == .repeating }
-                .map { ChecklistTask(title: $0.title, mode: .repeating) }
+                .map { ChecklistTask(title: $0.title, mode: .repeating, subtasks: $0.subtasks.map { SubTask(title: $0.title) }) }
 
+            // Carry-over tasks only if incomplete
             let carryOverTasks = category.tasks
                 .filter { $0.mode == .carryOver && !$0.isCompleted }
-                .map { ChecklistTask(title: $0.title, mode: .carryOver) }
+                .map { ChecklistTask(title: $0.title, mode: .carryOver, subtasks: $0.subtasks.filter { !$0.isCompleted }.map { SubTask(title: $0.title) }) }
 
+            // oneTime tasks never carry forward
             newCategory.tasks = repeatingTasks + carryOverTasks
             return newCategory
         }
@@ -268,6 +271,59 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
+        save()
+    }
+
+    // MARK: - Category Deletion Options
+
+    func deleteCategoryEntirely(_ categoryID: UUID) {
+        // Remove from current week
+        deleteCategory(categoryID)
+        // Also remove matching saved template
+        if let week = selectedWeek,
+           let category = week.categories.first(where: { $0.id == categoryID }) {
+            savedCategories.removeAll { $0.name == category.name }
+            saveSettings()
+        }
+    }
+
+    // MARK: - Sub-Task CRUD
+
+    func addSubtask(categoryID: UUID, taskID: UUID, title: String) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
+        save()
+    }
+
+    func toggleSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
+              let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].subtasks[si].isCompleted.toggle()
+        save()
+    }
+
+    func deleteSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
+        save()
+    }
+
+    func renameSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, newTitle: String) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
+              let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].subtasks[si].title = newTitle
         save()
     }
 
