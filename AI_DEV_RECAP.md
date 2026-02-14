@@ -1,4 +1,4 @@
-# AI Dev Recap — VIKOV
+# AI Dev Recap — Tasquel
 
 > Session history for continuity across context resets. Read this file at the start of any new session.
 
@@ -22,8 +22,8 @@
 
 ## Project
 
-**VIKOV** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2, Xcode 26.2.
-Bundle ID: `com.symonym.VIKOV`
+**Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2, Xcode 26.2.
+Bundle ID: `com.symonym.Tasquel`
 Repo: https://github.com/SymonymD/Vikov.git
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 
@@ -35,10 +35,10 @@ All features below are implemented, built, tested in simulator, and pushed to Gi
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `VIKOV/VIKOVApp.swift` | ~15 | `@main` App struct, unchanged from template |
-| `VIKOV/Models.swift` | ~140 | All data models: `TaskMode`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode` |
-| `VIKOV/ChecklistStore.swift` | ~340 | `@Observable` store: persistence, business logic, CRUD, rollover |
-| `VIKOV/ContentView.swift` | ~1050 | All SwiftUI views: root, task rows, sheets, onboarding |
+| `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
+| `Tasquel/Models.swift` | ~140 | All data models: `TaskMode`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode` |
+| `Tasquel/ChecklistStore.swift` | ~340 | `@Observable` store: persistence, business logic, CRUD, rollover |
+| `Tasquel/ContentView.swift` | ~1050 | All SwiftUI views: root, task rows, sheets, onboarding |
 | `CLAUDE.md` | ~90 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -84,12 +84,12 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 
 ## Development Workflow
 
-- Build after each checkpoint: `xcodebuild -project VIKOV.xcodeproj -scheme VIKOV -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
-- Install to sim: `xcrun simctl install 66BC7B60-5C39-4599-BAD6-839C1BA81204 ~/Library/Developer/Xcode/DerivedData/VIKOV-enfbpsqjcwhtrgdnotmnlfnayzgj/Build/Products/Debug-iphonesimulator/VIKOV.app`
-- Launch: `xcrun simctl launch 66BC7B60-5C39-4599-BAD6-839C1BA81204 com.symonym.VIKOV`
-- Screenshot: `xcrun simctl io 66BC7B60-5C39-4599-BAD6-839C1BA81204 screenshot /tmp/vikov.png`
+- Build after each checkpoint: `xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+- Install to sim: `xcrun simctl install 66BC7B60-5C39-4599-BAD6-839C1BA81204 ~/Library/Developer/Xcode/DerivedData/Tasquel-enfbpsqjcwhtrgdnotmnlfnayzgj/Build/Products/Debug-iphonesimulator/Tasquel.app`
+- Launch: `xcrun simctl launch 66BC7B60-5C39-4599-BAD6-839C1BA81204 com.symonym.Tasquel`
+- Screenshot: `xcrun simctl io 66BC7B60-5C39-4599-BAD6-839C1BA81204 screenshot /tmp/tasquel.png`
 - Fresh install test: `xcrun simctl uninstall ... && xcrun simctl install ...`
-- New files in `VIKOV/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
+- New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
 
 ## Key Decisions & Gotchas
 
@@ -109,7 +109,7 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 
 ## Last Session Summary (2026-02-14)
 
-**What was done**: Built the entire VIKOV app from scratch across 6 development checkpoints. Started from a Figma screenshot, then pivoted to iOS 26 design guidelines. Implemented full weekly checklist with three task modes, sub-tasks, JSON persistence, weekly rollover, edit mode, saved category templates, two-step onboarding, appearance toggle, help guide, and all supporting UI. Set up GitHub repo and pushed.
+**What was done**: Built the entire Tasquel app from scratch across 6 development checkpoints. Started from a Figma screenshot, then pivoted to iOS 26 design guidelines. Implemented full weekly checklist with three task modes, sub-tasks, JSON persistence, weekly rollover, edit mode, saved category templates, two-step onboarding, appearance toggle, help guide, and all supporting UI. Set up GitHub repo and pushed.
 
 **Nothing in progress**: All requested features are complete and committed.
 

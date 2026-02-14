@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VIKOV is a weekly checklist iOS app (iPhone + iPad) built with SwiftUI, targeting iOS 26.2. Bundle ID: `com.symonym.VIKOV`. No external dependencies — pure Apple frameworks.
+Tasquel is a weekly checklist iOS app (iPhone + iPad) built with SwiftUI, targeting iOS 26.2. Bundle ID: `com.symonym.Tasquel`. No external dependencies — pure Apple frameworks.
 
 Users organize tasks into categories within weekly views. Tasks support three modes (carry-over, repeating, one-time), sub-tasks, and automatic weekly rollover. Categories are saved as reusable templates.
 
@@ -12,16 +12,16 @@ Users organize tasks into categories within weekly views. Tasks support three mo
 
 ```bash
 # Build
-xcodebuild -project VIKOV.xcodeproj -scheme VIKOV -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 
 # Run unit tests (Swift Testing framework)
-xcodebuild -project VIKOV.xcodeproj -scheme VIKOV -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 
 # Run a single test
-xcodebuild -project VIKOV.xcodeproj -scheme VIKOV -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:VIKOVTests/VIKOVTests/testExample test
+xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:TasquelTests/TasquelTests/testExample test
 ```
 
-Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `VIKOV/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
+Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
 
 ## Architecture
 
@@ -29,10 +29,10 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `VIKOV/` folder are auto
 
 | File | Purpose |
 |------|---------|
-| `VIKOV/VIKOVApp.swift` | `@main` App struct, single `WindowGroup` |
-| `VIKOV/Models.swift` | All data models (value types + enums) |
-| `VIKOV/ChecklistStore.swift` | `@Observable` store — business logic, persistence, state |
-| `VIKOV/ContentView.swift` | All SwiftUI views (root view + subviews) |
+| `Tasquel/TasquelApp.swift` | `@main` App struct, single `WindowGroup` |
+| `Tasquel/Models.swift` | All data models (value types + enums) |
+| `Tasquel/ChecklistStore.swift` | `@Observable` store — business logic, persistence, state |
+| `Tasquel/ContentView.swift` | All SwiftUI views (root view + subviews) |
 
 ### Data Models (`Models.swift`)
 
@@ -87,5 +87,5 @@ All views live in one file. Key components:
 
 ## Test Targets
 
-- `VIKOVTests` — Swift Testing with `@Test` macro
-- `VIKOVUITests` — XCTest
+- `TasquelTests` — Swift Testing with `@Test` macro
+- `TasquelUITests` — XCTest
