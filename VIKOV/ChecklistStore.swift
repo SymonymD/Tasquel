@@ -5,6 +5,17 @@ import Observation
 final class ChecklistStore {
 
     var weeks: [Week] = []
+    var selectedDate: Date = Date()
+
+    var selectedWeek: Week? {
+        let monday = Week.mondayOfWeek(containing: selectedDate)
+        return weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }
+    }
+
+    var isFirstLaunch: Bool {
+        guard let week = selectedWeek else { return true }
+        return week.categories.allSatisfy { $0.tasks.isEmpty }
+    }
 
     private let fileURL: URL = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -13,7 +24,7 @@ final class ChecklistStore {
 
     init() {
         load()
-        ensureCurrentWeekExists()
+        ensureWeekExists(for: Date())
     }
 
     // MARK: - Persistence
@@ -45,125 +56,132 @@ final class ChecklistStore {
 
     // MARK: - Week Management
 
-    func ensureCurrentWeekExists() {
-        let currentMonday = Week.mondayOfWeek(containing: Date())
-        if !weeks.contains(where: { Calendar.current.isDate($0.startDate, inSameDayAs: currentMonday) }) {
-            var newWeek = Week(startDate: currentMonday)
-            // Carry forward incomplete tasks from the most recent week
-            if let lastWeek = weeks.first {
-                newWeek.categories = carryForwardCategories(from: lastWeek)
-            }
-            weeks.insert(newWeek, at: 0)
-            save()
+    @discardableResult
+    func ensureWeekExists(for date: Date) -> Week {
+        let monday = Week.mondayOfWeek(containing: date)
+        if let existing = weeks.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }) {
+            return existing
         }
-    }
 
-    private func carryForwardCategories(from sourceWeek: Week) -> [Category] {
-        sourceWeek.categories.compactMap { category in
-            let incompleteTasks = category.tasks
-                .filter { !$0.isCompleted }
-                .map { ChecklistTask(title: $0.title) }
-            // Keep the category even if empty, so structure carries forward
-            return Category(name: category.name, tasks: incompleteTasks)
+        var newWeek = Week(startDate: monday)
+
+        // For the current or future week, seed from previous week
+        if let previousWeek = mostRecentWeekBefore(monday) {
+            newWeek.categories = rollForwardCategories(from: previousWeek)
+        } else {
+            // First ever week: seed with starter categories
+            newWeek.categories = Category.starters
         }
-    }
 
-    func createNewWeek() {
-        let currentMonday = Week.mondayOfWeek(containing: Date())
-        // Find the most recent Monday that doesn't already exist
-        var candidate = currentMonday
-        while weeks.contains(where: { Calendar.current.isDate($0.startDate, inSameDayAs: candidate) }) {
-            candidate = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: candidate)!
-        }
-        // Actually, the user probably wants the current week. If it exists, do nothing.
-        // For manual carry-forward, we just ensure current week exists.
-        ensureCurrentWeekExists()
-    }
-
-    func deleteWeek(_ week: Week) {
-        weeks.removeAll { $0.id == week.id }
+        weeks.append(newWeek)
+        sortWeeks()
         save()
+        return newWeek
+    }
+
+    private func mostRecentWeekBefore(_ date: Date) -> Week? {
+        weeks
+            .filter { $0.startDate < date }
+            .sorted { $0.startDate > $1.startDate }
+            .first
+    }
+
+    private func rollForwardCategories(from source: Week) -> [Category] {
+        source.categories.map { category in
+            var newCategory = Category(name: category.name, symbol: category.symbol)
+
+            // Repeating tasks always carry forward (reset to incomplete)
+            let repeatingTasks = category.tasks
+                .filter { $0.mode == .repeating }
+                .map { ChecklistTask(title: $0.title, mode: .repeating) }
+
+            // Carry-over tasks only carry forward if incomplete
+            let carryOverTasks = category.tasks
+                .filter { $0.mode == .carryOver && !$0.isCompleted }
+                .map { ChecklistTask(title: $0.title, mode: .carryOver) }
+
+            newCategory.tasks = repeatingTasks + carryOverTasks
+            return newCategory
+        }
+    }
+
+    func navigateToDate(_ date: Date) {
+        selectedDate = date
+        ensureWeekExists(for: date)
+    }
+
+    func navigateWeek(by offset: Int) {
+        guard let newDate = Calendar.current.date(byAdding: .weekOfYear, value: offset, to: selectedDate) else { return }
+        navigateToDate(newDate)
     }
 
     // MARK: - Category CRUD
 
-    func addCategory(to weekID: UUID, name: String) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }) else { return }
-        weeks[wi].categories.append(Category(name: name))
+    func addCategory(name: String, symbol: String) {
+        guard var week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
+        week.categories.append(Category(name: name, symbol: symbol))
+        weeks[wi] = week
         save()
     }
 
-    func renameCategory(weekID: UUID, categoryID: UUID, newName: String) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
+    func deleteCategory(_ categoryID: UUID) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
+        weeks[wi].categories.removeAll { $0.id == categoryID }
+        save()
+    }
+
+    func renameCategory(_ categoryID: UUID, newName: String) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         weeks[wi].categories[ci].name = newName
         save()
     }
 
-    func deleteCategory(weekID: UUID, categoryID: UUID) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }) else { return }
-        weeks[wi].categories.removeAll { $0.id == categoryID }
-        save()
-    }
-
     // MARK: - Task CRUD
 
-    func addTask(weekID: UUID, categoryID: UUID, title: String) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
+    func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
-        weeks[wi].categories[ci].tasks.append(ChecklistTask(title: title))
+        weeks[wi].categories[ci].tasks.append(ChecklistTask(title: title, mode: mode))
         save()
     }
 
-    func toggleTask(weekID: UUID, categoryID: UUID, taskID: UUID) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
+    func toggleTask(categoryID: UUID, taskID: UUID) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].isCompleted.toggle()
         save()
     }
 
-    func renameTask(weekID: UUID, categoryID: UUID, taskID: UUID, newTitle: String) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
-              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
-              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        weeks[wi].categories[ci].tasks[ti].title = newTitle
-        save()
-    }
-
-    func deleteTask(weekID: UUID, categoryID: UUID, taskID: UUID) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
+    func deleteTask(categoryID: UUID, taskID: UUID) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
         save()
     }
 
-    // MARK: - Carry Forward
-
-    func carryForwardTask(weekID: UUID, categoryID: UUID, taskID: UUID) {
-        guard let wi = weeks.firstIndex(where: { $0.id == weekID }),
+    func updateTaskMode(categoryID: UUID, taskID: UUID, mode: TaskMode) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].mode = mode
+        save()
+    }
 
-        let task = weeks[wi].categories[ci].tasks[ti]
-        guard !task.isCompleted else { return }
-
-        // Find or create current week
-        ensureCurrentWeekExists()
-        guard let currentWI = weeks.firstIndex(where: {
-            Calendar.current.isDate($0.startDate, inSameDayAs: Week.mondayOfWeek(containing: Date()))
-        }) else { return }
-
-        // Find matching category or create one
-        let categoryName = weeks[wi].categories[ci].name
-        if let existingCI = weeks[currentWI].categories.firstIndex(where: { $0.name == categoryName }) {
-            weeks[currentWI].categories[existingCI].tasks.append(ChecklistTask(title: task.title))
-        } else {
-            weeks[currentWI].categories.append(Category(name: categoryName, tasks: [ChecklistTask(title: task.title)]))
-        }
-
-        // Remove from old week
-        weeks[wi].categories[ci].tasks.remove(at: ti)
+    func renameTask(categoryID: UUID, taskID: UUID, newTitle: String) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].title = newTitle
         save()
     }
 
