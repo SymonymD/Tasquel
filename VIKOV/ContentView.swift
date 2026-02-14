@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showAddCategory = false
     @State private var expandedCategories: Set<UUID> = []
     @State private var isEditing = false
+    @State private var showOnboarding = false
 
     var body: some View {
         NavigationStack {
@@ -34,8 +35,15 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button(isEditing ? "Done" : "Edit", systemImage: isEditing ? "checkmark.circle.fill" : "pencil") {
-                        withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
+                    if isEditing {
+                        Button("Done", systemImage: "checkmark.circle.fill") {
+                            withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
+                        }
+                        .tint(.green)
+                    } else {
+                        Button("Edit", systemImage: "pencil") {
+                            withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
+                        }
                     }
                     Button("Settings", systemImage: "gearshape") {
                         showSettings = true
@@ -55,19 +63,18 @@ struct ContentView: View {
                 AddCategorySheet(store: store, expandedCategories: $expandedCategories)
                     .presentationDetents([.medium, .large])
             }
-            .alert("Welcome to VIKOV", isPresented: Binding(
-                get: { store.shouldShowWelcome },
-                set: { if !$0 { store.dismissWelcome() } }
-            )) {
-                Button("Got It") { store.dismissWelcome() }
-            } message: {
-                Text("Your weekly checklist. Tap a category to expand it and add tasks.\n\nSwipe right on a task to toggle between Carry Over, Repeating, and One-Time modes.\n\nUse the edit button to manage categories, edit tasks, and add sub-tasks.")
+            .sheet(isPresented: $showOnboarding) {
+                OnboardingSheet(store: store, expandedCategories: $expandedCategories)
+                    .interactiveDismissDisabled()
             }
         }
         .preferredColorScheme(store.colorScheme)
         .onAppear {
             if let week = store.selectedWeek {
                 expandedCategories = Set(week.categories.map(\.id))
+            }
+            if store.shouldShowWelcome {
+                showOnboarding = true
             }
         }
     }
@@ -79,10 +86,6 @@ struct ContentView: View {
                 weekBanner(week)
             }
 
-            ForEach(week.categories) { category in
-                categorySection(category)
-            }
-
             if isEditing {
                 Section {
                     Button {
@@ -91,6 +94,10 @@ struct ContentView: View {
                         Label("Add Category", systemImage: "plus.circle")
                     }
                 }
+            }
+
+            ForEach(week.categories) { category in
+                categorySection(category)
             }
         }
         .listStyle(.insetGrouped)
@@ -193,20 +200,9 @@ struct CategoryHeader: View {
                 }
             }
         }
-        .confirmationDialog("Remove Category", isPresented: $showDeleteOptions, titleVisibility: .visible) {
-            Button("Remove from This Week") {
-                withAnimation { store.deleteCategory(category.id) }
-            }
-            Button("Delete Entirely (Remove Saved)", role: .destructive) {
-                withAnimation {
-                    store.savedCategories.removeAll { $0.name == category.name }
-                    store.saveSettings()
-                    store.deleteCategory(category.id)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove \"\(category.name)\" from this week only, or delete it entirely including from saved categories?")
+        .sheet(isPresented: $showDeleteOptions) {
+            RemoveCategorySheet(category: category, store: store)
+                .presentationDetents([.height(260)])
         }
     }
 }
@@ -903,6 +899,311 @@ struct HelpRow: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Remove Category Sheet
+
+struct RemoveCategorySheet: View {
+    let category: Category
+    let store: ChecklistStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Close button
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 16)
+            .padding(.trailing, 20)
+
+            Text("Remove \"\(category.name)\"")
+                .font(.headline)
+                .padding(.top, 4)
+
+            Text("Remove from this week only, or delete entirely including from saved categories?")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            VStack(spacing: 12) {
+                Button {
+                    withAnimation { store.deleteCategory(category.id) }
+                    dismiss()
+                } label: {
+                    Text("Remove from This Week")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    withAnimation {
+                        store.savedCategories.removeAll { $0.name == category.name }
+                        store.saveSettings()
+                        store.deleteCategory(category.id)
+                    }
+                    dismiss()
+                } label: {
+                    Text("Delete Entirely")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Onboarding Sheet
+
+struct OnboardingSheet: View {
+    let store: ChecklistStore
+    @Binding var expandedCategories: Set<UUID>
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var step: OnboardingStep = .welcome
+    @State private var customCategories: [(name: String, symbol: String)] = []
+    @State private var newName = ""
+    @State private var newSymbol = "folder"
+    @State private var isAddingCategory = false
+
+    enum OnboardingStep {
+        case welcome
+        case categories
+    }
+
+    private let symbolOptions = [
+        "folder", "star", "heart", "house", "cart",
+        "briefcase", "figure.run", "book", "paintbrush",
+        "music.note", "fork.knife", "airplane", "gift",
+        "wrench.and.screwdriver", "leaf", "pawprint",
+        "calendar.badge.clock", "lightbulb", "sparkles",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch step {
+                case .welcome:
+                    welcomeView
+                case .categories:
+                    categorySetupView
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var welcomeView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 60))
+                .foregroundStyle(.green)
+
+            Text("Welcome to VIKOV")
+                .font(.largeTitle.bold())
+
+            VStack(alignment: .leading, spacing: 16) {
+                OnboardingFeatureRow(
+                    symbol: "rectangle.stack",
+                    title: "Weekly Checklist",
+                    detail: "Tap a category to expand it and add tasks."
+                )
+                OnboardingFeatureRow(
+                    symbol: "arrow.uturn.forward",
+                    title: "Smart Task Modes",
+                    detail: "Tasks can carry over, repeat weekly, or be one-time. Swipe right to change."
+                )
+                OnboardingFeatureRow(
+                    symbol: "pencil",
+                    title: "Edit Mode",
+                    detail: "Manage categories, edit tasks, and add sub-tasks."
+                )
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+
+            Button {
+                withAnimation(.snappy(duration: 0.3)) { step = .categories }
+            } label: {
+                Text("Next")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 32)
+        }
+    }
+
+    private var categorySetupView: some View {
+        VStack(spacing: 16) {
+            Text("Set Up Your Categories")
+                .font(.title2.bold())
+                .padding(.top, 24)
+
+            Text("Create your own categories, or skip to start with defaults (Errands, Work, Fitness, Study, Appointments).")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            List {
+                if !customCategories.isEmpty {
+                    Section("Your Categories") {
+                        ForEach(Array(customCategories.enumerated()), id: \.offset) { index, cat in
+                            Label(cat.name, systemImage: cat.symbol)
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        customCategories.remove(at: index)
+                                    } label: {
+                                        Label("Remove", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    }
+                }
+
+                Section {
+                    if isAddingCategory {
+                        HStack {
+                            Menu {
+                                ForEach(symbolOptions, id: \.self) { symbol in
+                                    Button {
+                                        newSymbol = symbol
+                                    } label: {
+                                        Label(symbol, systemImage: symbol)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: newSymbol)
+                                    .font(.title3)
+                                    .frame(width: 32, height: 32)
+                                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            }
+
+                            TextField("Category name", text: $newName)
+                                .onSubmit(addCustomCategory)
+                        }
+
+                        HStack {
+                            Button("Cancel") {
+                                isAddingCategory = false
+                                newName = ""
+                            }
+                            Spacer()
+                            Button("Add") { addCustomCategory() }
+                                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        .font(.subheadline)
+                    } else {
+                        Button {
+                            isAddingCategory = true
+                        } label: {
+                            Label("Add Category", systemImage: "plus.circle")
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+
+            HStack(spacing: 16) {
+                Button {
+                    finishOnboarding(useDefaults: true)
+                } label: {
+                    Text("Skip (Use Defaults)")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.bordered)
+
+                if !customCategories.isEmpty {
+                    Button {
+                        finishOnboarding(useDefaults: false)
+                    } label: {
+                        Text("Done")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private func addCustomCategory() {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        customCategories.append((name: name, symbol: newSymbol))
+        newName = ""
+        newSymbol = "folder"
+        isAddingCategory = false
+    }
+
+    private func finishOnboarding(useDefaults: Bool) {
+        if !useDefaults && !customCategories.isEmpty {
+            // Replace default categories with user's custom ones
+            store.savedCategories = customCategories.map {
+                CategoryTemplate(name: $0.name, symbol: $0.symbol)
+            }
+            store.saveSettings()
+
+            // Replace current week's categories
+            store.replaceCurrentWeekCategories(with: customCategories.map {
+                Category(name: $0.name, symbol: $0.symbol)
+            })
+        }
+
+        store.dismissWelcome()
+
+        // Expand all categories
+        if let week = store.selectedWeek {
+            expandedCategories = Set(week.categories.map(\.id))
+        }
+        dismiss()
+    }
+}
+
+struct OnboardingFeatureRow: View {
+    let symbol: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: symbol)
+                .font(.title2)
+                .foregroundStyle(.blue)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.bold())
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

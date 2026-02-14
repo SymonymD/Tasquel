@@ -196,6 +196,13 @@ final class ChecklistStore {
         navigateToDate(newDate)
     }
 
+    func replaceCurrentWeekCategories(with categories: [Category]) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
+        weeks[wi].categories = categories
+        save()
+    }
+
     // MARK: - Category CRUD
 
     func addCategory(name: String, symbol: String) {
