@@ -10,6 +10,9 @@ final class ChecklistStore {
     var savedCategories: [CategoryTemplate] = []
     var appearanceMode: AppearanceMode = .system
     var hasSeenWelcome: Bool = false
+    var userName: String = ""
+
+    var hasSetName: Bool { !userName.isEmpty }
 
     var selectedWeek: Week? {
         let monday = Week.mondayOfWeek(containing: selectedDate)
@@ -39,6 +42,7 @@ final class ChecklistStore {
     }()
 
     init() {
+        userName = UserDefaults.standard.string(forKey: "userName") ?? ""
         loadSettings()
         if savedCategories.isEmpty {
             savedCategories = CategoryTemplate.starters
@@ -120,6 +124,11 @@ final class ChecklistStore {
         saveSettings()
     }
 
+    func setUserName(_ name: String) {
+        userName = name
+        UserDefaults.standard.set(name, forKey: "userName")
+    }
+
     // MARK: - Saved Category Templates
 
     func addSavedCategory(name: String, symbol: String) {
@@ -173,12 +182,26 @@ final class ChecklistStore {
             // Repeating tasks always carry forward (reset to incomplete)
             let repeatingTasks = category.tasks
                 .filter { $0.mode == .repeating }
-                .map { ChecklistTask(title: $0.title, mode: .repeating, subtasks: $0.subtasks.map { SubTask(title: $0.title) }) }
+                .map { task in
+                    var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: task.subtasks.map { SubTask(title: $0.title) })
+                    newTask.taskType = task.taskType
+                    newTask.goalTarget = task.goalTarget
+                    newTask.goalProgress = 0  // Reset progress for repeating
+                    newTask.goalUnit = task.goalUnit
+                    return newTask
+                }
 
             // Carry-over tasks only if incomplete
             let carryOverTasks = category.tasks
                 .filter { $0.mode == .carryOver && !$0.isCompleted }
-                .map { ChecklistTask(title: $0.title, mode: .carryOver, subtasks: $0.subtasks.filter { !$0.isCompleted }.map { SubTask(title: $0.title) }) }
+                .map { task in
+                    var newTask = ChecklistTask(title: task.title, mode: .carryOver, subtasks: task.subtasks.filter { !$0.isCompleted }.map { SubTask(title: $0.title) })
+                    newTask.taskType = task.taskType
+                    newTask.goalTarget = task.goalTarget
+                    newTask.goalProgress = task.goalProgress  // Carry existing progress
+                    newTask.goalUnit = task.goalUnit
+                    return newTask
+                }
 
             // oneTime tasks never carry forward
             newCategory.tasks = repeatingTasks + carryOverTasks
@@ -188,7 +211,53 @@ final class ChecklistStore {
 
     func navigateToDate(_ date: Date) {
         selectedDate = date
-        ensureWeekExists(for: date)
+        let week = ensureWeekExists(for: date)
+        if week.isFutureWeek {
+            syncFutureWeek(for: date)
+        }
+    }
+
+    /// Sync categories and recurring tasks from the most recent prior week into a future week.
+    /// Ensures future weeks always have the same category structure plus any recurring tasks.
+    private func syncFutureWeek(for date: Date) {
+        let monday = Week.mondayOfWeek(containing: date)
+        guard let wi = weeks.firstIndex(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }),
+              let sourceWeek = mostRecentWeekBefore(monday) else { return }
+
+        var changed = false
+
+        for sourceCategory in sourceWeek.categories {
+            let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating }
+
+            if let ci = weeks[wi].categories.firstIndex(where: { $0.name == sourceCategory.name }) {
+                // Category exists — add any missing recurring tasks
+                let existingTitles = Set(weeks[wi].categories[ci].tasks.filter { $0.mode == .repeating }.map(\.title))
+                for task in recurringTasks where !existingTitles.contains(task.title) {
+                    var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: task.subtasks.map { SubTask(title: $0.title) })
+                    newTask.taskType = task.taskType
+                    newTask.goalTarget = task.goalTarget
+                    newTask.goalProgress = 0
+                    newTask.goalUnit = task.goalUnit
+                    weeks[wi].categories[ci].tasks.append(newTask)
+                    changed = true
+                }
+            } else {
+                // Category missing from future week — add it (with any recurring tasks)
+                var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
+                newCat.tasks = recurringTasks.map { task in
+                    var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: task.subtasks.map { SubTask(title: $0.title) })
+                    newTask.taskType = task.taskType
+                    newTask.goalTarget = task.goalTarget
+                    newTask.goalProgress = 0
+                    newTask.goalUnit = task.goalUnit
+                    return newTask
+                }
+                weeks[wi].categories.append(newCat)
+                changed = true
+            }
+        }
+
+        if changed { save() }
     }
 
     func navigateWeek(by offset: Int) {
@@ -278,6 +347,46 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
+        save()
+    }
+
+    // MARK: - Goal Task CRUD
+
+    func updateTaskType(categoryID: UUID, taskID: UUID, type: TaskType) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].taskType = type
+        if type == .checkbox {
+            weeks[wi].categories[ci].tasks[ti].goalTarget = nil
+            weeks[wi].categories[ci].tasks[ti].goalProgress = nil
+            weeks[wi].categories[ci].tasks[ti].goalUnit = nil
+        }
+        save()
+    }
+
+    func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, unit: String) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].goalTarget = target
+        weeks[wi].categories[ci].tasks[ti].goalUnit = unit
+        // Auto-update completion
+        let progress = weeks[wi].categories[ci].tasks[ti].goalProgress ?? 0
+        weeks[wi].categories[ci].tasks[ti].isCompleted = progress >= target
+        save()
+    }
+
+    func updateGoalProgress(categoryID: UUID, taskID: UUID, progress: Double) {
+        guard let week = selectedWeek,
+              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].goalProgress = progress
+        let target = weeks[wi].categories[ci].tasks[ti].goalTarget ?? 0
+        weeks[wi].categories[ci].tasks[ti].isCompleted = target > 0 && progress >= target
         save()
     }
 

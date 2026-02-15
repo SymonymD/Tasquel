@@ -32,6 +32,27 @@ enum TaskMode: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Task Type
+
+enum TaskType: String, Codable, CaseIterable {
+    case checkbox
+    case goal
+
+    var label: String {
+        switch self {
+        case .checkbox: "Checkbox"
+        case .goal: "Goal"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .checkbox: "checkmark.circle"
+        case .goal: "target"
+        }
+    }
+}
+
 // MARK: - Sub-Task
 
 struct SubTask: Codable, Identifiable, Equatable {
@@ -48,6 +69,10 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var isCompleted: Bool = false
     var mode: TaskMode = .carryOver
     var subtasks: [SubTask] = []
+    var taskType: TaskType = .checkbox
+    var goalTarget: Double? = nil
+    var goalProgress: Double? = nil
+    var goalUnit: String? = nil
 
     var allSubtasksCompleted: Bool {
         subtasks.allSatisfy(\.isCompleted)
@@ -55,6 +80,17 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
 
     var completedSubtaskCount: Int {
         subtasks.filter(\.isCompleted).count
+    }
+
+    var goalFraction: String {
+        let progress = goalProgress ?? 0
+        let target = goalTarget ?? 0
+        return "\(Int(progress))/\(Int(target))"
+    }
+
+    var goalIsComplete: Bool {
+        guard let target = goalTarget, target > 0 else { return false }
+        return (goalProgress ?? 0) >= target
     }
 }
 
@@ -87,8 +123,13 @@ struct Week: Codable, Identifiable, Equatable {
         startDate > Date()
     }
 
+    var isPastWeek: Bool {
+        !isCurrentWeek && !isFutureWeek
+    }
+
     static func mondayOfWeek(containing date: Date) -> Date {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2  // Monday-based weeks
         var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         components.weekday = 2
         return calendar.date(from: components) ?? date
