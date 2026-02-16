@@ -421,6 +421,11 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks[si].isCompleted.toggle()
+        // Auto-complete/uncomplete parent based on subtask state
+        let task = weeks[wi].categories[ci].tasks[ti]
+        if !task.subtasks.isEmpty {
+            weeks[wi].categories[ci].tasks[ti].isCompleted = task.subtasks.allSatisfy(\.isCompleted)
+        }
         save()
     }
 

@@ -28,9 +28,9 @@ Repo: https://github.com/SymonymD/Vikov.git
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-02-15)
+## Current State (as of 2026-02-16)
 
-All features below are implemented and building successfully. Uncommitted changes in working tree (major UI redesign from List to card-based grid).
+All features below are implemented and building successfully. Uncommitted changes in working tree (refinements since card-based grid commit).
 
 ### Files
 
@@ -38,8 +38,8 @@ All features below are implemented and building successfully. Uncommitted change
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
 | `Tasquel/Models.swift` | ~181 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode` |
-| `Tasquel/ChecklistStore.swift` | ~451 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync |
-| `Tasquel/ContentView.swift` | ~1421 | All SwiftUI views: card-based grid, expanded cards, task rows, goal progress, sheets, 4-step onboarding |
+| `Tasquel/ChecklistStore.swift` | ~456 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks |
+| `Tasquel/ContentView.swift` | ~1457 | All SwiftUI views: card-based grid, expanded cards, task rows, goal progress, sheets, 4-step onboarding |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -52,8 +52,8 @@ All features below are implemented and building successfully. Uncommitted change
 6. **Edit mode**: Pencil/checkmark toggle in bottom-right. Enables:
    - Add categories (dashed-border card appears in grid)
    - Inline task title editing (double-tap or tap in edit mode)
-   - Inline mode icons per task (carry-over, repeating, one-time + delete)
-   - Task type picker (checkbox/goal) via context menu
+   - Inline mode icons per task (carry-over, repeating, one-time + delete) — shown IN edit mode
+   - Task type icons (checkbox/goal) — shown when NOT in edit mode
    - Sub-task management (add, edit, delete, complete)
    - Category removal via context menu (save, remove this week, delete entirely)
 7. **Saved category templates**: Categories saved for reuse. Add Category sheet shows "Create New" first, then saved.
@@ -70,19 +70,19 @@ All features below are implemented and building successfully. Uncommitted change
     - `TaskType` enum: `.checkbox` (default), `.goal`
     - Goal fields on `ChecklistTask`: `goalTarget`, `goalProgress`, `goalUnit`
     - Progress ring indicator on left (replaces checkbox)
-    - Inline progress section: ProgressView bar, fraction display, "Add progress" input
+    - Inline progress section: ProgressView bar, fraction display, "Add progress" input — always visible (not behind a tap)
     - Inline goal setup: Target/Unit text fields when no target set (not a popup)
     - Auto-completion when progress >= target
-    - Task type picker in AddTaskRow menu and context menu
+    - Task type picker via inline icons and context menu
 14. **Username**: Persisted via UserDefaults, editable in Settings, collected during onboarding
 15. **Double-tap editing**: Double-tap task title to edit inline
-16. **Date banner**: Shows today's date with ordinal suffix (e.g. "Sunday, Feb 15th"), "Go to Today" button on non-current weeks
+16. **Date banner**: Shows today's date with ordinal suffix (e.g. "Monday, Feb 16th"), "Go to Today" button on non-current weeks
 17. **Past week read-only**: Past weeks hide AddTaskRow, AddCategory, and edit button
 18. **Future week full editing**: Same capabilities as current week — add/remove tasks and categories
 19. **Future week sync**: `syncFutureWeek(for:)` ensures all categories and recurring tasks from the source week appear in future weeks.
-20. **Card-based grid UI** (NEW — Figma redesign):
+20. **Card-based grid UI** (Figma redesign):
     - Replaced `NavigationStack` + `List` with `ZStack` + `ScrollView` + `LazyVGrid`
-    - Collapsed cards in 2-column grid with SF Symbol, name, yellow clock icon, completed count, task dot previews, expand arrow (↗)
+    - Collapsed cards in 2-column grid with SF Symbol, name, pie chart completion icon, completed count, task dot previews, expand arrow (↗)
     - Single expanded category (`UUID?`) instead of `Set<UUID>` — tapping a card expands it full-width
     - Expanded card shows all tasks with circles (filled green = done, empty = not), subtasks, add-task field, edit/checkmark toggle
     - Edit mode shows inline HStack of mode icons (carry-over, repeating, one-time) + red trash per task
@@ -90,6 +90,10 @@ All features below are implemented and building successfully. Uncommitted change
     - Cards use `Color(.secondarySystemGroupedBackground)` with subtle shadow for adaptive light/dark backgrounds
     - Bottom bar: settings gear (left), date with "Go to Today" (center), edit pencil/checkmark (right)
     - Removed swipe actions (not supported outside List), replaced with inline edit-mode icons + context menus
+21. **Pie chart completion icon**: `chart.pie.fill` on each card — green (all complete), orange (partial), red (none complete)
+22. **Always-visible subtask creation**: "+" add sub-task field always visible below checkbox tasks (not gated behind existing subtasks)
+23. **Auto-complete parent from subtasks**: When all subtasks are completed, parent task auto-completes. When a subtask is unchecked, parent auto-uncompletes.
+24. **Dual inline icon system**: Task type icons (checkbox/goal) shown when NOT in edit mode; task mode icons (carry-over/repeating/one-time + delete) shown IN edit mode. Both always show both options with active one highlighted blue.
 
 ### UI Layout (Post-Redesign)
 
@@ -102,6 +106,9 @@ All features below are implemented and building successfully. Uncommitted change
 - **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
 - **Add Category**: Dashed-border card in grid during edit mode
 - **Card backgrounds**: `secondarySystemGroupedBackground` in `RoundedRectangle(cornerRadius: 16)` with soft shadow
+- **Inline icons per task**:
+  - Normal mode: checkbox + goal type icons (switch task type)
+  - Edit mode: carry-over + repeating + one-time mode icons + trash (switch task mode, delete)
 
 ## Commit History
 
@@ -115,6 +122,8 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 2b8dace Update CLAUDE.md with full current architecture
 207a2cf Add AI dev recap for session continuity
 3106482 Rename app from VIKOV to Tasquel
+5259ced Add goal tasks, username, 4-step onboarding, floating nav, and future week sync
+53ca1c3 Redesign UI to Figma card-based grid layout
 ```
 
 ## Development Workflow
@@ -139,8 +148,9 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 8. **Future week stale data**: `ensureWeekExists` only creates a week once. If you navigate to a future week, go back, add recurring tasks, then navigate forward again, those tasks won't appear unless explicitly synced. Fixed with `syncFutureWeek(for:)` which runs on every future-week navigation.
 9. **Category UUIDs differ per week**: Each week gets fresh category UUIDs from rollForward. Expansion tracking must use single `UUID?` (not `Set<UUID>`) and reset on week navigation.
 10. **SourceKit false positives**: Cross-file resolution errors like `Cannot find 'Category' in scope` or `Category (aka 'OpaquePointer')` are transient SourceKit issues — all builds succeed. Ignore these diagnostics.
-11. **Swipe actions require List** (NEW): `swipeActions` modifier only works inside `List`. After migrating to `ScrollView` + `LazyVGrid`, swipe actions were replaced with inline edit-mode icons and context menus.
-12. **Rollover resets completed tasks on test data** (NEW): When writing test data directly to `checklist.json`, the `ensureWeekExists` init logic may strip completed carry-over tasks and one-time tasks. Completed tasks show as red dots because rollover reset them. This is correct app behavior — only affects manual test data injection.
+11. **Swipe actions require List**: `swipeActions` modifier only works inside `List`. After migrating to `ScrollView` + `LazyVGrid`, swipe actions were replaced with inline edit-mode icons and context menus.
+12. **Rollover resets completed tasks on test data**: When writing test data directly to `checklist.json`, the `ensureWeekExists` init logic may strip completed carry-over tasks and one-time tasks. Completed tasks show as red dots because rollover reset them. This is correct app behavior — only affects manual test data injection.
+13. **Inline icon context matters**: Task type icons (checkbox/goal) show when NOT in edit mode so users can always switch type. Task mode icons (carry-over/repeating/one-time) show IN edit mode. Initially had this reversed — user corrected that mode changes are an "editing" action while type switching should be always available.
 
 ## Figma Reference
 
@@ -157,20 +167,18 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 - Data export/import
 - Uncommitted changes need to be committed and pushed
 
-## Last Session Summary (2026-02-15)
+## Last Session Summary (2026-02-16)
 
-**What was done**: Complete UI redesign from List-based layout to Figma card-based grid:
-- Rewrote **ContentView.swift** entirely (1690 → 1421 lines) — replaced `NavigationStack` + `List` with `ZStack` + `ScrollView` + `LazyVGrid`
-- Implemented **2-column card grid** with collapsed category cards showing task dot previews
-- Implemented **single expanded card** mode (`UUID?` instead of `Set<UUID>`)
-- Added **inline edit mode icons** per task (3 mode icons + delete) replacing swipe actions
-- Added **dashed-border "Add Category" card** in grid during edit mode
-- Cards use **adaptive backgrounds** (`secondarySystemGroupedBackground`) with subtle shadows
-- Fixed **expand/collapse arrows** to match Figma (↗ expand, ↙ collapse)
-- Updated **Help sheet** content to reflect new card-based UI
-- Verified builds in both **light and dark mode** — dark mode closely matches Figma design
+**What was done**: Post-grid-redesign refinements across two continued sessions:
+- **Pie chart completion icon**: Replaced yellow clock with `chart.pie.fill` — green/orange/red based on task completion ratio
+- **Always-visible subtask creation**: Removed gate so "+" add sub-task field always appears below checkbox tasks
+- **Auto-complete parent from subtasks**: Parent auto-completes when all subtasks done, auto-uncompletes when any subtask unchecked
+- **Pie chart icon sizing**: Matched pie chart size to edit icon (`.subheadline`)
+- **Goal tasks always visible**: Goal setup/progress displayed inline (not hidden behind tap toggle)
+- **Task type switching**: Added checkbox/goal icons when editing task title
+- **Dual inline icon system**: Swapped to correct context — type icons (checkbox/goal) shown in normal mode, mode icons (carry-over/repeating/one-time + delete) shown in edit mode
 - All changes build successfully (BUILD SUCCEEDED)
 
-**In progress**: User reviewing the Figma-matched UI implementation. Uncommitted changes in working tree.
+**In progress**: Uncommitted changes in working tree. User reviewing dual icon system.
 
-**User's likely next steps**: Review card grid UI, provide feedback for refinements, commit/push changes.
+**User's likely next steps**: Commit/push changes, continue UI refinements, or move to new features.

@@ -241,7 +241,7 @@ struct CategoryCard: View {
                 Image(systemName: category.symbol).font(.caption)
                 Text(category.name).font(.subheadline.bold()).lineLimit(1)
                 Spacer()
-                Image(systemName: "clock.fill").font(.caption2).foregroundStyle(.yellow)
+                completionIcon(for: category)
             }
 
             Text("Completed: \(category.completedCount)/\(category.totalCount)")
@@ -292,6 +292,15 @@ struct CategoryCard: View {
             }
         }
     }
+
+    private func completionIcon(for category: Category) -> some View {
+        let total = category.totalCount
+        let completed = category.completedCount
+        let color: Color = total == 0 ? .gray : completed == 0 ? .red : completed == total ? .green : .orange
+        return Image(systemName: "chart.pie.fill")
+            .font(.subheadline)
+            .foregroundStyle(color)
+    }
 }
 
 // MARK: - Expanded Category Card
@@ -321,7 +330,7 @@ struct ExpandedCategoryCard: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Image(systemName: "clock.fill").font(.caption2).foregroundStyle(.yellow)
+                completionIcon(for: category)
             }
 
             Text("Completed: \(category.completedCount)/\(category.totalCount)")
@@ -382,6 +391,15 @@ struct ExpandedCategoryCard: View {
                 .presentationDetents([.height(260)])
         }
     }
+
+    private func completionIcon(for category: Category) -> some View {
+        let total = category.totalCount
+        let completed = category.completedCount
+        let color: Color = total == 0 ? .gray : completed == 0 ? .red : completed == total ? .green : .orange
+        return Image(systemName: "chart.pie.fill")
+            .font(.subheadline)
+            .foregroundStyle(color)
+    }
 }
 
 // MARK: - Task Row (Card)
@@ -396,7 +414,6 @@ struct TaskRowCard: View {
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
     @State private var newSubtaskTitle = ""
-    @State private var showGoalProgress = false
     @State private var addProgressText = ""
     @State private var goalTargetText = ""
     @State private var goalUnitText = ""
@@ -451,14 +468,21 @@ struct TaskRowCard: View {
 
                 Spacer()
 
-                // Edit mode: mode icons + delete
-                if isEditing && !isPastWeek {
-                    editModeIcons
+                // Inline icons
+                if !isPastWeek {
+                    if isEditing {
+                        taskModeIcons
+                    } else {
+                        taskTypeIcons
+                    }
                 }
             }
 
-            // Subtasks (always shown if task has them)
-            if !task.subtasks.isEmpty {
+            if task.taskType == .goal {
+                // Goal: always show setup or progress inline
+                goalProgressSection
+            } else {
+                // Checkbox: subtasks
                 ForEach(task.subtasks) { subtask in
                     SubTaskRowCard(
                         subtask: subtask,
@@ -479,11 +503,6 @@ struct TaskRowCard: View {
                     }
                     .padding(.leading, 24)
                 }
-            }
-
-            // Goal progress (expandable)
-            if task.taskType == .goal && showGoalProgress {
-                goalProgressSection
             }
         }
         .contextMenu {
@@ -524,7 +543,8 @@ struct TaskRowCard: View {
         }
     }
 
-    private var editModeIcons: some View {
+    // Mode icons: carry-over, repeating, one-time + delete (shown when NOT editing title)
+    private var taskModeIcons: some View {
         HStack(spacing: 6) {
             ForEach(TaskMode.allCases, id: \.self) { mode in
                 Button {
@@ -548,42 +568,52 @@ struct TaskRowCard: View {
         }
     }
 
-    @ViewBuilder
-    private var goalIndicator: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                showGoalProgress.toggle()
-            }
-        } label: {
-            if task.goalIsComplete {
-                Circle()
-                    .fill(Color.green)
-                    .overlay(
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8).bold())
-                            .foregroundStyle(.white)
-                    )
-                    .frame(width: 14, height: 14)
-            } else if let target = task.goalTarget, target > 0 {
-                ZStack {
-                    Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 2)
-                    Circle()
-                        .trim(from: 0, to: min((task.goalProgress ?? 0) / target, 1.0))
-                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
+    // Type icons: checkbox + goal (shown when editing title)
+    private var taskTypeIcons: some View {
+        HStack(spacing: 6) {
+            ForEach(TaskType.allCases, id: \.self) { type in
+                Button {
+                    store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+                } label: {
+                    Image(systemName: type.symbol)
+                        .font(.caption2)
+                        .foregroundStyle(task.taskType == type ? .blue : .secondary)
                 }
-                .frame(width: 14, height: 14)
-            } else {
-                Image(systemName: "target")
-                    .font(.caption).foregroundStyle(.orange)
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var goalIndicator: some View {
+        if task.goalIsComplete {
+            Circle()
+                .fill(Color.green)
+                .overlay(
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8).bold())
+                        .foregroundStyle(.white)
+                )
+                .frame(width: 14, height: 14)
+        } else if let target = task.goalTarget, target > 0 {
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: min((task.goalProgress ?? 0) / target, 1.0))
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 14, height: 14)
+        } else {
+            Image(systemName: "target")
+                .font(.caption).foregroundStyle(.orange)
+        }
     }
 
     private var goalProgressSection: some View {
         VStack(spacing: 6) {
             if let target = task.goalTarget, target > 0 {
+                // Progress bar + fraction
                 HStack(spacing: 10) {
                     ProgressView(value: min((task.goalProgress ?? 0) / target, 1.0))
                         .tint(task.goalIsComplete ? .green : .blue)
@@ -596,6 +626,7 @@ struct TaskRowCard: View {
                 }
                 .padding(.leading, 24)
 
+                // Add progress input
                 if !isPastWeek && !task.goalIsComplete {
                     HStack(spacing: 8) {
                         Image(systemName: "plus").font(.caption).foregroundStyle(.tertiary)
@@ -613,39 +644,37 @@ struct TaskRowCard: View {
                     }
                     .padding(.leading, 24)
                 }
-            } else {
-                // Inline goal setup
-                VStack(spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text("Target:").font(.caption).foregroundStyle(.secondary)
-                        TextField("e.g. 50", text: $goalTargetText)
-                            .font(.caption).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
-                    }
-                    HStack(spacing: 8) {
-                        Text("Unit:").font(.caption).foregroundStyle(.secondary)
-                        TextField("e.g. push-ups", text: $goalUnitText)
-                            .font(.caption).textFieldStyle(.roundedBorder)
-                    }
-                    HStack {
-                        Spacer()
-                        Button("Save Goal") {
-                            if let target = Double(goalTargetText), target > 0 {
-                                store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
-                            }
-                            goalTargetText = ""
-                            goalUnitText = ""
+            } else if !isPastWeek {
+                // Goal setup: [target] - [unit] Set
+                HStack(spacing: 6) {
+                    TextField("Target", text: $goalTargetText)
+                        .font(.caption).keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    Text("—").font(.caption).foregroundStyle(.tertiary)
+                    TextField("Unit", text: $goalUnitText)
+                        .font(.caption)
+                        .textFieldStyle(.roundedBorder)
+                    Button {
+                        if let target = Double(goalTargetText), target > 0 {
+                            store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
                         }
-                        .font(.caption.bold())
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(Double(goalTargetText) == nil)
+                        goalTargetText = ""
+                        goalUnitText = ""
+                    } label: {
+                        Text("Set")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(.blue, in: Capsule())
+                            .foregroundStyle(.white)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(Double(goalTargetText) == nil)
                 }
                 .padding(.leading, 24)
             }
         }
         .padding(.top, 2)
-        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func addSubtask() {
