@@ -111,7 +111,7 @@ struct Week: Codable, Identifiable, Equatable {
 
     var displayTitle: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
+        formatter.dateFormat = "M/d/yy"
         return "Week of \(formatter.string(from: startDate))"
     }
 
