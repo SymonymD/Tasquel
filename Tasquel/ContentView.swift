@@ -1,5 +1,144 @@
 import SwiftUI
 
+// MARK: - Design System
+
+/// Mode-aware theme resolved per-render from the store's appearanceMode.
+/// Pass the mode explicitly to each property so SwiftUI re-evaluates when the
+/// observable `store.appearanceMode` changes — no stale static var.
+enum Theme {
+    // Retro color palettes (bright, dim, faint)
+    private static func retroPalette(_ c: RetroColor) -> (Color, Color, Color) {
+        switch c {
+        case .green:
+            (Color(red: 0.2, green: 1.0, blue: 0.2),
+             Color(red: 0.15, green: 0.7, blue: 0.15),
+             Color(red: 0.1, green: 0.4, blue: 0.1))
+        case .amber:
+            (Color(red: 1.0, green: 0.75, blue: 0.0),
+             Color(red: 0.7, green: 0.5, blue: 0.0),
+             Color(red: 0.4, green: 0.3, blue: 0.0))
+        case .blue:
+            (Color(red: 0.3, green: 0.7, blue: 1.0),
+             Color(red: 0.2, green: 0.5, blue: 0.7),
+             Color(red: 0.1, green: 0.3, blue: 0.4))
+        case .white:
+            (Color(white: 0.95),
+             Color(white: 0.65),
+             Color(white: 0.35))
+        case .red:
+            (Color(red: 1.0, green: 0.3, blue: 0.3),
+             Color(red: 0.7, green: 0.2, blue: 0.2),
+             Color(red: 0.4, green: 0.1, blue: 0.1))
+        case .purple:
+            (Color(red: 0.75, green: 0.4, blue: 1.0),
+             Color(red: 0.5, green: 0.25, blue: 0.7),
+             Color(red: 0.3, green: 0.15, blue: 0.4))
+        }
+    }
+
+    /// Convenience to get the color for a swatch preview
+    static func retroBright(_ c: RetroColor) -> Color { retroPalette(c).0 }
+
+    // Helpers
+    static func isRetro(_ m: AppearanceMode) -> Bool { m == .retro }
+    static func isDark(_ m: AppearanceMode) -> Bool { m == .dark }
+    static func isCustomDark(_ m: AppearanceMode) -> Bool { m == .dark || m == .retro }
+
+    // Core backgrounds
+    static func background(_ m: AppearanceMode) -> Color {
+        switch m {
+        case .retro: .black
+        case .dark: Color(red: 0, green: 0, blue: 20.0/255)
+        case .system, .light: Color(.systemBackground)
+        }
+    }
+    static func cardFill(_ m: AppearanceMode) -> Color {
+        switch m {
+        case .retro: Color(white: 0.06)
+        case .dark: Color(red: 55.0/255, green: 55.0/255, blue: 84.0/255)
+        case .system, .light: Color(.secondarySystemGroupedBackground)
+        }
+    }
+    static func navCapsule(_ m: AppearanceMode) -> Color {
+        switch m {
+        case .retro: Color(white: 0.1)
+        case .dark: Color(white: 33.0/255, opacity: 0.2)
+        case .system, .light: Color(.systemGray5)
+        }
+    }
+
+    // Task dot colors — retro uses the phosphor bright color
+    static func dotComplete(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        isRetro(m) ? retroPalette(rc).0 : .green
+    }
+    static func dotIncomplete(_ m: AppearanceMode) -> Color {
+        isRetro(m) ? .red.opacity(0.8) : .red
+    }
+
+    // Completion icon colors
+    static func completionAll(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).0 : .green }
+    static func completionPartial(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : .orange }
+    static func completionNone(_ m: AppearanceMode) -> Color { isRetro(m) ? .red.opacity(0.8) : .red }
+
+    // Accent
+    static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).0 : .blue }
+    static func destructive(_ m: AppearanceMode) -> Color { isRetro(m) ? .red.opacity(0.8) : .red }
+
+    // Text
+    static func textPrimary(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        switch m {
+        case .retro: retroPalette(rc).0
+        case .dark: .white
+        case .system, .light: Color(.label)
+        }
+    }
+    static func textSecondary(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        switch m {
+        case .retro: retroPalette(rc).1
+        case .dark: .white.opacity(0.6)
+        case .system, .light: Color(.secondaryLabel)
+        }
+    }
+    static func textTertiary(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        switch m {
+        case .retro: retroPalette(rc).2
+        case .dark: .white.opacity(0.35)
+        case .system, .light: Color(.tertiaryLabel)
+        }
+    }
+
+    // Card
+    static func cardCornerRadius(_ m: AppearanceMode) -> CGFloat { isRetro(m) ? 2 : 12 }
+    static func cardShadow(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        switch m {
+        case .retro: retroPalette(rc).2.opacity(0.3)
+        case .dark: .black.opacity(0.3)
+        case .system, .light: .black.opacity(0.08)
+        }
+    }
+    static func cardBorder(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).1 : .clear }
+    static func cardBorderWidth(_ m: AppearanceMode) -> CGFloat { isRetro(m) ? 1 : 0 }
+
+    // Font
+    static func primaryFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold() }
+    static func bodyFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced) : .subheadline }
+    static func captionFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.caption, design: .monospaced) : .caption }
+    static func titleFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.title, design: .monospaced).bold() : .title.bold() }
+}
+
+// MARK: - Scanline Overlay (Retro)
+
+struct ScanlineOverlay: View {
+    var body: some View {
+        Canvas { context, size in
+            for y in stride(from: 0, to: size.height, by: 3) {
+                let rect = CGRect(x: 0, y: y, width: size.width, height: 1)
+                context.fill(Path(rect), with: .color(.black.opacity(0.15)))
+            }
+        }
+    }
+}
+
 // MARK: - Root View
 
 struct ContentView: View {
@@ -11,18 +150,27 @@ struct ContentView: View {
     @State private var isEditing = false
     @State private var showOnboarding = false
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     private var isPastWeek: Bool {
         store.selectedWeek?.isPastWeek ?? false
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground).ignoresSafeArea()
+            Theme.background(theme).ignoresSafeArea()
 
             VStack(spacing: 12) {
-                Text(store.selectedWeek?.displayTitle ?? "Tasquel")
-                    .font(.title.bold())
-                    .padding(.top, 8)
+                if Theme.isRetro(theme) {
+                    Text("> \(store.selectedWeek?.displayTitle ?? "Tasquel")_")
+                        .font(Theme.titleFont(theme))
+                        .padding(.top, 8)
+                } else {
+                    Text(store.selectedWeek?.displayTitle ?? "Tasquel")
+                        .font(Theme.titleFont(theme))
+                        .padding(.top, 8)
+                }
 
                 weekNavigationBar
 
@@ -38,7 +186,15 @@ struct ContentView: View {
             bottomBar
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
+
+            // Retro scanline overlay
+            if Theme.isRetro(theme) {
+                ScanlineOverlay()
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
         }
+        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .preferredColorScheme(store.colorScheme)
         .sheet(isPresented: $showDatePicker) {
             DatePickerSheet(selectedDate: store.selectedDate) { date in
@@ -88,7 +244,15 @@ struct ContentView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
+        .background {
+            if Theme.isRetro(theme) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.navCapsule(theme))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+            } else {
+                Capsule().fill(Theme.navCapsule(theme))
+            }
+        }
     }
 
     // MARK: - Bottom Bar
@@ -96,24 +260,32 @@ struct ContentView: View {
     private var bottomBar: some View {
         HStack {
             Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.body)
-                    .frame(width: 46, height: 46)
-                    .background(.regularMaterial, in: Circle())
+                Image(systemName: Theme.isRetro(theme) ? "terminal" : "gearshape.fill")
+                    .font(.title3)
+                    .frame(width: 48, height: 48)
+                    .background(Theme.cardFill(theme), in: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle()))
+                    .overlay {
+                        if Theme.isRetro(theme) {
+                            RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1)
+                        }
+                    }
             }
 
             Spacer()
 
             if store.selectedWeek?.isCurrentWeek == true {
-                Text(todayDateString)
-                    .font(.subheadline.bold())
+                Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
+                    .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
             } else {
                 Button {
                     withAnimation { store.navigateToDate(Date()) }
                 } label: {
                     VStack(spacing: 1) {
-                        Text(todayDateString).font(.subheadline.bold())
-                        Text("Go to Today").font(.caption2).foregroundStyle(.blue)
+                        Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
+                            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
+                        Text(Theme.isRetro(theme) ? "> GO_TO_TODAY" : "Go to Today")
+                            .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
+                            .foregroundStyle(Theme.accent(theme, rc: rc))
                     }
                 }
                 .buttonStyle(.plain)
@@ -127,19 +299,30 @@ struct ContentView: View {
                 } label: {
                     if isEditing {
                         Image(systemName: "checkmark")
-                            .font(.body).foregroundStyle(.green)
-                            .frame(width: 46, height: 46)
-                            .background(.green.opacity(0.15), in: Circle())
-                            .overlay(Circle().stroke(.green, lineWidth: 1.5))
+                            .font(.title3).foregroundStyle(Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
+                            .frame(width: 48, height: 48)
+                            .background(Theme.isRetro(theme) ? Theme.cardFill(theme) : .green.opacity(0.15), in: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle()))
+                            .overlay {
+                                if Theme.isRetro(theme) {
+                                    RoundedRectangle(cornerRadius: 2).stroke(Theme.dotComplete(theme, rc: rc), lineWidth: 1.5)
+                                } else {
+                                    Circle().stroke(.green, lineWidth: 1.5)
+                                }
+                            }
                     } else {
                         Image(systemName: "pencil")
-                            .font(.body)
-                            .frame(width: 46, height: 46)
-                            .background(.regularMaterial, in: Circle())
+                            .font(.title3)
+                            .frame(width: 48, height: 48)
+                            .background(Theme.cardFill(theme), in: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle()))
+                            .overlay {
+                                if Theme.isRetro(theme) {
+                                    RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1)
+                                }
+                            }
                     }
                 }
             } else {
-                Color.clear.frame(width: 46, height: 46)
+                Color.clear.frame(width: 48, height: 48)
             }
         }
     }
@@ -196,16 +379,16 @@ struct ContentView: View {
                     if isEditing && !week.isPastWeek {
                         Button { showAddCategory = true } label: {
                             VStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.title2).foregroundStyle(.secondary)
-                                Text("Add Category")
-                                    .font(.caption.bold()).foregroundStyle(.secondary)
+                                Image(systemName: Theme.isRetro(theme) ? "plus.square" : "plus")
+                                    .font(.title2).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                                Text(Theme.isRetro(theme) ? "+ NEW_CATEGORY" : "Add Category")
+                                    .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                             }
                             .frame(maxWidth: .infinity, minHeight: 120)
                             .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8]))
-                                    .foregroundStyle(.tertiary)
+                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                                    .strokeBorder(style: StrokeStyle(lineWidth: Theme.isRetro(theme) ? 1 : 2, dash: Theme.isRetro(theme) ? [] : [8]))
+                                    .foregroundStyle(Theme.isRetro(theme) ? Theme.cardBorder(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
                             )
                         }
                         .buttonStyle(.plain)
@@ -235,26 +418,39 @@ struct CategoryCard: View {
     let store: ChecklistStore
     let onExpand: () -> Void
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
-                Image(systemName: category.symbol).font(.caption)
-                Text(category.name).font(.subheadline.bold()).lineLimit(1)
+                if !Theme.isRetro(theme) {
+                    Image(systemName: category.symbol).font(.subheadline)
+                }
+                Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
+                    .font(Theme.primaryFont(theme)).lineLimit(1)
                 Spacer()
                 completionIcon(for: category)
             }
 
-            Text("Completed: \(category.completedCount)/\(category.totalCount)")
-                .font(.caption2).foregroundStyle(.secondary)
+            Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
+                .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
 
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(category.tasks.prefix(5)) { task in
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(task.isCompleted ? Color.green : Color.red)
-                            .frame(width: 7, height: 7)
+                        if Theme.isRetro(theme) {
+                            Text(task.isCompleted ? "[x]" : "[ ]")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.dotIncomplete(theme))
+                        } else {
+                            Circle()
+                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.dotIncomplete(theme))
+                                .frame(width: 7, height: 7)
+                        }
                         Text(task.title)
-                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
+                            .foregroundStyle(Theme.textSecondary(theme, rc: rc)).lineLimit(1)
                     }
                 }
             }
@@ -263,16 +459,25 @@ struct CategoryCard: View {
 
             HStack {
                 Spacer()
-                Image(systemName: "arrow.up.forward")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                if Theme.isRetro(theme) {
+                    Text("[OPEN]").font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                } else {
+                    Image(systemName: "arrow.up.forward")
+                        .font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                }
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .background {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.secondarySystemGroupedBackground))
-                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                .fill(Theme.cardFill(theme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                        .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
+                )
+                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 6, x: 0, y: Theme.isRetro(theme) ? 0 : 3)
         }
         .onTapGesture { onExpand() }
         .contextMenu {
@@ -296,10 +501,20 @@ struct CategoryCard: View {
     private func completionIcon(for category: Category) -> some View {
         let total = category.totalCount
         let completed = category.completedCount
-        let color: Color = total == 0 ? .gray : completed == 0 ? .red : completed == total ? .green : .orange
-        return Image(systemName: "chart.pie.fill")
-            .font(.subheadline)
-            .foregroundStyle(color)
+        let color: Color = total == 0 ? .gray : completed == 0 ? Theme.completionNone(theme) : completed == total ? Theme.completionAll(theme, rc: rc) : Theme.completionPartial(theme)
+        if Theme.isRetro(theme) {
+            return AnyView(
+                Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(color)
+            )
+        } else {
+            return AnyView(
+                Image(systemName: "chart.pie.fill")
+                    .font(.body)
+                    .foregroundStyle(color)
+            )
+        }
     }
 }
 
@@ -313,28 +528,34 @@ struct ExpandedCategoryCard: View {
     let onToggleEdit: () -> Void
     let onCollapse: () -> Void
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     @State private var showDeleteOptions = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack(alignment: .top) {
-                Image(systemName: category.symbol).font(.caption)
-                Text(category.name).font(.subheadline.bold())
+                if !Theme.isRetro(theme) {
+                    Image(systemName: category.symbol).font(.subheadline)
+                }
+                Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
+                    .font(Theme.primaryFont(theme))
                 Spacer()
                 if !isPastWeek {
                     Button { onToggleEdit() } label: {
                         Image(systemName: isEditing ? "checkmark.circle.fill" : "square.and.pencil")
-                            .font(.subheadline)
-                            .foregroundStyle(isEditing ? .green : .secondary)
+                            .font(.body)
+                            .foregroundStyle(isEditing ? .green : Theme.textSecondary(theme, rc: rc))
                     }
                     .buttonStyle(.plain)
                 }
                 completionIcon(for: category)
             }
 
-            Text("Completed: \(category.completedCount)/\(category.totalCount)")
-                .font(.caption2).foregroundStyle(.secondary)
+            Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
+                .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
 
             Divider().padding(.vertical, 2)
 
@@ -358,17 +579,26 @@ struct ExpandedCategoryCard: View {
             HStack {
                 Spacer()
                 Button { onCollapse() } label: {
-                    Image(systemName: "arrow.down.backward")
-                        .font(.caption).foregroundStyle(.tertiary)
+                    if Theme.isRetro(theme) {
+                        Text("[CLOSE]").font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                    } else {
+                        Image(systemName: "arrow.down.backward")
+                            .font(.subheadline).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                    }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
+        .padding(14)
         .background {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.secondarySystemGroupedBackground))
-                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                .fill(Theme.cardFill(theme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                        .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
+                )
+                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 6, x: 0, y: Theme.isRetro(theme) ? 0 : 3)
         }
         .contextMenu {
             Button("Save for Future Use", systemImage: "square.and.arrow.down") {
@@ -395,10 +625,20 @@ struct ExpandedCategoryCard: View {
     private func completionIcon(for category: Category) -> some View {
         let total = category.totalCount
         let completed = category.completedCount
-        let color: Color = total == 0 ? .gray : completed == 0 ? .red : completed == total ? .green : .orange
-        return Image(systemName: "chart.pie.fill")
-            .font(.subheadline)
-            .foregroundStyle(color)
+        let color: Color = total == 0 ? .gray : completed == 0 ? Theme.completionNone(theme) : completed == total ? Theme.completionAll(theme, rc: rc) : Theme.completionPartial(theme)
+        if Theme.isRetro(theme) {
+            return AnyView(
+                Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(color)
+            )
+        } else {
+            return AnyView(
+                Image(systemName: "chart.pie.fill")
+                    .font(.body)
+                    .foregroundStyle(color)
+            )
+        }
     }
 }
 
@@ -411,6 +651,9 @@ struct TaskRowCard: View {
     let isEditing: Bool
     var isPastWeek: Bool = false
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
     @State private var newSubtaskTitle = ""
@@ -419,7 +662,7 @@ struct TaskRowCard: View {
     @State private var goalUnitText = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 // Completion indicator
                 if task.taskType == .goal {
@@ -431,18 +674,25 @@ struct TaskRowCard: View {
                             store.toggleTask(categoryID: categoryID, taskID: task.id)
                         }
                     } label: {
-                        Circle()
-                            .fill(task.isCompleted ? Color.green : Color.clear)
-                            .overlay(Circle().stroke(task.isCompleted ? Color.green : Color.secondary, lineWidth: 1.5))
-                            .frame(width: 14, height: 14)
+                        if Theme.isRetro(theme) {
+                            Text(task.isCompleted ? "[x]" : "[ ]")
+                                .font(.system(.subheadline, design: .monospaced).bold())
+                                .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                        } else {
+                            Circle()
+                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                                .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                                .frame(width: 18, height: 18)
+                        }
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle().size(width: 36, height: 36))
                 }
 
                 // Title
                 if isEditingTitle {
                     TextField("Task name", text: $editedTitle)
-                        .font(.subheadline)
+                        .font(Theme.bodyFont(theme))
                         .onSubmit {
                             let title = editedTitle.trimmingCharacters(in: .whitespaces)
                             if !title.isEmpty {
@@ -452,8 +702,8 @@ struct TaskRowCard: View {
                         }
                 } else {
                     Text(task.title)
-                        .font(.subheadline)
-                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                        .font(Theme.bodyFont(theme))
+                        .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
                         .onTapGesture(count: 2) {
                             editedTitle = task.title
                             isEditingTitle = true
@@ -494,14 +744,15 @@ struct TaskRowCard: View {
                     )
                 }
                 if !isPastWeek {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .font(.caption2).foregroundStyle(.tertiary)
-                        TextField("Add sub-task", text: $newSubtaskTitle)
-                            .font(.caption)
+                    HStack(spacing: 8) {
+                        Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
+                            .font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                        TextField(Theme.isRetro(theme) ? "sub_task>" : "Add sub-task", text: $newSubtaskTitle)
+                            .font(Theme.captionFont(theme))
                             .onSubmit(addSubtask)
                     }
                     .padding(.leading, 24)
+                    .padding(.vertical, 2)
                 }
             }
         }
@@ -545,14 +796,16 @@ struct TaskRowCard: View {
 
     // Mode icons: carry-over, repeating, one-time + delete (shown when NOT editing title)
     private var taskModeIcons: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             ForEach(TaskMode.allCases, id: \.self) { mode in
                 Button {
                     store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
                 } label: {
                     Image(systemName: mode.symbol)
-                        .font(.caption2)
-                        .foregroundStyle(task.mode == mode ? .blue : .secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(task.mode == mode ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -562,22 +815,26 @@ struct TaskRowCard: View {
                 }
             } label: {
                 Image(systemName: "trash")
-                    .font(.caption2).foregroundStyle(.red)
+                    .font(.subheadline).foregroundStyle(Theme.destructive(theme))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
     }
 
-    // Type icons: checkbox + goal (shown when editing title)
+    // Type icons: checkbox + goal (shown when NOT in edit mode)
     private var taskTypeIcons: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             ForEach(TaskType.allCases, id: \.self) { type in
                 Button {
                     store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
                 } label: {
                     Image(systemName: type.symbol)
-                        .font(.caption2)
-                        .foregroundStyle(task.taskType == type ? .blue : .secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(task.taskType == type ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -586,27 +843,43 @@ struct TaskRowCard: View {
 
     @ViewBuilder
     private var goalIndicator: some View {
-        if task.goalIsComplete {
-            Circle()
-                .fill(Color.green)
-                .overlay(
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 8).bold())
-                        .foregroundStyle(.white)
-                )
-                .frame(width: 14, height: 14)
-        } else if let target = task.goalTarget, target > 0 {
-            ZStack {
-                Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: min((task.goalProgress ?? 0) / target, 1.0))
-                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+        if Theme.isRetro(theme) {
+            if task.goalIsComplete {
+                Text("[OK]")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Theme.dotComplete(theme, rc: rc))
+            } else if let target = task.goalTarget, target > 0 {
+                Text("[\(Int(task.goalProgress ?? 0))/\(Int(target))]")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Theme.accent(theme, rc: rc))
+            } else {
+                Text("[??]")
+                    .font(.system(.caption, design: .monospaced).bold())
+                    .foregroundStyle(Theme.completionPartial(theme))
             }
-            .frame(width: 14, height: 14)
         } else {
-            Image(systemName: "target")
-                .font(.caption).foregroundStyle(.orange)
+            if task.goalIsComplete {
+                Circle()
+                    .fill(Theme.dotComplete(theme, rc: rc))
+                    .overlay(
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9).bold())
+                            .foregroundStyle(.white)
+                    )
+                    .frame(width: 18, height: 18)
+            } else if let target = task.goalTarget, target > 0 {
+                ZStack {
+                    Circle().stroke(Theme.textTertiary(theme, rc: rc), lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: min((task.goalProgress ?? 0) / target, 1.0))
+                        .stroke(Theme.accent(theme, rc: rc), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "target")
+                    .font(.subheadline).foregroundStyle(Theme.completionPartial(theme))
+            }
         }
     }
 
@@ -616,12 +889,12 @@ struct TaskRowCard: View {
                 // Progress bar + fraction
                 HStack(spacing: 10) {
                     ProgressView(value: min((task.goalProgress ?? 0) / target, 1.0))
-                        .tint(task.goalIsComplete ? .green : .blue)
+                        .tint(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.accent(theme, rc: rc))
                     Text(task.goalFraction)
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(task.goalIsComplete ? .green : .primary)
+                        .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced).bold() : .caption.bold().monospacedDigit())
+                        .foregroundStyle(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
                     if let unit = task.goalUnit, !unit.isEmpty {
-                        Text(unit).font(.caption).foregroundStyle(.secondary)
+                        Text(unit).font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     }
                 }
                 .padding(.leading, 24)
@@ -629,14 +902,22 @@ struct TaskRowCard: View {
                 // Add progress input
                 if !isPastWeek && !task.goalIsComplete {
                     HStack(spacing: 8) {
-                        Image(systemName: "plus").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "plus").font(.subheadline).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                         TextField("Add progress", text: $addProgressText)
-                            .font(.caption).keyboardType(.decimalPad).onSubmit(addGoalProgress)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.plain)
+                            .padding(.bottom, 4)
+                            .overlay(alignment: .bottom) {
+                                Rectangle().fill(Theme.textTertiary(theme, rc: rc)).frame(height: 1)
+                            }
+                            .onSubmit(addGoalProgress)
                         Button { addGoalProgress() } label: {
                             Text("Add")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(.blue, in: Capsule())
+                                .font(.caption.bold())
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Theme.accent(theme, rc: rc), in: Capsule())
                                 .foregroundStyle(.white)
                         }
                         .buttonStyle(.plain)
@@ -646,14 +927,17 @@ struct TaskRowCard: View {
                 }
             } else if !isPastWeek {
                 // Goal setup: [target] - [unit] Set
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     TextField("Target", text: $goalTargetText)
-                        .font(.caption).keyboardType(.decimalPad)
+                        .font(.subheadline)
+                        .foregroundStyle(.black)
+                        .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 60)
-                    Text("—").font(.caption).foregroundStyle(.tertiary)
+                        .frame(width: 70)
+                    Text("—").font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                     TextField("Unit", text: $goalUnitText)
-                        .font(.caption)
+                        .font(.subheadline)
+                        .foregroundStyle(.black)
                         .textFieldStyle(.roundedBorder)
                     Button {
                         if let target = Double(goalTargetText), target > 0 {
@@ -664,8 +948,8 @@ struct TaskRowCard: View {
                     } label: {
                         Text("Set")
                             .font(.caption.bold())
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(.blue, in: Capsule())
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Theme.accent(theme, rc: rc), in: Capsule())
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
@@ -706,27 +990,36 @@ struct SubTaskRowCard: View {
     let isEditing: Bool
     let isPastWeek: Bool
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Button {
                 guard !isPastWeek else { return }
                 withAnimation(.snappy(duration: 0.2)) {
                     store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
                 }
             } label: {
-                Circle()
-                    .fill(subtask.isCompleted ? Color.green : Color.clear)
-                    .overlay(Circle().stroke(subtask.isCompleted ? Color.green : Color.secondary, lineWidth: 1))
-                    .frame(width: 10, height: 10)
+                if Theme.isRetro(theme) {
+                    Text(subtask.isCompleted ? "[x]" : "[ ]")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                } else {
+                    Circle()
+                        .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                        .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                        .frame(width: 14, height: 14)
+                }
             }
             .buttonStyle(.plain)
 
             if isEditing && isEditingTitle {
                 TextField("Sub-task", text: $editedTitle)
-                    .font(.caption)
+                    .font(Theme.captionFont(theme))
                     .onSubmit {
                         let title = editedTitle.trimmingCharacters(in: .whitespaces)
                         if !title.isEmpty {
@@ -736,9 +1029,9 @@ struct SubTaskRowCard: View {
                     }
             } else {
                 Text(subtask.title)
-                    .font(.caption)
-                    .foregroundStyle(subtask.isCompleted ? .tertiary : .secondary)
-                    .strikethrough(subtask.isCompleted, color: .secondary)
+                    .font(Theme.captionFont(theme))
+                    .foregroundStyle(subtask.isCompleted ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                    .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     .onTapGesture {
                         if isEditing {
                             editedTitle = subtask.title
@@ -756,7 +1049,7 @@ struct SubTaskRowCard: View {
                     }
                 } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.caption2).foregroundStyle(.red)
+                        .font(.subheadline).foregroundStyle(Theme.destructive(theme))
                 }
                 .buttonStyle(.plain)
             }
@@ -770,6 +1063,10 @@ struct SubTaskRowCard: View {
 struct AddTaskRowCard: View {
     let categoryID: UUID
     let store: ChecklistStore
+
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+
     @State private var newTitle = ""
     @State private var newMode: TaskMode = .carryOver
     @State private var newType: TaskType = .checkbox
@@ -777,10 +1074,10 @@ struct AddTaskRowCard: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "plus.circle")
-                .font(.subheadline).foregroundStyle(.tertiary)
-            TextField("Add task", text: $newTitle)
-                .font(.subheadline).focused($isFocused).onSubmit(addTask)
+            Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
+                .font(.subheadline).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            TextField(Theme.isRetro(theme) ? "new_task>" : "Add task", text: $newTitle)
+                .font(Theme.bodyFont(theme)).focused($isFocused).onSubmit(addTask)
             if isFocused {
                 Menu {
                     Section("Task Type") {
@@ -808,8 +1105,8 @@ struct AddTaskRowCard: View {
                         Image(systemName: newType.symbol)
                         Image(systemName: newMode.symbol)
                     }
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .padding(4).background(.quaternary, in: Capsule())
+                    .font(.caption2).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .padding(4).background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
                 }
             }
         }
@@ -993,87 +1290,230 @@ struct SettingsSheet: View {
     @State private var editingName = ""
     @State private var isEditingName = false
 
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+    private var retro: Bool { Theme.isRetro(theme) }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section("Name") {
-                    if isEditingName {
-                        HStack {
-                            TextField("Your name", text: $editingName)
-                                .onSubmit {
-                                    let name = editingName.trimmingCharacters(in: .whitespaces)
-                                    if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
-                                    isEditingName = false
-                                }
-                            Button("Save") {
-                                let name = editingName.trimmingCharacters(in: .whitespaces)
-                                if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
-                                isEditingName = false
-                            }
-                            .disabled(editingName.trimmingCharacters(in: .whitespaces).isEmpty || editingName.count > 20)
-                        }
-                    } else {
-                        HStack {
-                            Text(store.userName.isEmpty ? "Not set" : store.userName)
-                                .foregroundStyle(store.userName.isEmpty ? .secondary : .primary)
-                            Spacer()
-                            Button("Edit") {
-                                editingName = store.userName
-                                isEditingName = true
-                            }
-                            .font(.subheadline)
-                        }
-                    }
-                }
-
-                Section("Appearance") {
-                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                        Button {
-                            withAnimation { store.setAppearance(mode) }
-                        } label: {
-                            HStack {
-                                Label(mode.label, systemImage: mode.symbol).foregroundStyle(.primary)
-                                Spacer()
-                                if store.appearanceMode == mode {
-                                    Image(systemName: "checkmark").foregroundStyle(.blue)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Section("Calendar") {
-                    HStack {
-                        Label("Calendar Integration", systemImage: "calendar.badge.plus")
-                        Spacer()
-                        Text("Coming Soon")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.quaternary, in: Capsule())
-                    }
-                }
-
-                Section {
-                    Button { showHelp = true } label: {
-                        Label("How to Use Tasquel", systemImage: "questionmark.circle")
-                    }
-                } header: {
-                    Text("Help")
-                }
-
-                Section("About") {
-                    LabeledContent("Version", value: "1.0")
-                    LabeledContent("Build", value: "1")
+            Group {
+                if retro {
+                    retroSettings
+                } else {
+                    standardSettings
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(retro ? "> SETTINGS_" : "Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(retro ? "[DONE]" : "Done") { dismiss() }
+                        .font(retro ? .system(.subheadline, design: .monospaced).bold() : .body)
+                        .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
                 }
             }
-            .sheet(isPresented: $showHelp) { HelpSheet() }
+            .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
+        }
+        .preferredColorScheme(store.colorScheme)
+    }
+
+    // MARK: - Standard (System/Light/Dark) Settings
+
+    private var standardSettings: some View {
+        List {
+            Section("Name") {
+                nameRow
+            }
+            Section("Appearance") {
+                appearanceRows
+            }
+            Section("Calendar") {
+                calendarRow
+            }
+            Section {
+                Button { showHelp = true } label: {
+                    Label("How to Use Tasquel", systemImage: "questionmark.circle")
+                }
+            } header: {
+                Text("Help")
+            }
+            Section("About") {
+                LabeledContent("Version", value: "1.0")
+                LabeledContent("Build", value: "1")
+            }
+        }
+    }
+
+    // MARK: - Retro Settings
+
+    private var retroSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                retroSection("USER") {
+                    nameRow
+                }
+                retroSection("APPEARANCE") {
+                    appearanceRows
+                }
+                retroSection("TERMINAL_COLOR") {
+                    retroColorPalette
+                }
+                retroSection("CALENDAR") {
+                    calendarRow
+                }
+                retroSection("HELP") {
+                    Button { showHelp = true } label: {
+                        Text("> How to Use Tasquel")
+                            .font(Theme.bodyFont(theme))
+                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                    }
+                    .buttonStyle(.plain)
+                }
+                retroSection("ABOUT") {
+                    HStack {
+                        Text("Version").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                        Spacer()
+                        Text("1.0").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                    }
+                    HStack {
+                        Text("Build").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                        Spacer()
+                        Text("1").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(Theme.background(theme))
+        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+    }
+
+    @ViewBuilder
+    private func retroSection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("[\(title)]")
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            VStack(alignment: .leading, spacing: 6) {
+                content()
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.cardFill(theme))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+            )
+        }
+    }
+
+    // MARK: - Shared Rows
+
+    @ViewBuilder
+    private var nameRow: some View {
+        if isEditingName {
+            HStack {
+                TextField(retro ? "name>" : "Your name", text: $editingName)
+                    .font(retro ? Theme.bodyFont(theme) : .body)
+                    .onSubmit {
+                        let name = editingName.trimmingCharacters(in: .whitespaces)
+                        if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
+                        isEditingName = false
+                    }
+                Button(retro ? "[SAVE]" : "Save") {
+                    let name = editingName.trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
+                    isEditingName = false
+                }
+                .font(retro ? Theme.bodyFont(theme) : .body)
+                .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
+                .disabled(editingName.trimmingCharacters(in: .whitespaces).isEmpty || editingName.count > 20)
+            }
+        } else {
+            HStack {
+                Text(store.userName.isEmpty ? (retro ? "not_set" : "Not set") : store.userName)
+                    .font(retro ? Theme.bodyFont(theme) : .body)
+                    .foregroundStyle(store.userName.isEmpty ? Theme.textTertiary(theme, rc: rc) : (retro ? Theme.textPrimary(theme, rc: rc) : Color(.label)))
+                Spacer()
+                Button(retro ? "[EDIT]" : "Edit") {
+                    editingName = store.userName
+                    isEditingName = true
+                }
+                .font(retro ? Theme.bodyFont(theme) : .subheadline)
+                .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appearanceRows: some View {
+        ForEach(AppearanceMode.allCases, id: \.self) { mode in
+            Button {
+                store.setAppearance(mode)
+            } label: {
+                HStack {
+                    if retro {
+                        Text("> \(mode.label.uppercased())")
+                            .font(Theme.bodyFont(theme))
+                            .foregroundStyle(store.appearanceMode == mode ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                    } else {
+                        Label(mode.label, systemImage: mode.symbol).foregroundStyle(.primary)
+                    }
+                    Spacer()
+                    if store.appearanceMode == mode {
+                        if retro {
+                            Text("[*]")
+                                .font(.system(.subheadline, design: .monospaced).bold())
+                                .foregroundStyle(Theme.accent(theme, rc: rc))
+                        } else {
+                            Image(systemName: "checkmark").foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var retroColorPalette: some View {
+        HStack(spacing: 10) {
+            ForEach(RetroColor.allCases, id: \.self) { color in
+                Button {
+                    store.setRetroColor(color)
+                } label: {
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Theme.retroBright(color))
+                            .frame(width: 36, height: 36)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(store.retroColor == color ? .white : .clear, lineWidth: 2)
+                            )
+                        Text(color.label.prefix(3).uppercased())
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(store.retroColor == color ? Theme.retroBright(color) : Theme.textTertiary(theme, rc: rc))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var calendarRow: some View {
+        HStack {
+            if retro {
+                Text("> Calendar Integration")
+                    .font(Theme.bodyFont(theme))
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+            } else {
+                Label("Calendar Integration", systemImage: "calendar.badge.plus")
+            }
+            Spacer()
+            Text(retro ? "[SOON]" : "Coming Soon")
+                .font(retro ? .system(.caption, design: .monospaced) : .caption)
+                .foregroundStyle(retro ? Theme.textTertiary(theme, rc: rc) : .secondary)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(retro ? Theme.cardFill(theme) : Color(.quaternarySystemFill), in: retro ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Capsule()))
         }
     }
 }
@@ -1081,67 +1521,109 @@ struct SettingsSheet: View {
 // MARK: - Help Sheet
 
 struct HelpSheet: View {
+    var store: ChecklistStore? = nil
     @Environment(\.dismiss) private var dismiss
+
+    private var theme: AppearanceMode { store?.appearanceMode ?? .system }
+    private var rc: RetroColor { store?.retroColor ?? .green }
+    private var retro: Bool { Theme.isRetro(theme) }
+
+    private let helpSections: [(title: String, items: [(symbol: String, title: String, detail: String)])] = [
+        ("Weekly Checklist", [
+            ("calendar", "Navigate Weeks", "Use the arrows or tap the calendar icon to jump to any week. Future weeks can be pre-populated. Past weeks can be reviewed."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to expand and view all tasks. Tap the collapse arrow to return to grid view. Long-press for options: save, remove, or delete."),
+            ("pencil", "Edit Mode", "Tap the pencil icon to enter edit mode. From here you can add categories, change task modes, and delete tasks using the inline icons."),
+        ]),
+        ("Task Modes", [
+            ("arrow.uturn.forward", "Carry Over", "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
+            ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
+            ("1.circle", "One-Time", "This week only. Will not carry forward or repeat, whether completed or not."),
+            ("hand.draw", "Changing Modes", "In edit mode, use the inline mode icons on each task. Or long-press a task for the context menu. Double-tap a task title to edit it inline."),
+        ]),
+        ("Task Types", [
+            ("checkmark.circle", "Checkbox", "Standard task — tap the circle to mark complete. This is the default type for all new tasks."),
+            ("target", "Goal", "Track progress toward a numeric target (e.g. 50 push-ups). Tap the progress ring to update. Auto-completes when the target is reached."),
+            ("arrow.left.arrow.right", "Switching Types", "Long-press a task and choose a type from the context menu."),
+        ]),
+        ("Sub-Tasks", [
+            ("list.bullet.indent", "Adding Sub-Tasks", "Tasks with sub-tasks show them inline when expanded. Type in the field below to add more. Long-press a task to add the first sub-task."),
+            ("checkmark.circle", "Completing Sub-Tasks", "Tap any sub-task's circle to check it off. Sub-task progress shows as a count on the parent task."),
+        ]),
+        ("Managing Categories", [
+            ("square.and.arrow.down", "Save for Future", "Long-press a category card and choose \"Save for Future Use\" to add it to your template library."),
+            ("trash", "Removing Categories", "Long-press a category card to remove from this week only or delete entirely including from saved categories."),
+        ]),
+        ("Upcoming Features", [
+            ("calendar.badge.plus", "Calendar Integration", "A future paid upgrade will allow importing your personal calendar events directly into Tasquel as tasks."),
+        ]),
+    ]
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Weekly Checklist") {
-                    HelpRow(symbol: "calendar", title: "Navigate Weeks",
-                            detail: "Use the arrows or tap the calendar icon to jump to any week. Future weeks can be pre-populated. Past weeks can be reviewed.")
-                    HelpRow(symbol: "square.grid.2x2", title: "Category Cards",
-                            detail: "Tap a card to expand and view all tasks. Tap the collapse arrow to return to grid view. Long-press for options: save, remove, or delete.")
-                    HelpRow(symbol: "pencil", title: "Edit Mode",
-                            detail: "Tap the pencil icon to enter edit mode. From here you can add categories, change task modes, and delete tasks using the inline icons.")
-                }
-
-                Section("Task Modes") {
-                    HelpRow(symbol: "arrow.uturn.forward", title: "Carry Over",
-                            detail: "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over.")
-                    HelpRow(symbol: "repeat", title: "Repeating",
-                            detail: "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week.")
-                    HelpRow(symbol: "1.circle", title: "One-Time",
-                            detail: "This week only. Will not carry forward or repeat, whether completed or not.")
-                    HelpRow(symbol: "hand.draw", title: "Changing Modes",
-                            detail: "In edit mode, use the inline mode icons on each task. Or long-press a task for the context menu. Double-tap a task title to edit it inline.")
-                }
-
-                Section("Task Types") {
-                    HelpRow(symbol: "checkmark.circle", title: "Checkbox",
-                            detail: "Standard task — tap the circle to mark complete. This is the default type for all new tasks.")
-                    HelpRow(symbol: "target", title: "Goal",
-                            detail: "Track progress toward a numeric target (e.g. 50 push-ups). Tap the progress ring to update. Auto-completes when the target is reached.")
-                    HelpRow(symbol: "arrow.left.arrow.right", title: "Switching Types",
-                            detail: "Long-press a task and choose a type from the context menu.")
-                }
-
-                Section("Sub-Tasks") {
-                    HelpRow(symbol: "list.bullet.indent", title: "Adding Sub-Tasks",
-                            detail: "Tasks with sub-tasks show them inline when expanded. Type in the field below to add more. Long-press a task to add the first sub-task.")
-                    HelpRow(symbol: "checkmark.circle", title: "Completing Sub-Tasks",
-                            detail: "Tap any sub-task's circle to check it off. Sub-task progress shows as a count on the parent task.")
-                }
-
-                Section("Managing Categories") {
-                    HelpRow(symbol: "square.and.arrow.down", title: "Save for Future",
-                            detail: "Long-press a category card and choose \"Save for Future Use\" to add it to your template library.")
-                    HelpRow(symbol: "trash", title: "Removing Categories",
-                            detail: "Long-press a category card to remove from this week only or delete entirely including from saved categories.")
-                }
-
-                Section("Upcoming Features") {
-                    HelpRow(symbol: "calendar.badge.plus", title: "Calendar Integration",
-                            detail: "A future paid upgrade will allow importing your personal calendar events directly into Tasquel as tasks.")
+            Group {
+                if retro {
+                    retroHelp
+                } else {
+                    standardHelp
                 }
             }
-            .navigationTitle("How to Use Tasquel")
+            .navigationTitle(retro ? "> HELP_" : "How to Use Tasquel")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(retro ? "[DONE]" : "Done") { dismiss() }
+                        .font(retro ? .system(.subheadline, design: .monospaced).bold() : .body)
+                        .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
                 }
             }
         }
+    }
+
+    private var standardHelp: some View {
+        List {
+            ForEach(helpSections, id: \.title) { section in
+                Section(section.title) {
+                    ForEach(section.items, id: \.title) { item in
+                        HelpRow(symbol: item.symbol, title: item.title, detail: item.detail)
+                    }
+                }
+            }
+        }
+    }
+
+    private var retroHelp: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(helpSections, id: \.title) { section in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("[\(section.title.uppercased())]")
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(section.items, id: \.title) { item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("> \(item.title)")
+                                        .font(.system(.subheadline, design: .monospaced).bold())
+                                        .foregroundStyle(Theme.accent(theme, rc: rc))
+                                    Text(item.detail)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Theme.cardFill(theme))
+                                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+                        )
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(Theme.background(theme))
     }
 }
 

@@ -9,6 +9,7 @@ final class ChecklistStore {
     var selectedDate: Date = Date()
     var savedCategories: [CategoryTemplate] = []
     var appearanceMode: AppearanceMode = .system
+    var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
     var userName: String = ""
 
@@ -27,7 +28,7 @@ final class ChecklistStore {
         switch appearanceMode {
         case .system: nil
         case .light: .light
-        case .dark: .dark
+        case .dark, .retro: .dark
         }
     }
 
@@ -84,6 +85,7 @@ final class ChecklistStore {
     private struct Settings: Codable {
         var savedCategories: [CategoryTemplate]
         var appearanceMode: AppearanceMode
+        var retroColor: RetroColor?
         var hasSeenWelcome: Bool
     }
 
@@ -94,6 +96,7 @@ final class ChecklistStore {
             let settings = try JSONDecoder().decode(Settings.self, from: data)
             savedCategories = settings.savedCategories
             appearanceMode = settings.appearanceMode
+            retroColor = settings.retroColor ?? .green
             hasSeenWelcome = settings.hasSeenWelcome
         } catch {
             print("Failed to load settings: \(error)")
@@ -105,6 +108,7 @@ final class ChecklistStore {
             let settings = Settings(
                 savedCategories: savedCategories,
                 appearanceMode: appearanceMode,
+                retroColor: retroColor,
                 hasSeenWelcome: hasSeenWelcome
             )
             let data = try JSONEncoder().encode(settings)
@@ -121,6 +125,11 @@ final class ChecklistStore {
 
     func setAppearance(_ mode: AppearanceMode) {
         appearanceMode = mode
+        saveSettings()
+    }
+
+    func setRetroColor(_ color: RetroColor) {
+        retroColor = color
         saveSettings()
     }
 

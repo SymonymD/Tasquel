@@ -30,16 +30,16 @@ Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
 ## Current State (as of 2026-02-16)
 
-All features below are implemented and building successfully. Uncommitted changes in working tree (refinements since card-based grid commit).
+All features below are implemented and building successfully.
 
 ### Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
-| `Tasquel/Models.swift` | ~181 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode` |
-| `Tasquel/ChecklistStore.swift` | ~456 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks |
-| `Tasquel/ContentView.swift` | ~1457 | All SwiftUI views: card-based grid, expanded cards, task rows, goal progress, sheets, 4-step onboarding |
+| `Tasquel/Models.swift` | ~206 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
+| `Tasquel/ChecklistStore.swift` | ~465 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence |
+| `Tasquel/ContentView.swift` | ~1939 | All SwiftUI views: Theme system, card-based grid, expanded cards, task rows, goal progress, sheets, 4-step onboarding, retro terminal styling |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -57,7 +57,7 @@ All features below are implemented and building successfully. Uncommitted change
    - Sub-task management (add, edit, delete, complete)
    - Category removal via context menu (save, remove this week, delete entirely)
 7. **Saved category templates**: Categories saved for reuse. Add Category sheet shows "Create New" first, then saved.
-8. **Appearance toggle**: System (default) / Light / Dark in Settings
+8. **Appearance system**: System / Light / Dark / Retro in Settings — fully reactive theme system
 9. **Four-step onboarding**:
    - Screen 1: Brief Tasquel summary (auto carry-over focus)
    - Screen 2: Granular feature breakdown (task modes, checkbox vs goal)
@@ -87,25 +87,39 @@ All features below are implemented and building successfully. Uncommitted change
     - Expanded card shows all tasks with circles (filled green = done, empty = not), subtasks, add-task field, edit/checkmark toggle
     - Edit mode shows inline HStack of mode icons (carry-over, repeating, one-time) + red trash per task
     - Dashed-border "Add Category" card appears in grid during edit mode
-    - Cards use `Color(.secondarySystemGroupedBackground)` with subtle shadow for adaptive light/dark backgrounds
+    - Cards use theme-adaptive backgrounds with subtle shadow
     - Bottom bar: settings gear (left), date with "Go to Today" (center), edit pencil/checkmark (right)
     - Removed swipe actions (not supported outside List), replaced with inline edit-mode icons + context menus
 21. **Pie chart completion icon**: `chart.pie.fill` on each card — green (all complete), orange (partial), red (none complete)
 22. **Always-visible subtask creation**: "+" add sub-task field always visible below checkbox tasks (not gated behind existing subtasks)
 23. **Auto-complete parent from subtasks**: When all subtasks are completed, parent task auto-completes. When a subtask is unchecked, parent auto-uncompletes.
 24. **Dual inline icon system**: Task type icons (checkbox/goal) shown when NOT in edit mode; task mode icons (carry-over/repeating/one-time + delete) shown IN edit mode. Both always show both options with active one highlighted blue.
+25. **Theme system** (function-based, fully reactive):
+    - `Theme` enum with static functions taking `AppearanceMode` parameter — SwiftUI observation-compatible
+    - System/Light: adaptive UIKit colors (`Color(.label)`, `Color(.systemBackground)`, etc.)
+    - Dark: explicit white/gray/dark colors
+    - Retro: terminal phosphor colors via `retroPalette()` function
+    - Every view has `private var theme: AppearanceMode { store.appearanceMode }` computed property
+    - Color functions: `textPrimary`, `textSecondary`, `textTertiary`, `accent`, `background`, `cardFill`, `cardBorder`, `cardShadow`, `dotComplete`, `completionAll/Some/None`
+26. **Retro terminal theme**:
+    - Monospaced font throughout (`.system(.body, design: .monospaced)`)
+    - Terminal-style card borders (`[ CATEGORY ]`, `[ ] Task`, `[OPEN]`)
+    - Cursor-blinking title with trailing underscore (`> Week of 2/16/26_`)
+    - CRT-style scanline overlay on cards
+    - Settings and Help sheets have dual rendering paths (standard List vs retro ScrollView with terminal-styled sections)
+27. **Retro color palette**: 6 terminal phosphor colors (green, amber, blue, white, red, purple), each with 3 brightness levels (bright, dim, faint). Selectable in Settings when retro theme is active. Persisted via `settings.json`.
 
 ### UI Layout (Post-Redesign)
 
-- **Root**: `ZStack` with `Color(.systemBackground)` background
-- **Title**: "Week of M/d/yy" centered, `.title.bold()`
-- **Navigation capsule**: Centered `HStack` with `< calendar >` in `.regularMaterial` capsule
+- **Root**: `ZStack` with `Theme.background()` adaptive background
+- **Title**: "Week of M/d/yy" centered, `.title.bold()` (monospaced with cursor in retro mode)
+- **Navigation capsule**: Centered `HStack` with `< calendar >` in theme-adaptive capsule
 - **Content**: `ScrollView` + `LazyVGrid` (2 flexible columns, 16pt spacing)
 - **Expanded card**: Full-width `VStack` at top of scroll, collapsed cards in grid below
 - **Bottom bar**: `HStack` — gear circle (left), date text (center), pencil/checkmark circle (right)
 - **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
 - **Add Category**: Dashed-border card in grid during edit mode
-- **Card backgrounds**: `secondarySystemGroupedBackground` in `RoundedRectangle(cornerRadius: 16)` with soft shadow
+- **Card backgrounds**: Theme-adaptive fill in `RoundedRectangle(cornerRadius: 16)` with soft shadow (retro uses dark bg + colored border)
 - **Inline icons per task**:
   - Normal mode: checkbox + goal type icons (switch task type)
   - Edit mode: carry-over + repeating + one-time mode icons + trash (switch task mode, delete)
@@ -124,6 +138,7 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 3106482 Rename app from VIKOV to Tasquel
 5259ced Add goal tasks, username, 4-step onboarding, floating nav, and future week sync
 53ca1c3 Redesign UI to Figma card-based grid layout
+e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display, and dual icon system
 ```
 
 ## Development Workflow
@@ -151,6 +166,10 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 11. **Swipe actions require List**: `swipeActions` modifier only works inside `List`. After migrating to `ScrollView` + `LazyVGrid`, swipe actions were replaced with inline edit-mode icons and context menus.
 12. **Rollover resets completed tasks on test data**: When writing test data directly to `checklist.json`, the `ensureWeekExists` init logic may strip completed carry-over tasks and one-time tasks. Completed tasks show as red dots because rollover reset them. This is correct app behavior — only affects manual test data injection.
 13. **Inline icon context matters**: Task type icons (checkbox/goal) show when NOT in edit mode so users can always switch type. Task mode icons (carry-over/repeating/one-time) show IN edit mode. Initially had this reversed — user corrected that mode changes are an "editing" action while type switching should be always available.
+14. **Theme static var not observable**: `nonisolated(unsafe) static var mode` on Theme couldn't be tracked by SwiftUI observation. Fixed by converting all Theme properties to functions taking `AppearanceMode` parameter, with each view reading `store.appearanceMode` via computed property.
+15. **`.buttonStyle(.plain)` suppresses taps in List**: Appearance toggle buttons in Settings became untappable. Fixed by removing `.buttonStyle(.plain)` from buttons inside List rows.
+16. **Sheets don't inherit preferredColorScheme**: Sheets have their own window and need `.preferredColorScheme()` applied directly — won't inherit from parent view hierarchy.
+17. **awk bulk Theme replacement pitfall**: `Theme.cardBorder` was a substring of `Theme.cardBorderWidth`, causing awk to produce `Theme.cardBorder(theme)Width`. Must handle longer names first or use exact-match patterns.
 
 ## Figma Reference
 
@@ -165,20 +184,16 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 - Unit tests (test targets exist but no tests written yet)
 - iPad-specific layout optimizations
 - Data export/import
-- Uncommitted changes need to be committed and pushed
 
 ## Last Session Summary (2026-02-16)
 
-**What was done**: Post-grid-redesign refinements across two continued sessions:
-- **Pie chart completion icon**: Replaced yellow clock with `chart.pie.fill` — green/orange/red based on task completion ratio
-- **Always-visible subtask creation**: Removed gate so "+" add sub-task field always appears below checkbox tasks
-- **Auto-complete parent from subtasks**: Parent auto-completes when all subtasks done, auto-uncompletes when any subtask unchecked
-- **Pie chart icon sizing**: Matched pie chart size to edit icon (`.subheadline`)
-- **Goal tasks always visible**: Goal setup/progress displayed inline (not hidden behind tap toggle)
-- **Task type switching**: Added checkbox/goal icons when editing task title
-- **Dual inline icon system**: Swapped to correct context — type icons (checkbox/goal) shown in normal mode, mode icons (carry-over/repeating/one-time + delete) shown in edit mode
+**What was done**: Full theme system rebuild and retro terminal theme:
+- **Theme system rebuild**: Converted from static var (unobservable) to function-based system taking `AppearanceMode` parameter. All ~145+ call sites updated. Every view has `theme` and `rc` computed properties.
+- **4-mode appearance**: System (adaptive UIKit colors), Light (adaptive UIKit colors), Dark (explicit white/dark), Retro (terminal phosphor)
+- **Retro terminal styling**: Monospaced fonts, `[ BRACKET ]` card/task formatting, cursor-blinking title, CRT scanline overlay, dark backgrounds with colored borders
+- **Retro Settings/Help**: Dual rendering paths — standard List for system/light/dark, custom terminal-styled ScrollView for retro
+- **Retro color palette**: 6 phosphor colors (green, amber, blue, white, red, purple) with 3 brightness levels each. Persisted via settings.json, selectable in Settings when retro theme is active.
+- **Bug fixes**: `.buttonStyle(.plain)` tap suppression in List, sheet color scheme inheritance, card shadow intensity in light mode
 - All changes build successfully (BUILD SUCCEEDED)
 
-**In progress**: Uncommitted changes in working tree. User reviewing dual icon system.
-
-**User's likely next steps**: Commit/push changes, continue UI refinements, or move to new features.
+**User's likely next steps**: Continue UI refinements or move to new features.

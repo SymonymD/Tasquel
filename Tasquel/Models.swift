@@ -162,12 +162,14 @@ enum AppearanceMode: String, Codable, CaseIterable {
     case system
     case light
     case dark
+    case retro
 
     var label: String {
         switch self {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
+        case .retro: "Retro"
         }
     }
 
@@ -176,6 +178,29 @@ enum AppearanceMode: String, Codable, CaseIterable {
         case .system: "circle.lefthalf.filled"
         case .light: "sun.max"
         case .dark: "moon"
+        case .retro: "terminal"
+        }
+    }
+}
+
+// MARK: - Retro Color
+
+enum RetroColor: String, Codable, CaseIterable {
+    case green
+    case amber
+    case blue
+    case white
+    case red
+    case purple
+
+    var label: String {
+        switch self {
+        case .green: "Green"
+        case .amber: "Amber"
+        case .blue: "Blue"
+        case .white: "White"
+        case .red: "Red"
+        case .purple: "Purple"
         }
     }
 }
