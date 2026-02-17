@@ -233,15 +233,19 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "chevron.left").font(.body.bold())
             }
+            .buttonStyle(.plain)
             Button { showDatePicker = true } label: {
                 Image(systemName: "calendar").font(.body)
             }
+            .buttonStyle(.plain)
             Button {
                 withAnimation { store.navigateWeek(by: 1) }
             } label: {
                 Image(systemName: "chevron.right").font(.body.bold())
             }
+            .buttonStyle(.plain)
         }
+        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
         .background {
@@ -262,6 +266,7 @@ struct ContentView: View {
             Button { showSettings = true } label: {
                 Image(systemName: Theme.isRetro(theme) ? "terminal" : "gearshape.fill")
                     .font(.title3)
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .frame(width: 48, height: 48)
                     .background(Theme.cardFill(theme), in: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle()))
                     .overlay {
@@ -270,6 +275,7 @@ struct ContentView: View {
                         }
                     }
             }
+            .buttonStyle(.plain)
 
             Spacer()
 
@@ -312,6 +318,7 @@ struct ContentView: View {
                     } else {
                         Image(systemName: "pencil")
                             .font(.title3)
+                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                             .frame(width: 48, height: 48)
                             .background(Theme.cardFill(theme), in: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle()))
                             .overlay {
@@ -321,6 +328,7 @@ struct ContentView: View {
                             }
                     }
                 }
+                .buttonStyle(.plain)
             } else {
                 Color.clear.frame(width: 48, height: 48)
             }
@@ -346,56 +354,53 @@ struct ContentView: View {
 
     @ViewBuilder
     private func weekContent(_ week: Week) -> some View {
+        let categories = week.categories
+        let showAdd = isEditing && !week.isPastWeek
+
+        // Build a flat list of grid slots: each category + optional "Add" placeholder
+        // Expanded card stays in its row, neighbor bumps down, rest re-pairs
         ScrollView {
-            VStack(spacing: 16) {
-                // Expanded card (if any)
-                if let expandedID = expandedCategoryID,
-                   let category = week.categories.first(where: { $0.id == expandedID }) {
-                    ExpandedCategoryCard(
-                        category: category,
-                        store: store,
-                        isEditing: isEditing,
-                        isPastWeek: week.isPastWeek,
-                        onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
-                        onCollapse: { withAnimation(.snappy(duration: 0.3)) { expandedCategoryID = nil } }
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                }
+            VStack(spacing: 8) {
+                let rows = buildGridRows(categories: categories, showAddButton: showAdd)
+                ForEach(rows) { row in
+                    switch row.content {
+                    case .expanded(let cat):
+                        ExpandedCategoryCard(
+                            category: cat,
+                            store: store,
+                            isEditing: isEditing,
+                            isPastWeek: week.isPastWeek,
+                            onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
+                            onCollapse: {
+                                withAnimation(.easeOut(duration: 0.6)) {
+                                    expandedCategoryID = nil
+                                }
+                            }
+                        )
 
-                // Collapsed cards grid
-                let collapsed = week.categories.filter { $0.id != expandedCategoryID }
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
-                    spacing: 16
-                ) {
-                    ForEach(collapsed) { category in
-                        CategoryCard(category: category, store: store) {
-                            withAnimation(.snappy(duration: 0.3)) {
-                                expandedCategoryID = category.id
+                    case .pair(let left, let right):
+                        HStack(spacing: 8) {
+                            if let left {
+                                categoryCardView(left)
+                            } else {
+                                Color.clear.frame(maxWidth: .infinity)
+                            }
+                            if let right {
+                                categoryCardView(right)
+                            } else {
+                                Color.clear.frame(maxWidth: .infinity)
                             }
                         }
-                    }
 
-                    if isEditing && !week.isPastWeek {
-                        Button { showAddCategory = true } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: Theme.isRetro(theme) ? "plus.square" : "plus")
-                                    .font(.title2).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                                Text(Theme.isRetro(theme) ? "+ NEW_CATEGORY" : "Add Category")
-                                    .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                            .background(
-                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                                    .strokeBorder(style: StrokeStyle(lineWidth: Theme.isRetro(theme) ? 1 : 2, dash: Theme.isRetro(theme) ? [] : [8]))
-                                    .foregroundStyle(Theme.isRetro(theme) ? Theme.cardBorder(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
-                            )
+                    case .addOnly:
+                        HStack(spacing: 8) {
+                            addCategoryButton
+                            Color.clear.frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
-                if week.categories.isEmpty && !isEditing {
+                if categories.isEmpty && !isEditing {
                     ContentUnavailableView(
                         "No Categories",
                         systemImage: "folder.badge.plus",
@@ -408,6 +413,109 @@ struct ContentView: View {
             .padding(.top, 8)
             .padding(.bottom, 80)
         }
+    }
+
+    // MARK: - Grid Layout Helpers
+
+    // Stable row IDs keyed by position — never changes between reflows
+    private static let stableRowIDs: [UUID] = (0..<20).map {
+        UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", $0))!
+    }
+
+    private struct GridRow: Identifiable {
+        let id: UUID
+        let content: GridRowContent
+    }
+
+    private enum GridRowContent {
+        case expanded(Category)
+        case pair(Category?, Category?)  // left, right — nil means empty slot
+        case addOnly
+    }
+
+    private func buildGridRows(categories: [Category], showAddButton: Bool) -> [GridRow] {
+        let ids = ContentView.stableRowIDs
+        var rows: [GridRow] = []
+
+        guard let expID = expandedCategoryID,
+              let expIndex = categories.firstIndex(where: { $0.id == expID }) else {
+            // Nothing expanded — pair all categories normally
+            var i = 0
+            while i < categories.count {
+                let left = categories[i]
+                let right = (i + 1 < categories.count) ? categories[i + 1] : nil
+                rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
+                i += 2
+            }
+            if showAddButton {
+                rows.append(GridRow(id: ids[rows.count], content: .addOnly))
+            }
+            return rows
+        }
+
+        let expandedCat = categories[expIndex]
+        let expandedRow = expIndex / 2
+        let rowStart = expandedRow * 2
+
+        // Rows before the expanded row — paired normally
+        var i = 0
+        while i < rowStart {
+            let left = categories[i]
+            let right = (i + 1 < rowStart) ? categories[i + 1] : nil
+            rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
+            i += 2
+        }
+
+        // Expanded card at its row
+        rows.append(GridRow(id: ids[rows.count], content: .expanded(expandedCat)))
+
+        // Displaced neighbor + remaining cards re-paired
+        var remaining: [Category] = []
+        for j in rowStart..<categories.count {
+            if categories[j].id != expID {
+                remaining.append(categories[j])
+            }
+        }
+        var ri = 0
+        while ri < remaining.count {
+            let left = remaining[ri]
+            let right = (ri + 1 < remaining.count) ? remaining[ri + 1] : nil
+            rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
+            ri += 2
+        }
+        if showAddButton {
+            rows.append(GridRow(id: ids[rows.count], content: .addOnly))
+        }
+
+        return rows
+    }
+
+    @ViewBuilder
+    private func categoryCardView(_ category: Category) -> some View {
+        CategoryCard(category: category, store: store) {
+            withAnimation(.easeOut(duration: 0.6)) {
+                expandedCategoryID = category.id
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addCategoryButton: some View {
+        Button { showAddCategory = true } label: {
+            VStack(spacing: 8) {
+                Image(systemName: Theme.isRetro(theme) ? "plus.square" : "plus")
+                    .font(.title2).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                Text(Theme.isRetro(theme) ? "+ NEW_CATEGORY" : "Add Category")
+                    .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+            }
+            .frame(maxWidth: .infinity, minHeight: 140)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                    .strokeBorder(style: StrokeStyle(lineWidth: Theme.isRetro(theme) ? 1 : 2, dash: Theme.isRetro(theme) ? [] : [8]))
+                    .foregroundStyle(Theme.isRetro(theme) ? Theme.cardBorder(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -469,7 +577,7 @@ struct CategoryCard: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
                 .fill(Theme.cardFill(theme))
@@ -929,15 +1037,15 @@ struct TaskRowCard: View {
                 // Goal setup: [target] - [unit] Set
                 HStack(spacing: 8) {
                     TextField("Target", text: $goalTargetText)
-                        .font(.subheadline)
-                        .foregroundStyle(.black)
+                        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 70)
                     Text("—").font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                     TextField("Unit", text: $goalUnitText)
-                        .font(.subheadline)
-                        .foregroundStyle(.black)
+                        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                         .textFieldStyle(.roundedBorder)
                     Button {
                         if let target = Double(goalTargetText), target > 0 {
@@ -1470,6 +1578,8 @@ struct SettingsSheet: View {
                         }
                     }
                 }
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
         }
     }
@@ -1708,6 +1818,7 @@ struct OnboardingSheet: View {
     @State private var newName = ""
     @State private var newSymbol = "folder"
     @State private var isAddingCategory = false
+    @State private var featurePage = 0
 
     enum OnboardingStep {
         case overview, features, name, categories
@@ -1764,28 +1875,77 @@ struct OnboardingSheet: View {
         }
     }
 
+    private let featurePages: [(title: String, icon: String, items: [(symbol: String, title: String, detail: String)])] = [
+        ("Task Modes", "arrow.triangle.2.circlepath", [
+            ("arrow.uturn.forward", "Carry Over",
+             "Default mode. If not completed by end of the week, it rolls forward to the next — so nothing falls through the cracks."),
+            ("repeat", "Repeating",
+             "Appears every week automatically regardless of completion. Great for recurring habits. Resets each new week."),
+            ("1.circle", "One-Time",
+             "This week only. Will not carry forward or repeat, whether completed or not."),
+        ]),
+        ("Task Types", "checklist.checked", [
+            ("checkmark.circle", "Checkbox",
+             "Standard task — tap the circle to mark complete. Add sub-tasks to break it down further."),
+            ("target", "Goal",
+             "Track numeric progress toward a target (e.g. 30/50 push-ups). Auto-completes when the target is reached."),
+        ]),
+        ("Quick Tips", "lightbulb", [
+            ("pencil", "Edit Mode",
+             "Tap the pencil icon to add categories, change task modes, and manage tasks."),
+            ("hand.draw", "Double-Tap to Edit",
+             "Double-tap any task title to edit it inline."),
+            ("hand.tap", "Long-Press Menus",
+             "Long-press tasks or category cards for quick actions like save, remove, or change type."),
+        ]),
+    ]
+
     private var featuresView: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Text("How It Works").font(.title2.bold())
-            VStack(alignment: .leading, spacing: 16) {
-                OnboardingFeatureRow(symbol: "arrow.uturn.forward", title: "Carry Over",
-                                     detail: "Default mode — incomplete tasks automatically move to next week.")
-                OnboardingFeatureRow(symbol: "repeat", title: "Repeating",
-                                     detail: "Appears every week regardless of completion. Great for habits.")
-                OnboardingFeatureRow(symbol: "1.circle", title: "One-Time",
-                                     detail: "This week only — won't carry forward or repeat.")
-                OnboardingFeatureRow(symbol: "checkmark.circle", title: "Checkbox Tasks",
-                                     detail: "Simple check-off tasks with optional sub-tasks.")
-                OnboardingFeatureRow(symbol: "target", title: "Goal Tasks",
-                                     detail: "Track numeric progress (e.g. 30/50 push-ups). Auto-completes when target is reached.")
+        VStack(spacing: 0) {
+            Text("How It Works").font(.title2.bold()).padding(.top, 24)
+
+            TabView(selection: $featurePage) {
+                ForEach(Array(featurePages.enumerated()), id: \.offset) { index, page in
+                    VStack(spacing: 20) {
+                        Image(systemName: page.icon)
+                            .font(.system(size: 40))
+                            .foregroundStyle(.blue)
+                        Text(page.title)
+                            .font(.headline)
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(page.items, id: \.title) { item in
+                                OnboardingFeatureRow(symbol: item.symbol, title: item.title, detail: item.detail)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                    }
+                    .padding(.bottom, 40)
+                    .tag(index)
+                }
             }
-            .padding(.horizontal, 24)
-            Spacer()
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            HStack(spacing: 8) {
+                ForEach(0..<featurePages.count, id: \.self) { index in
+                    Circle()
+                        .fill(index == featurePage ? Color.blue : Color.secondary.opacity(0.3))
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(index == featurePage ? 1.2 : 1.0)
+                        .animation(.snappy(duration: 0.2), value: featurePage)
+                }
+            }
+            .padding(.bottom, 16)
+
             Button {
-                withAnimation(.snappy(duration: 0.3)) { step = .name }
+                if featurePage < featurePages.count - 1 {
+                    withAnimation { featurePage += 1 }
+                } else {
+                    withAnimation(.snappy(duration: 0.3)) { step = .name }
+                }
             } label: {
-                Text("Next").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                Text(featurePage < featurePages.count - 1 ? "Next" : "Continue")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent)
             .padding(.horizontal, 32).padding(.bottom, 32)
@@ -1803,15 +1963,23 @@ struct OnboardingSheet: View {
                 .padding(.horizontal, 48).autocorrectionDisabled()
             Text("1-20 characters").font(.caption).foregroundStyle(.secondary)
             Spacer()
-            Button {
-                let trimmed = userName.trimmingCharacters(in: .whitespaces)
-                store.setUserName(trimmed)
-                withAnimation(.snappy(duration: 0.3)) { step = .categories }
-            } label: {
-                Text("Next").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+            VStack(spacing: 12) {
+                Button {
+                    let trimmed = userName.trimmingCharacters(in: .whitespaces)
+                    store.setUserName(trimmed)
+                    withAnimation(.snappy(duration: 0.3)) { step = .categories }
+                } label: {
+                    Text("Next").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(userName.trimmingCharacters(in: .whitespaces).isEmpty || userName.count > 20)
+
+                Button {
+                    withAnimation(.snappy(duration: 0.3)) { step = .categories }
+                } label: {
+                    Text("Skip").font(.subheadline).foregroundStyle(.secondary)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(userName.trimmingCharacters(in: .whitespaces).isEmpty || userName.count > 20)
             .padding(.horizontal, 32).padding(.bottom, 32)
         }
     }

@@ -139,6 +139,7 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 5259ced Add goal tasks, username, 4-step onboarding, floating nav, and future week sync
 53ca1c3 Redesign UI to Figma card-based grid layout
 e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display, and dual icon system
+0dca498 Add retro terminal theme with 6-color palette and reactive theme system
 ```
 
 ## Development Workflow
@@ -180,20 +181,24 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 
 ## Planned / Not Yet Implemented
 
-- Calendar integration (paid upgrade toggle exists in Settings, marked "Coming Soon")
+- **Calendar integration (paid upgrade)**: Pull user's calendar events into Tasquel. Key design decisions still open: (1) events as tasks vs read-only reference vs user choice per-category, (2) payment model (one-time vs subscription), (3) calendar source — Apple EventKit recommended since it covers all calendars synced to device (iCloud, Google, Exchange) without extra OAuth. Existing Settings already has a "Coming Soon" toggle placeholder.
 - Unit tests (test targets exist but no tests written yet)
 - iPad-specific layout optimizations
 - Data export/import
+- **Feedback in Settings**: Best option is Google Apps Script webhook (user has Google Workspace). User types feedback in-app → POST to Apps Script URL → writes to Google Sheet and/or emails. No email address exposed, fully in-app UX. Alternative options considered: email with alias, Google Form link, CloudKit public database.
 
-## Last Session Summary (2026-02-16)
+## Last Session Summary (2026-02-17)
 
-**What was done**: Full theme system rebuild and retro terminal theme:
-- **Theme system rebuild**: Converted from static var (unobservable) to function-based system taking `AppearanceMode` parameter. All ~145+ call sites updated. Every view has `theme` and `rc` computed properties.
-- **4-mode appearance**: System (adaptive UIKit colors), Light (adaptive UIKit colors), Dark (explicit white/dark), Retro (terminal phosphor)
-- **Retro terminal styling**: Monospaced fonts, `[ BRACKET ]` card/task formatting, cursor-blinking title, CRT scanline overlay, dark backgrounds with colored borders
-- **Retro Settings/Help**: Dual rendering paths — standard List for system/light/dark, custom terminal-styled ScrollView for retro
-- **Retro color palette**: 6 phosphor colors (green, amber, blue, white, red, purple) with 3 brightness levels each. Persisted via settings.json, selectable in Settings when retro theme is active.
-- **Bug fixes**: `.buttonStyle(.plain)` tap suppression in List, sheet color scheme inheritance, card shadow intensity in light mode
-- All changes build successfully (BUILD SUCCEEDED)
+**What was done**: Card animation fix, UI polish, and planning:
+- **Stable row ID grid animation**: Rewrote `buildGridRows` to use position-based stable UUIDs instead of category IDs. SwiftUI now sees row content morphing (smooth animation) instead of rows being inserted/removed (jumpy). Cards now expand in-place — the selected card stays at its screen position, other cards move to accommodate.
+- **Animation curve**: Expand/collapse changed from `.smooth(duration: 0.4)` to `.easeOut(duration: 0.6)` for smoother deceleration.
+- **Card grid density**: Gutter reduced from 16pt to 8pt, card minHeight increased from 120pt to 140pt — cards are larger and closer together.
+- **Onboarding carousel**: Features screen converted to `TabView` with `.page` style + custom tracking dots. 3 pages: Task Modes, Task Types, Quick Tips.
+- **Onboarding name skip**: Added "Skip" button on name entry screen.
+- **Retro text field fix**: Goal Target/Unit text fields now use theme colors instead of hardcoded `.black`.
+- **Theme settings tap area**: Added `.padding(.vertical, 6)` and `.contentShape(Rectangle())` to appearance rows.
+- **iOS 26 Liquid Glass button fix**: Added `.buttonStyle(.plain)` to nav capsule and bottom bar buttons to suppress unwanted grey material backgrounds.
+- **Planned features updated**: Feedback (Google Apps Script webhook via Google Workspace), Calendar integration (EventKit, design decisions open).
+- All changes build successfully (BUILD SUCCEEDED), not yet committed.
 
-**User's likely next steps**: Continue UI refinements or move to new features.
+**User's likely next steps**: Calendar integration planning, commit current work, continue UI refinements.
