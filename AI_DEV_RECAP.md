@@ -28,7 +28,7 @@ Repo: https://github.com/SymonymD/Vikov.git
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-02-16)
+## Current State (as of 2026-02-18)
 
 All features below are implemented and building successfully.
 
@@ -38,8 +38,8 @@ All features below are implemented and building successfully.
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
 | `Tasquel/Models.swift` | ~206 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
-| `Tasquel/ChecklistStore.swift` | ~465 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence |
-| `Tasquel/ContentView.swift` | ~1939 | All SwiftUI views: Theme system, card-based grid, expanded cards, task rows, goal progress, sheets, 4-step onboarding, retro terminal styling |
+| `Tasquel/ChecklistStore.swift` | ~489 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
+| `Tasquel/ContentView.swift` | ~2145 | All SwiftUI views: Theme system, card-based grid with unified HStack rows, expanded cards with bumped sizes, task rows, goal progress, sheets with callback pattern, 4-step onboarding carousel, retro terminal styling |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -108,14 +108,21 @@ All features below are implemented and building successfully.
     - CRT-style scanline overlay on cards
     - Settings and Help sheets have dual rendering paths (standard List vs retro ScrollView with terminal-styled sections)
 27. **Retro color palette**: 6 terminal phosphor colors (green, amber, blue, white, red, purple), each with 3 brightness levels (bright, dim, faint). Selectable in Settings when retro theme is active. Persisted via `settings.json`.
+28. **Unified HStack grid layout**: Each row is always an HStack with left/right slots. When a card expands, it stays in its HStack and the neighbor shrinks to `width: 0`. Uses `.id(category.id)` and `.transition(.identity)` for smooth in-place animation. Stable position-based row UUIDs prevent SwiftUI from treating reflows as insertions.
+29. **Expanded card size bumps**: When expanded, font/icon sizes increase — category icon `.body` + `scaleEffect(1.1)`, title `.title3`, edit/pie icons 20pt, task title 16pt, subtask title 14pt, mode/type icons 16pt, collapse icon 20pt white `rectangle.compress.vertical`. Collapsed cards get dimmed overlay (`Color.black.opacity(0.15)`).
+30. **Edit-mode category removal**: Red minus circle (`minus.circle.fill`) overlay in top-right corner of collapsed cards during edit mode. Tapping deletes the category.
+31. **Add category button fills empty slot**: When category count is odd, the dashed "Add Category" card fills the empty right slot in the last row instead of creating a new row.
+32. **Add category callback pattern**: AddCategorySheet uses `onAdd` closure instead of calling `store.addCategory` directly — prevents store mutation inside sheet from interfering with dismiss.
+33. **Saved category duplicate feedback**: Templates already in the current week show "Added" label and are disabled in the Add Category sheet.
+34. **Starter category migration**: On init, missing starters are added to both `savedCategories` and the current week (one-time migration via `didMigrateStarters_v1` UserDefaults key). Prevents missing categories on existing installs.
 
 ### UI Layout (Post-Redesign)
 
 - **Root**: `ZStack` with `Theme.background()` adaptive background
 - **Title**: "Week of M/d/yy" centered, `.title.bold()` (monospaced with cursor in retro mode)
 - **Navigation capsule**: Centered `HStack` with `< calendar >` in theme-adaptive capsule
-- **Content**: `ScrollView` + `LazyVGrid` (2 flexible columns, 16pt spacing)
-- **Expanded card**: Full-width `VStack` at top of scroll, collapsed cards in grid below
+- **Content**: `ScrollView` + unified HStack rows (2 columns, 8pt spacing)
+- **Expanded card**: Stays in its HStack row, neighbor shrinks to width 0. Bumped font/icon sizes (title `.title3`, icons 16–20pt)
 - **Bottom bar**: `HStack` — gear circle (left), date text (center), pencil/checkmark circle (right)
 - **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
 - **Add Category**: Dashed-border card in grid during edit mode
@@ -140,6 +147,7 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 53ca1c3 Redesign UI to Figma card-based grid layout
 e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display, and dual icon system
 0dca498 Add retro terminal theme with 6-color palette and reactive theme system
+3174d6a Stable grid animation, onboarding carousel, and UI polish
 ```
 
 ## Development Workflow
@@ -171,6 +179,10 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 15. **`.buttonStyle(.plain)` suppresses taps in List**: Appearance toggle buttons in Settings became untappable. Fixed by removing `.buttonStyle(.plain)` from buttons inside List rows.
 16. **Sheets don't inherit preferredColorScheme**: Sheets have their own window and need `.preferredColorScheme()` applied directly — won't inherit from parent view hierarchy.
 17. **awk bulk Theme replacement pitfall**: `Theme.cardBorder` was a substring of `Theme.cardBorderWidth`, causing awk to produce `Theme.cardBorder(theme)Width`. Must handle longer names first or use exact-match patterns.
+18. **`nil == nil` in optional comparisons**: `row.right?.id == expandedCategoryID` evaluates to `true` when both are `nil`. This hid category cards in odd-numbered rows. Fix: guard with `expandedCategoryID != nil &&` before the comparison.
+19. **Multiple buttons in List rows fire simultaneously**: Two buttons (Cancel + Add to Week & Save) in the same `HStack` inside a `List` row. Without `.buttonStyle(.borderless)`, SwiftUI treats the entire row as a single tap target and fires ALL button actions. Cancel would reset `isCreatingNew`, then `createNew` would see an empty name and bail. Fix: add `.buttonStyle(.borderless)` to each button.
+20. **Store mutations inside sheets break dismiss**: Calling `store.addCategory` (which mutates `@Observable` state) inside a sheet triggers parent view re-render, which can swallow the subsequent `dismiss()`. Fix: use callback pattern — sheet fires `onAdd` closure, parent handles the mutation.
+21. **`print()` invisible in simctl logs**: `print()` output doesn't appear in `log show` for simctl-launched apps. Use `os.Logger` for debugging.
 
 ## Figma Reference
 
@@ -187,18 +199,19 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 - Data export/import
 - **Feedback in Settings**: Best option is Google Apps Script webhook (user has Google Workspace). User types feedback in-app → POST to Apps Script URL → writes to Google Sheet and/or emails. No email address exposed, fully in-app UX. Alternative options considered: email with alias, Google Form link, CloudKit public database.
 
-## Last Session Summary (2026-02-17)
+## Last Session Summary (2026-02-18)
 
-**What was done**: Card animation fix, UI polish, and planning:
-- **Stable row ID grid animation**: Rewrote `buildGridRows` to use position-based stable UUIDs instead of category IDs. SwiftUI now sees row content morphing (smooth animation) instead of rows being inserted/removed (jumpy). Cards now expand in-place — the selected card stays at its screen position, other cards move to accommodate.
-- **Animation curve**: Expand/collapse changed from `.smooth(duration: 0.4)` to `.easeOut(duration: 0.6)` for smoother deceleration.
-- **Card grid density**: Gutter reduced from 16pt to 8pt, card minHeight increased from 120pt to 140pt — cards are larger and closer together.
-- **Onboarding carousel**: Features screen converted to `TabView` with `.page` style + custom tracking dots. 3 pages: Task Modes, Task Types, Quick Tips.
-- **Onboarding name skip**: Added "Skip" button on name entry screen.
-- **Retro text field fix**: Goal Target/Unit text fields now use theme colors instead of hardcoded `.black`.
-- **Theme settings tap area**: Added `.padding(.vertical, 6)` and `.contentShape(Rectangle())` to appearance rows.
-- **iOS 26 Liquid Glass button fix**: Added `.buttonStyle(.plain)` to nav capsule and bottom bar buttons to suppress unwanted grey material backgrounds.
-- **Planned features updated**: Feedback (Google Apps Script webhook via Google Workspace), Calendar integration (EventKit, design decisions open).
+**What was done**: Grid layout rewrite, expanded card sizing, and critical bug fixes:
+- **Unified HStack grid layout**: Rewrote grid from `GridSlot`/`GridRowContent` enum approach to unified `GridRow` struct. Each row is always an HStack. Expanded card stays in its row, neighbor shrinks to 0. Stable position-based UUIDs prevent animation jumpiness.
+- **Expanded card size bumps**: User-specified explicit sizes for all expanded card elements (title `.title3`, icons 16–20pt, task title 16pt, subtask 14pt). Header aligned to bottom. Collapse icon changed to `rectangle.compress.vertical` in white.
+- **Collapsed card dimming**: `Color.black.opacity(0.15)` overlay on non-expanded cards when one is expanded.
+- **Edit-mode category removal**: Red minus circle overlay on collapsed cards during edit mode.
+- **`nil == nil` bug fix**: `row.right?.id == expandedCategoryID` was `true` when both nil, hiding the 5th category (Appointments). Fixed with `expandedCategoryID != nil &&` guard.
+- **Add button positioning**: Now fills empty right slot when category count is odd, instead of creating its own row.
+- **Add category fix (`.buttonStyle(.borderless)`)**: Cancel + Add buttons in same List row fired simultaneously. `.buttonStyle(.borderless)` gives each button independent tap targets.
+- **Add category callback pattern**: Sheet uses `onAdd` closure instead of direct store mutation to prevent dismiss interference.
+- **Saved category duplicate feedback**: Already-added templates show "Added" and are disabled.
+- **Starter migration**: Missing starters added to `savedCategories` and current week on init.
 - All changes build successfully (BUILD SUCCEEDED), not yet committed.
 
-**User's likely next steps**: Calendar integration planning, commit current work, continue UI refinements.
+**User's likely next steps**: Commit current work, calendar integration planning, continue UI refinements.

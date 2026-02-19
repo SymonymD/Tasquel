@@ -48,9 +48,33 @@ final class ChecklistStore {
         if savedCategories.isEmpty {
             savedCategories = CategoryTemplate.starters
             saveSettings()
+        } else {
+            // Ensure any new starters added in updates are present
+            var addedStarters: [CategoryTemplate] = []
+            for starter in CategoryTemplate.starters {
+                if !savedCategories.contains(where: { $0.name == starter.name }) {
+                    savedCategories.append(CategoryTemplate(name: starter.name, symbol: starter.symbol))
+                    addedStarters.append(starter)
+                }
+            }
+            if !addedStarters.isEmpty { saveSettings() }
         }
         load()
-        ensureWeekExists(for: Date())
+        let currentWeek = ensureWeekExists(for: Date())
+        // One-time migration: add missing starters to current week
+        if !UserDefaults.standard.bool(forKey: "didMigrateStarters_v1") {
+            if let wi = weeks.firstIndex(where: { $0.id == currentWeek.id }) {
+                var didAddToWeek = false
+                for starter in CategoryTemplate.starters {
+                    if !weeks[wi].categories.contains(where: { $0.name == starter.name }) {
+                        weeks[wi].categories.append(Category(name: starter.name, symbol: starter.symbol))
+                        didAddToWeek = true
+                    }
+                }
+                if didAddToWeek { save() }
+            }
+            UserDefaults.standard.set(true, forKey: "didMigrateStarters_v1")
+        }
     }
 
     // MARK: - Persistence

@@ -206,8 +206,10 @@ struct ContentView: View {
             SettingsSheet(store: store)
         }
         .sheet(isPresented: $showAddCategory) {
-            AddCategorySheet(store: store)
-                .presentationDetents([.medium, .large])
+            AddCategorySheet(store: store) { name, symbol in
+                store.addCategory(name: name, symbol: symbol)
+            }
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showOnboarding) {
             OnboardingSheet(store: store)
@@ -363,39 +365,45 @@ struct ContentView: View {
             VStack(spacing: 8) {
                 let rows = buildGridRows(categories: categories, showAddButton: showAdd)
                 ForEach(rows) { row in
-                    switch row.content {
-                    case .expanded(let cat):
-                        ExpandedCategoryCard(
-                            category: cat,
-                            store: store,
-                            isEditing: isEditing,
-                            isPastWeek: week.isPastWeek,
-                            onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
-                            onCollapse: {
-                                withAnimation(.easeOut(duration: 0.6)) {
-                                    expandedCategoryID = nil
-                                }
-                            }
-                        )
-
-                    case .pair(let left, let right):
-                        HStack(spacing: 8) {
-                            if let left {
-                                categoryCardView(left)
-                            } else {
-                                Color.clear.frame(maxWidth: .infinity)
-                            }
-                            if let right {
-                                categoryCardView(right)
-                            } else {
-                                Color.clear.frame(maxWidth: .infinity)
-                            }
-                        }
-
-                    case .addOnly:
+                    if row.isAddRow && row.left == nil {
+                        // Standalone add button row (even category count)
                         HStack(spacing: 8) {
                             addCategoryButton
                             Color.clear.frame(maxWidth: .infinity)
+                        }
+                    } else if row.isAddRow && row.left != nil {
+                        // Add button fills empty right slot (odd category count)
+                        let leftExpanded = expandedCategoryID != nil && row.left?.id == expandedCategoryID
+                        HStack(spacing: leftExpanded ? 0 : 8) {
+                            if leftExpanded {
+                                gridCardSlot(row.left, week: week)
+                                Color.clear.frame(width: 0)
+                            } else {
+                                gridCardSlot(row.left, week: week)
+                                addCategoryButton
+                            }
+                        }
+                    } else {
+                        let leftExpanded = expandedCategoryID != nil && row.left?.id == expandedCategoryID
+                        let rightExpanded = expandedCategoryID != nil && row.right?.id == expandedCategoryID
+                        let rowHasExpanded = leftExpanded || rightExpanded
+
+                        HStack(spacing: rowHasExpanded ? 0 : 8) {
+                            // Left slot
+                            if rightExpanded {
+                                // Right card is expanding — hide left
+                                Color.clear.frame(width: 0)
+                            } else {
+                                gridCardSlot(row.left, week: week)
+                            }
+
+                            // Right slot
+                            if leftExpanded {
+                                // Left card is expanding — hide right
+                                Color.clear.frame(width: 0)
+                            } else {
+                                gridCardSlot(row.right, week: week)
+                            }
                         }
                     }
                 }
@@ -424,78 +432,65 @@ struct ContentView: View {
 
     private struct GridRow: Identifiable {
         let id: UUID
-        let content: GridRowContent
-    }
-
-    private enum GridRowContent {
-        case expanded(Category)
-        case pair(Category?, Category?)  // left, right — nil means empty slot
-        case addOnly
+        let left: Category?
+        let right: Category?
+        var isAddRow: Bool = false
     }
 
     private func buildGridRows(categories: [Category], showAddButton: Bool) -> [GridRow] {
         let ids = ContentView.stableRowIDs
         var rows: [GridRow] = []
-
-        guard let expID = expandedCategoryID,
-              let expIndex = categories.firstIndex(where: { $0.id == expID }) else {
-            // Nothing expanded — pair all categories normally
-            var i = 0
-            while i < categories.count {
-                let left = categories[i]
-                let right = (i + 1 < categories.count) ? categories[i + 1] : nil
-                rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
-                i += 2
-            }
-            if showAddButton {
-                rows.append(GridRow(id: ids[rows.count], content: .addOnly))
-            }
-            return rows
-        }
-
-        let expandedCat = categories[expIndex]
-        let expandedRow = expIndex / 2
-        let rowStart = expandedRow * 2
-
-        // Rows before the expanded row — paired normally
         var i = 0
-        while i < rowStart {
+        while i < categories.count {
             let left = categories[i]
-            let right = (i + 1 < rowStart) ? categories[i + 1] : nil
-            rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
+            let right = (i + 1 < categories.count) ? categories[i + 1] : nil
+            rows.append(GridRow(id: ids[rows.count], left: left, right: right))
             i += 2
         }
-
-        // Expanded card at its row
-        rows.append(GridRow(id: ids[rows.count], content: .expanded(expandedCat)))
-
-        // Displaced neighbor + remaining cards re-paired
-        var remaining: [Category] = []
-        for j in rowStart..<categories.count {
-            if categories[j].id != expID {
-                remaining.append(categories[j])
+        if showAddButton {
+            // If last row has an empty right slot, put add button there
+            if let last = rows.last, last.right == nil, last.left != nil {
+                rows[rows.count - 1] = GridRow(id: last.id, left: last.left, right: nil, isAddRow: true)
+            } else {
+                rows.append(GridRow(id: ids[rows.count], left: nil, right: nil, isAddRow: true))
             }
         }
-        var ri = 0
-        while ri < remaining.count {
-            let left = remaining[ri]
-            let right = (ri + 1 < remaining.count) ? remaining[ri + 1] : nil
-            rows.append(GridRow(id: ids[rows.count], content: .pair(left, right)))
-            ri += 2
-        }
-        if showAddButton {
-            rows.append(GridRow(id: ids[rows.count], content: .addOnly))
-        }
-
         return rows
     }
 
+    /// Renders a single grid slot — collapsed card, expanded card, or shrunk-to-zero neighbor
     @ViewBuilder
-    private func categoryCardView(_ category: Category) -> some View {
-        CategoryCard(category: category, store: store) {
-            withAnimation(.easeOut(duration: 0.6)) {
-                expandedCategoryID = category.id
+    private func gridCardSlot(_ category: Category?, week: Week) -> some View {
+        if let category {
+            let isExpanded = category.id == expandedCategoryID
+            let neighborExpanded = !isExpanded && expandedCategoryID != nil
+
+            if isExpanded {
+                ExpandedCategoryCard(
+                    category: category,
+                    store: store,
+                    isEditing: isEditing,
+                    isPastWeek: week.isPastWeek,
+                    onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
+                    onCollapse: {
+                        withAnimation(.easeOut(duration: 0.6)) {
+                            expandedCategoryID = nil
+                        }
+                    }
+                )
+                .id(category.id)
+                .transition(.identity)
+            } else {
+                CategoryCard(category: category, store: store, dimmed: neighborExpanded, isEditing: isEditing) {
+                    withAnimation(.easeOut(duration: 0.6)) {
+                        expandedCategoryID = category.id
+                    }
+                }
+                .id(category.id)
+                .transition(.identity)
             }
+        } else {
+            Color.clear.frame(maxWidth: .infinity)
         }
     }
 
@@ -524,6 +519,8 @@ struct ContentView: View {
 struct CategoryCard: View {
     let category: Category
     let store: ChecklistStore
+    var dimmed: Bool = false
+    var isEditing: Bool = false
     let onExpand: () -> Void
 
     private var theme: AppearanceMode { store.appearanceMode }
@@ -587,6 +584,25 @@ struct CategoryCard: View {
                 )
                 .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 6, x: 0, y: Theme.isRetro(theme) ? 0 : 3)
         }
+        .overlay {
+            if dimmed {
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                    .fill(Color.black.opacity(0.15))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isEditing {
+                Button {
+                    withAnimation { store.deleteCategory(category.id) }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, .red)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 8, y: -8)
+            }
+        }
         .onTapGesture { onExpand() }
         .contextMenu {
             Button("Save for Future Use", systemImage: "square.and.arrow.down") {
@@ -641,20 +657,23 @@ struct ExpandedCategoryCard: View {
 
     @State private var showDeleteOptions = false
 
+    private let expandedScale: CGFloat = 1.1
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
-            HStack(alignment: .top) {
+            HStack(alignment: .bottom) {
                 if !Theme.isRetro(theme) {
-                    Image(systemName: category.symbol).font(.subheadline)
+                    Image(systemName: category.symbol).font(.body)
+                        .scaleEffect(expandedScale)
                 }
                 Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
-                    .font(Theme.primaryFont(theme))
+                    .font(Theme.isRetro(theme) ? .system(.title3, design: .monospaced) : .title3)
                 Spacer()
                 if !isPastWeek {
                     Button { onToggleEdit() } label: {
                         Image(systemName: isEditing ? "checkmark.circle.fill" : "square.and.pencil")
-                            .font(.body)
+                            .font(.system(size: 20))
                             .foregroundStyle(isEditing ? .green : Theme.textSecondary(theme, rc: rc))
                     }
                     .buttonStyle(.plain)
@@ -663,7 +682,8 @@ struct ExpandedCategoryCard: View {
             }
 
             Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
-                .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
 
             Divider().padding(.vertical, 2)
 
@@ -691,8 +711,8 @@ struct ExpandedCategoryCard: View {
                         Text("[CLOSE]").font(.system(.caption, design: .monospaced))
                             .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                     } else {
-                        Image(systemName: "arrow.down.backward")
-                            .font(.subheadline).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                        Image(systemName: "rectangle.compress.vertical")
+                            .font(.system(size: 20)).foregroundStyle(.white)
                     }
                 }
                 .buttonStyle(.plain)
@@ -743,7 +763,7 @@ struct ExpandedCategoryCard: View {
         } else {
             return AnyView(
                 Image(systemName: "chart.pie.fill")
-                    .font(.body)
+                    .font(.system(size: 20))
                     .foregroundStyle(color)
             )
         }
@@ -800,7 +820,7 @@ struct TaskRowCard: View {
                 // Title
                 if isEditingTitle {
                     TextField("Task name", text: $editedTitle)
-                        .font(Theme.bodyFont(theme))
+                        .font(Theme.isRetro(theme) ? .system(size: 16, design: .monospaced) : .system(size: 16))
                         .onSubmit {
                             let title = editedTitle.trimmingCharacters(in: .whitespaces)
                             if !title.isEmpty {
@@ -810,7 +830,7 @@ struct TaskRowCard: View {
                         }
                 } else {
                     Text(task.title)
-                        .font(Theme.bodyFont(theme))
+                        .font(Theme.isRetro(theme) ? .system(size: 16, design: .monospaced) : .system(size: 16))
                         .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
                         .onTapGesture(count: 2) {
                             editedTitle = task.title
@@ -910,9 +930,9 @@ struct TaskRowCard: View {
                     store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
                 } label: {
                     Image(systemName: mode.symbol)
-                        .font(.subheadline)
+                        .font(.system(size: 16))
                         .foregroundStyle(task.mode == mode ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -923,8 +943,8 @@ struct TaskRowCard: View {
                 }
             } label: {
                 Image(systemName: "trash")
-                    .font(.subheadline).foregroundStyle(Theme.destructive(theme))
-                    .frame(width: 32, height: 32)
+                    .font(.system(size: 16)).foregroundStyle(Theme.destructive(theme))
+                    .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -939,9 +959,9 @@ struct TaskRowCard: View {
                     store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
                 } label: {
                     Image(systemName: type.symbol)
-                        .font(.subheadline)
+                        .font(.system(size: 16))
                         .foregroundStyle(task.taskType == type ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -971,7 +991,7 @@ struct TaskRowCard: View {
                     .fill(Theme.dotComplete(theme, rc: rc))
                     .overlay(
                         Image(systemName: "checkmark")
-                            .font(.system(size: 9).bold())
+                            .font(.system(size: 12).bold())
                             .foregroundStyle(.white)
                     )
                     .frame(width: 18, height: 18)
@@ -986,7 +1006,7 @@ struct TaskRowCard: View {
                 .frame(width: 18, height: 18)
             } else {
                 Image(systemName: "target")
-                    .font(.subheadline).foregroundStyle(Theme.completionPartial(theme))
+                    .font(.system(size: 12)).foregroundStyle(Theme.completionPartial(theme))
             }
         }
     }
@@ -1127,7 +1147,7 @@ struct SubTaskRowCard: View {
 
             if isEditing && isEditingTitle {
                 TextField("Sub-task", text: $editedTitle)
-                    .font(Theme.captionFont(theme))
+                    .font(Theme.isRetro(theme) ? .system(size: 14, design: .monospaced) : .system(size: 14))
                     .onSubmit {
                         let title = editedTitle.trimmingCharacters(in: .whitespaces)
                         if !title.isEmpty {
@@ -1137,7 +1157,7 @@ struct SubTaskRowCard: View {
                     }
             } else {
                 Text(subtask.title)
-                    .font(Theme.captionFont(theme))
+                    .font(Theme.isRetro(theme) ? .system(size: 14, design: .monospaced) : .system(size: 14))
                     .foregroundStyle(subtask.isCompleted ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     .onTapGesture {
@@ -1239,6 +1259,7 @@ struct AddTaskRowCard: View {
 
 struct AddCategorySheet: View {
     let store: ChecklistStore
+    var onAdd: ((String, String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isCreatingNew = false
     @State private var newName = ""
@@ -1280,9 +1301,13 @@ struct AddCategorySheet: View {
                                 isCreatingNew = false
                                 newName = ""
                             }
+                            .buttonStyle(.borderless)
                             Spacer()
-                            Button("Add to Week & Save") { createNew() }
-                                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                            Button("Add to Week & Save") {
+                                createNew()
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         .font(.subheadline)
                     } else {
@@ -1297,12 +1322,22 @@ struct AddCategorySheet: View {
                 if !store.savedCategories.isEmpty {
                     Section("Saved Categories") {
                         ForEach(store.savedCategories) { template in
+                            let alreadyAdded = store.selectedWeek?.categories.contains(where: { $0.name == template.name }) ?? false
                             Button {
                                 addFromTemplate(template)
                             } label: {
-                                Label(template.name, systemImage: template.symbol)
-                                    .foregroundStyle(.primary)
+                                HStack {
+                                    Label(template.name, systemImage: template.symbol)
+                                        .foregroundStyle(alreadyAdded ? .secondary : .primary)
+                                    Spacer()
+                                    if alreadyAdded {
+                                        Text("Added")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                             }
+                            .disabled(alreadyAdded)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     store.removeSavedCategory(template.id)
@@ -1325,7 +1360,13 @@ struct AddCategorySheet: View {
     }
 
     private func addFromTemplate(_ template: CategoryTemplate) {
-        store.addCategory(name: template.name, symbol: template.symbol)
+        // Don't add duplicate category to the same week
+        if let week = store.selectedWeek,
+           week.categories.contains(where: { $0.name == template.name }) {
+            dismiss()
+            return
+        }
+        onAdd?(template.name, template.symbol)
         dismiss()
     }
 
@@ -1333,10 +1374,7 @@ struct AddCategorySheet: View {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         store.addSavedCategory(name: name, symbol: newSymbol)
-        store.addCategory(name: name, symbol: newSymbol)
-        newName = ""
-        newSymbol = "folder"
-        isCreatingNew = false
+        onAdd?(name, newSymbol)
         dismiss()
     }
 }
