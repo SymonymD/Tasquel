@@ -208,6 +208,7 @@ struct ContentView: View {
         .sheet(isPresented: $showAddCategory) {
             AddCategorySheet(store: store) { name, symbol in
                 store.addCategory(name: name, symbol: symbol)
+                isEditing = false
             }
             .presentationDetents([.medium, .large])
         }
@@ -473,7 +474,7 @@ struct ContentView: View {
                     isPastWeek: week.isPastWeek,
                     onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
                     onCollapse: {
-                        withAnimation(.easeOut(duration: 0.6)) {
+                        withAnimation(.easeOut(duration: 0.7)) {
                             expandedCategoryID = nil
                         }
                     }
@@ -482,7 +483,7 @@ struct ContentView: View {
                 .transition(.identity)
             } else {
                 CategoryCard(category: category, store: store, dimmed: neighborExpanded, isEditing: isEditing) {
-                    withAnimation(.easeOut(duration: 0.6)) {
+                    withAnimation(.easeOut(duration: 0.7)) {
                         expandedCategoryID = category.id
                     }
                 }
@@ -582,12 +583,12 @@ struct CategoryCard: View {
                     RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
                         .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
                 )
-                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 6, x: 0, y: Theme.isRetro(theme) ? 0 : 3)
+                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : (dimmed ? 2 : 6), x: 0, y: Theme.isRetro(theme) ? 0 : (dimmed ? 1 : 3))
         }
         .overlay {
             if dimmed {
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                    .fill(Color.black.opacity(0.15))
+                    .fill(Color.black.opacity(0.08))
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -712,7 +713,7 @@ struct ExpandedCategoryCard: View {
                             .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                     } else {
                         Image(systemName: "rectangle.compress.vertical")
-                            .font(.system(size: 20)).foregroundStyle(.white)
+                            .font(.system(size: 20)).foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
                     }
                 }
                 .buttonStyle(.plain)
@@ -726,7 +727,7 @@ struct ExpandedCategoryCard: View {
                     RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
                         .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
                 )
-                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 6, x: 0, y: Theme.isRetro(theme) ? 0 : 3)
+                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 10, x: Theme.isRetro(theme) ? 0 : 2, y: Theme.isRetro(theme) ? 0 : 2)
         }
         .contextMenu {
             Button("Save for Future Use", systemImage: "square.and.arrow.down") {
@@ -1349,6 +1350,8 @@ struct AddCategorySheet: View {
                     }
                 }
             }
+            .scrollContentBackground(Theme.isDark(store.appearanceMode) ? .hidden : .automatic)
+            .background(Theme.isDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1465,17 +1468,22 @@ struct SettingsSheet: View {
 
     // MARK: - Standard (System/Light/Dark) Settings
 
+    private var darkCardBg: Color? { Theme.isDark(theme) ? Theme.cardFill(theme) : nil }
+
     private var standardSettings: some View {
         List {
             Section("Name") {
                 nameRow
             }
+            .listRowBackground(darkCardBg)
             Section("Appearance") {
                 appearanceRows
             }
+            .listRowBackground(darkCardBg)
             Section("Calendar") {
                 calendarRow
             }
+            .listRowBackground(darkCardBg)
             Section {
                 Button { showHelp = true } label: {
                     Label("How to Use Tasquel", systemImage: "questionmark.circle")
@@ -1483,11 +1491,15 @@ struct SettingsSheet: View {
             } header: {
                 Text("Help")
             }
+            .listRowBackground(darkCardBg)
             Section("About") {
                 LabeledContent("Version", value: "1.0")
                 LabeledContent("Build", value: "1")
             }
+            .listRowBackground(darkCardBg)
         }
+        .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
+        .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
     }
 
     // MARK: - Retro Settings
@@ -1727,15 +1739,26 @@ struct HelpSheet: View {
         }
     }
 
+    private var darkHelpBg: Color? { Theme.isDark(theme) ? Theme.cardFill(theme) : nil }
+
+    @ViewBuilder
+    private func helpSection(_ index: Int) -> some View {
+        let section = helpSections[index]
+        Section(section.title) {
+            ForEach(section.items, id: \.title) { item in
+                HelpRow(symbol: item.symbol, title: item.title, detail: item.detail)
+            }
+        }
+    }
+
     private var standardHelp: some View {
         List {
-            ForEach(helpSections, id: \.title) { section in
-                Section(section.title) {
-                    ForEach(section.items, id: \.title) { item in
-                        HelpRow(symbol: item.symbol, title: item.title, detail: item.detail)
-                    }
-                }
-            }
+            helpSection(0)
+            helpSection(1)
+            helpSection(2)
+            helpSection(3)
+            helpSection(4)
+            helpSection(5)
         }
     }
 
@@ -1844,6 +1867,108 @@ struct RemoveCategorySheet: View {
     }
 }
 
+// MARK: - Carry Over Animation
+
+struct CarryOverAnimation: View {
+    @State private var phase: Int = 0
+    @State private var checkTrim: CGFloat = 0
+    @State private var ringTrim: CGFloat = 0
+    @State private var ringRotation: Double = -90
+    @State private var handAngle: Double = -90
+    @State private var crossfade: Double = 0 // 0 = checkmark, 1 = clock
+    @State private var hue: Double = 0.35 // green
+
+    private let size: CGFloat = 80
+    private let stroke: CGFloat = 3.5
+
+    private var accentColor: Color { Color(hue: hue, saturation: 0.65, brightness: 0.75) }
+
+    var body: some View {
+        ZStack {
+            // Ring
+            Circle()
+                .trim(from: 0, to: ringTrim)
+                .stroke(accentColor, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
+                .frame(width: size, height: size)
+                .rotationEffect(.degrees(ringRotation))
+
+            // Checkmark (fades out as clock fades in)
+            CheckmarkPath()
+                .trim(from: 0, to: checkTrim)
+                .stroke(accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                .frame(width: size * 0.38, height: size * 0.38)
+                .opacity(1 - crossfade)
+
+            // Abstract clock — single hand sweeping
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(accentColor)
+                .frame(width: 2.5, height: size * 0.3)
+                .offset(y: -size * 0.15)
+                .rotationEffect(.degrees(handAngle))
+                .opacity(crossfade)
+        }
+        .onAppear { runLoop() }
+    }
+
+    private func runLoop() {
+        // Reset
+        checkTrim = 0
+        ringTrim = 0
+        ringRotation = -90
+        handAngle = -90
+        crossfade = 0
+        hue = 0.35
+
+        // Phase 1 (0s): Ring draws in + checkmark draws — "task complete"
+        withAnimation(.easeOut(duration: 0.45)) {
+            ringTrim = 1
+            checkTrim = 1
+        }
+
+        // Phase 2 (0.65s): Crossfade check→hand, shift hue green→orange, hand starts at 12
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                crossfade = 1
+                hue = 0.08 // orange
+            }
+        }
+
+        // Phase 3 (1.0s): Hand sweeps full circle — "time passing"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            withAnimation(.easeInOut(duration: 1.0)) {
+                handAngle = 270 // full sweep from 12 o'clock
+            }
+        }
+
+        // Phase 4 (2.1s): Crossfade hand→check, hue back to green, redraw check
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+            checkTrim = 0
+            withAnimation(.easeInOut(duration: 0.35)) {
+                crossfade = 0
+                hue = 0.35
+            }
+            withAnimation(.easeOut(duration: 0.35).delay(0.1)) {
+                checkTrim = 1
+            }
+        }
+
+        // Loop
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            runLoop()
+        }
+    }
+}
+
+struct CheckmarkPath: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.width * 0.35, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
+    }
+}
+
 // MARK: - Onboarding Sheet
 
 struct OnboardingSheet: View {
@@ -1892,8 +2017,8 @@ struct OnboardingSheet: View {
     private var overviewView: some View {
         VStack(spacing: 24) {
             Spacer()
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 60)).foregroundStyle(.green)
+            CarryOverAnimation()
+                .frame(width: 240, height: 160)
             Text("Welcome to Tasquel").font(.largeTitle.bold())
             VStack(spacing: 12) {
                 Text("Your weekly task planner that keeps you on track.")

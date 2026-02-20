@@ -28,7 +28,7 @@ Repo: https://github.com/SymonymD/Vikov.git
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-02-18)
+## Current State (as of 2026-02-19)
 
 All features below are implemented and building successfully.
 
@@ -39,7 +39,7 @@ All features below are implemented and building successfully.
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
 | `Tasquel/Models.swift` | ~206 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
 | `Tasquel/ChecklistStore.swift` | ~489 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
-| `Tasquel/ContentView.swift` | ~2145 | All SwiftUI views: Theme system, card-based grid with unified HStack rows, expanded cards with bumped sizes, task rows, goal progress, sheets with callback pattern, 4-step onboarding carousel, retro terminal styling |
+| `Tasquel/ContentView.swift` | ~2100 | All SwiftUI views: Theme system, card-based grid with unified HStack rows, expanded cards with bumped sizes, task rows, goal progress, sheets with callback pattern, 4-step onboarding with CarryOverAnimation, retro terminal styling |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -115,6 +115,13 @@ All features below are implemented and building successfully.
 32. **Add category callback pattern**: AddCategorySheet uses `onAdd` closure instead of calling `store.addCategory` directly — prevents store mutation inside sheet from interfering with dismiss.
 33. **Saved category duplicate feedback**: Templates already in the current week show "Added" label and are disabled in the Add Category sheet.
 34. **Starter category migration**: On init, missing starters are added to both `savedCategories` and the current week (one-time migration via `didMigrateStarters_v1` UserDefaults key). Prevents missing categories on existing installs.
+35. **Dark theme sheets**: Settings, Help, and AddCategory sheets match dark card theme — `.scrollContentBackground(.hidden)` + `Theme.background()` + `.listRowBackground(Theme.cardFill())`.
+36. **Exit edit mode on add**: "Add to Week & Save" in AddCategorySheet exits edit mode automatically — "Save" implies done editing.
+37. **Help sheet section fix**: Unrolled `ForEach` around `Section` in Help sheet to fix missing bottom corner rounding on middle sections.
+38. **Theme-aware collapse icon**: Collapse button in expanded cards uses `.white` in dark/retro themes, `Color(.secondaryLabel)` in light.
+39. **Expanded card depth effect**: Expanded card shadow `radius: 10, x: 2, y: 2`. Collapsed cards when dimmed get reduced shadow `radius: 2, y: 1` and lighter dimming `opacity(0.08)`. Creates subtle forward/back depth illusion.
+40. **Expand/collapse animation**: `.easeOut(duration: 0.7)` for smooth card transitions.
+41. **CarryOverAnimation** (onboarding): Abstract looping animation — green ring+checkmark morphs to orange ring+sweeping hand (clock), then back. 3-second loop. Uses hue-shift crossfade for smooth state transitions. Replaces static green checkmark on onboarding page 1. Still being refined.
 
 ### UI Layout (Post-Redesign)
 
@@ -148,6 +155,7 @@ d2b7614 Add Edit mode, one-time tasks, sub-tasks, and inline editing
 e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display, and dual icon system
 0dca498 Add retro terminal theme with 6-color palette and reactive theme system
 3174d6a Stable grid animation, onboarding carousel, and UI polish
+c37a93a Fix add category, grid layout bugs, and expanded card sizing
 ```
 
 ## Development Workflow
@@ -183,6 +191,8 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 19. **Multiple buttons in List rows fire simultaneously**: Two buttons (Cancel + Add to Week & Save) in the same `HStack` inside a `List` row. Without `.buttonStyle(.borderless)`, SwiftUI treats the entire row as a single tap target and fires ALL button actions. Cancel would reset `isCreatingNew`, then `createNew` would see an empty name and bail. Fix: add `.buttonStyle(.borderless)` to each button.
 20. **Store mutations inside sheets break dismiss**: Calling `store.addCategory` (which mutates `@Observable` state) inside a sheet triggers parent view re-render, which can swallow the subsequent `dismiss()`. Fix: use callback pattern — sheet fires `onAdd` closure, parent handles the mutation.
 21. **`print()` invisible in simctl logs**: `print()` output doesn't appear in `log show` for simctl-launched apps. Use `os.Logger` for debugging.
+22. **`let` bindings in computed `some View` properties**: Causes "no return statements" compile error. Fix: extract to separate computed property helpers or functions.
+23. **`Section` inside `ForEach` breaks List corner rounding**: SwiftUI loses section boundary info. Fix: unroll sections as direct List children (e.g. `helpSection(0)` through `helpSection(5)`).
 
 ## Figma Reference
 
@@ -199,19 +209,15 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 - Data export/import
 - **Feedback in Settings**: Best option is Google Apps Script webhook (user has Google Workspace). User types feedback in-app → POST to Apps Script URL → writes to Google Sheet and/or emails. No email address exposed, fully in-app UX. Alternative options considered: email with alias, Google Form link, CloudKit public database.
 
-## Last Session Summary (2026-02-18)
+## Last Session Summary (2026-02-19)
 
-**What was done**: Grid layout rewrite, expanded card sizing, and critical bug fixes:
-- **Unified HStack grid layout**: Rewrote grid from `GridSlot`/`GridRowContent` enum approach to unified `GridRow` struct. Each row is always an HStack. Expanded card stays in its row, neighbor shrinks to 0. Stable position-based UUIDs prevent animation jumpiness.
-- **Expanded card size bumps**: User-specified explicit sizes for all expanded card elements (title `.title3`, icons 16–20pt, task title 16pt, subtask 14pt). Header aligned to bottom. Collapse icon changed to `rectangle.compress.vertical` in white.
-- **Collapsed card dimming**: `Color.black.opacity(0.15)` overlay on non-expanded cards when one is expanded.
-- **Edit-mode category removal**: Red minus circle overlay on collapsed cards during edit mode.
-- **`nil == nil` bug fix**: `row.right?.id == expandedCategoryID` was `true` when both nil, hiding the 5th category (Appointments). Fixed with `expandedCategoryID != nil &&` guard.
-- **Add button positioning**: Now fills empty right slot when category count is odd, instead of creating its own row.
-- **Add category fix (`.buttonStyle(.borderless)`)**: Cancel + Add buttons in same List row fired simultaneously. `.buttonStyle(.borderless)` gives each button independent tap targets.
-- **Add category callback pattern**: Sheet uses `onAdd` closure instead of direct store mutation to prevent dismiss interference.
-- **Saved category duplicate feedback**: Already-added templates show "Added" and are disabled.
-- **Starter migration**: Missing starters added to `savedCategories` and current week on init.
-- All changes build successfully (BUILD SUCCEEDED), not yet committed.
+**What was done**: Dark theme polish, depth effects, and onboarding animation:
+- **Dark theme sheets**: Settings, Help, and AddCategory sheets now match dark card theme (navy background, bluish-grey card fills) using `.scrollContentBackground(.hidden)` + `Theme.background()` + `.listRowBackground(Theme.cardFill())`.
+- **Exit edit mode on add**: "Add to Week & Save" automatically exits edit mode.
+- **Help sheet corner fix**: Unrolled `ForEach` around `Section` to fix missing bottom corner rounding on middle sections.
+- **Theme-aware collapse icon**: Light mode uses `Color(.secondaryLabel)` instead of hardcoded `.white`.
+- **Expanded card depth effect**: Expanded shadow increased to `radius: 10, x: 2, y: 2`. Collapsed dimming reduced to `opacity(0.08)` with reduced shadow `radius: 2, y: 1`. Creates forward/back depth illusion.
+- **Animation timing**: Expand/collapse slowed to `.easeOut(duration: 0.7)`.
+- **CarryOverAnimation v2**: Abstract 3-second looping animation for onboarding page 1. Green ring+checkmark crossfades to orange ring+sweeping clock hand, then back. Uses hue-shift for smooth color transitions. Still being refined — user wants further iteration.
 
-**User's likely next steps**: Commit current work, calendar integration planning, continue UI refinements.
+**User's likely next steps**: Refine CarryOverAnimation further, commit, continue UI polish.
