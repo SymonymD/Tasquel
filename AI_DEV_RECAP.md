@@ -28,7 +28,7 @@ Repo: https://github.com/SymonymD/Vikov.git
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-02-19)
+## Current State (as of 2026-03-23)
 
 All features below are implemented and building successfully.
 
@@ -37,9 +37,19 @@ All features below are implemented and building successfully.
 | File | Lines | Purpose |
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
-| `Tasquel/Models.swift` | ~206 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
-| `Tasquel/ChecklistStore.swift` | ~489 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
-| `Tasquel/ContentView.swift` | ~2100 | All SwiftUI views: Theme system, card-based grid with unified HStack rows, expanded cards with bumped sizes, task rows, goal progress, sheets with callback pattern, 4-step onboarding with CarryOverAnimation, retro terminal styling |
+| `Tasquel/Models.swift` | ~207 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
+| `Tasquel/ChecklistStore.swift` | ~492 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
+| `Tasquel/Theme.swift` | ~135 | `Theme` enum with all color/font functions + `ScanlineOverlay` (extracted from ContentView) |
+| `Tasquel/ContentView.swift` | ~372 | Root `ContentView` only: title, nav capsule, week grid layout, bottom bar, grid helpers |
+| `Tasquel/CategoryCard.swift` | ~210 | `CategoryCard` (collapsed) + `ExpandedCategoryCard` |
+| `Tasquel/TaskRowCard.swift` | ~310 | `TaskRowCard` + `SubTaskRowCard` + `AddTaskRowCard` |
+| `Tasquel/AddCategorySheet.swift` | ~160 | `AddCategorySheet` + `DatePickerSheet` |
+| `Tasquel/SettingsSheet.swift` | ~230 | `SettingsSheet` (standard + retro layouts, all shared rows) |
+| `Tasquel/HelpSheet.swift` | ~130 | `HelpSheet` (standard + retro) + `HelpRow` |
+| `Tasquel/RemoveCategorySheet.swift` | ~55 | `RemoveCategorySheet` |
+| `Tasquel/FeedbackSheet.swift` | ~200 | `FeedbackSheet` — in-app feedback via Google Apps Script webhook (standard + retro layouts) |
+| `Tasquel/OnboardingSheet.swift` | ~290 | `OnboardingSheet` + `OnboardingFeatureRow` + `CarryOverAnimation` + `CheckmarkPath` |
+| `TasquelTests/TasquelTests.swift` | ~175 | Unit tests for rollover logic (all three task modes, subtasks, goal progress, deleteCategoryEntirely) |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -156,6 +166,8 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 0dca498 Add retro terminal theme with 6-color palette and reactive theme system
 3174d6a Stable grid animation, onboarding carousel, and UI polish
 c37a93a Fix add category, grid layout bugs, and expanded card sizing
+7b0c956 Dark theme sheets, depth effects, onboarding animation, and UI polish
+(pending) Bug fixes, file split, CarryOverAnimation v3, feedback sheet, unit tests
 ```
 
 ## Development Workflow
@@ -167,6 +179,11 @@ c37a93a Fix add category, grid layout bugs, and expanded card sizing
 - Fresh install test: `xcrun simctl uninstall ... && xcrun simctl install ...`
 - New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
 - DerivedData path changed: `Tasquel-aviiopvkyuygsagufoplyonwfrif` (was `Tasquel-enfbpsqjcwhtrgdnotmnlfnayzgj`)
+
+24. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
+25. **CarryOverAnimation v3**: Replaced `DispatchQueue.main.asyncAfter` chain with `async/await` + `.task(id: loopCount)`. Benefits: (a) SwiftUI cancels the task when view disappears, preventing multiple loops from stacking; (b) clean `guard !Task.isCancelled` gates prevent stale state updates; (c) added fade-out before loop restart so the instant state reset is invisible. Also fixed ring `rotationEffect` to always start at −90° (12 o'clock).
+26. **File split**: ContentView.swift was 2,270 lines. Split into 9 focused files (Theme.swift, CategoryCard.swift, TaskRowCard.swift, AddCategorySheet.swift, SettingsSheet.swift, HelpSheet.swift, RemoveCategorySheet.swift, OnboardingSheet.swift, FeedbackSheet.swift). ContentView.swift is now 372 lines. Works automatically via `PBXFileSystemSynchronizedRootGroup`.
+27. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., "feedback": ...}` JSON to a Google Apps Script webhook URL. Shows inline status (sending / success / failure). Auto-dismisses 1.5s after success. Webhook URL is a constant in FeedbackSheet.swift — replace with deployed Apps Script URL before shipping.
 
 ## Key Decisions & Gotchas
 
@@ -204,20 +221,18 @@ c37a93a Fix add category, grid layout bugs, and expanded card sizing
 ## Planned / Not Yet Implemented
 
 - **Calendar integration (paid upgrade)**: Pull user's calendar events into Tasquel. Key design decisions still open: (1) events as tasks vs read-only reference vs user choice per-category, (2) payment model (one-time vs subscription), (3) calendar source — Apple EventKit recommended since it covers all calendars synced to device (iCloud, Google, Exchange) without extra OAuth. Existing Settings already has a "Coming Soon" toggle placeholder.
-- Unit tests (test targets exist but no tests written yet)
+- **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
 - iPad-specific layout optimizations
 - Data export/import
-- **Feedback in Settings**: Best option is Google Apps Script webhook (user has Google Workspace). User types feedback in-app → POST to Apps Script URL → writes to Google Sheet and/or emails. No email address exposed, fully in-app UX. Alternative options considered: email with alias, Google Form link, CloudKit public database.
 
-## Last Session Summary (2026-02-19)
+## Last Session Summary (2026-03-23)
 
-**What was done**: Dark theme polish, depth effects, and onboarding animation:
-- **Dark theme sheets**: Settings, Help, and AddCategory sheets now match dark card theme (navy background, bluish-grey card fills) using `.scrollContentBackground(.hidden)` + `Theme.background()` + `.listRowBackground(Theme.cardFill())`.
-- **Exit edit mode on add**: "Add to Week & Save" automatically exits edit mode.
-- **Help sheet corner fix**: Unrolled `ForEach` around `Section` to fix missing bottom corner rounding on middle sections.
-- **Theme-aware collapse icon**: Light mode uses `Color(.secondaryLabel)` instead of hardcoded `.white`.
-- **Expanded card depth effect**: Expanded shadow increased to `radius: 10, x: 2, y: 2`. Collapsed dimming reduced to `opacity(0.08)` with reduced shadow `radius: 2, y: 1`. Creates forward/back depth illusion.
-- **Animation timing**: Expand/collapse slowed to `.easeOut(duration: 0.7)`.
-- **CarryOverAnimation v2**: Abstract 3-second looping animation for onboarding page 1. Green ring+checkmark crossfades to orange ring+sweeping clock hand, then back. Uses hue-shift for smooth color transitions. Still being refined — user wants further iteration.
+**What was done**: Bug fixes, major refactor, new feedback feature, and unit tests:
 
-**User's likely next steps**: Refine CarryOverAnimation further, commit, continue UI polish.
+- **`deleteCategoryEntirely` bug fix**: Captured category name before deletion in `ChecklistStore`. Consolidated all four inline "Delete Entirely" call sites (CategoryCard, ExpandedCategoryCard, RemoveCategorySheet, and the store itself) to route through the single fixed method.
+- **CarryOverAnimation v3**: Rewrote with `async/await` + `.task(id: loopCount)` replacing fragile `DispatchQueue.asyncAfter` chain. Added `globalOpacity` fade-out before loop restart so the instant state reset is invisible. Task cancellation on view disappear prevents multi-loop stacking.
+- **ContentView.swift split**: Broken 2,270-line monolith into 9 focused files. ContentView.swift is now 372 lines. All new files auto-discovered by Xcode via `PBXFileSystemSynchronizedRootGroup`.
+- **FeedbackSheet**: New in-app feedback UI (standard + retro layouts) that POSTs to a Google Apps Script webhook. Webhook URL placeholder in `FeedbackSheet.swift` — needs setup before shipping. "Send Feedback" button added to both standard and retro Settings layouts.
+- **Unit tests**: 9 test cases covering all three task modes, subtask rollover, goal progress carry/reset, category structure, and the `deleteCategoryEntirely` bug fix.
+
+**User's likely next steps**: Build and verify in Xcode, set up Google Apps Script webhook for feedback, continue UI polish or start on calendar integration.

@@ -426,12 +426,16 @@ final class ChecklistStore {
     // MARK: - Category Deletion Options
 
     func deleteCategoryEntirely(_ categoryID: UUID) {
+        // Capture the name before deletion — deleteCategory removes it from the week,
+        // so looking it up afterward would always fail.
+        let categoryName = selectedWeek?.categories.first(where: { $0.id == categoryID })?.name
+
         // Remove from current week
         deleteCategory(categoryID)
-        // Also remove matching saved template
-        if let week = selectedWeek,
-           let category = week.categories.first(where: { $0.id == categoryID }) {
-            savedCategories.removeAll { $0.name == category.name }
+
+        // Remove matching saved template
+        if let name = categoryName {
+            savedCategories.removeAll { $0.name == name }
             saveSettings()
         }
     }
