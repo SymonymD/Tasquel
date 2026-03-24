@@ -40,7 +40,7 @@ All features below are implemented and building successfully.
 | `Tasquel/Models.swift` | ~207 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
 | `Tasquel/ChecklistStore.swift` | ~492 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
 | `Tasquel/Theme.swift` | ~135 | `Theme` enum with all color/font functions + `ScanlineOverlay` (extracted from ContentView) |
-| `Tasquel/ContentView.swift` | ~372 | Root `ContentView` only: title, nav capsule, week grid layout, bottom bar, grid helpers |
+| `Tasquel/ContentView.swift` | ~607 | Root `ContentView` only: title, nav capsule, week grid layout, bottom bar, grid helpers, `BookingCalendarAnimation` |
 | `Tasquel/CategoryCard.swift` | ~210 | `CategoryCard` (collapsed) + `ExpandedCategoryCard` |
 | `Tasquel/TaskRowCard.swift` | ~310 | `TaskRowCard` + `SubTaskRowCard` + `AddTaskRowCard` |
 | `Tasquel/AddCategorySheet.swift` | ~160 | `AddCategorySheet` + `DatePickerSheet` |
@@ -167,7 +167,9 @@ e4ff1bb Add pie chart completion icon, subtask improvements, goal inline display
 3174d6a Stable grid animation, onboarding carousel, and UI polish
 c37a93a Fix add category, grid layout bugs, and expanded card sizing
 7b0c956 Dark theme sheets, depth effects, onboarding animation, and UI polish
-(pending) Bug fixes, file split, CarryOverAnimation v3, feedback sheet, unit tests
+b802c3f Bug fixes, file split, CarryOverAnimation v3, feedback sheet, unit tests
+d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
+(current) Fix duplicate type redeclarations after file split, remove orphaned VIKOV.xcodeproj, add #Preview to ContentView
 ```
 
 ## Development Workflow
@@ -227,12 +229,12 @@ c37a93a Fix add category, grid layout bugs, and expanded card sizing
 
 ## Last Session Summary (2026-03-23)
 
-**What was done**: Bug fixes, major refactor, new feedback feature, and unit tests:
+**What was done**: Fixed build breakage left by a previous Claude session's botched file split:
 
-- **`deleteCategoryEntirely` bug fix**: Captured category name before deletion in `ChecklistStore`. Consolidated all four inline "Delete Entirely" call sites (CategoryCard, ExpandedCategoryCard, RemoveCategorySheet, and the store itself) to route through the single fixed method.
-- **CarryOverAnimation v3**: Rewrote with `async/await` + `.task(id: loopCount)` replacing fragile `DispatchQueue.asyncAfter` chain. Added `globalOpacity` fade-out before loop restart so the instant state reset is invisible. Task cancellation on view disappear prevents multi-loop stacking.
-- **ContentView.swift split**: Broken 2,270-line monolith into 9 focused files. ContentView.swift is now 372 lines. All new files auto-discovered by Xcode via `PBXFileSystemSynchronizedRootGroup`.
-- **FeedbackSheet**: New in-app feedback UI (standard + retro layouts) that POSTs to a Google Apps Script webhook. Webhook URL placeholder in `FeedbackSheet.swift` — needs setup before shipping. "Send Feedback" button added to both standard and retro Settings layouts.
-- **Unit tests**: 9 test cases covering all three task modes, subtask rollover, goal progress carry/reset, category structure, and the `deleteCategoryEntirely` bug fix.
+- **Removed orphaned `VIKOV.xcodeproj`**: Leftover from the app rename. Was missing `project.pbxproj` entirely — just an empty shell causing Xcode open errors.
+- **Fixed duplicate type redeclarations**: The file split (ContentView → 9 files) was done but ContentView.swift was never cleaned up. All split types (`Theme`, `ScanlineOverlay`, `CategoryCard`, `ExpandedCategoryCard`, `TaskRowCard`, `SubTaskRowCard`, `AddTaskRowCard`, `AddCategorySheet`, `DatePickerSheet`, `SettingsSheet`, `HelpSheet`, `HelpRow`, `RemoveCategorySheet`, `OnboardingSheet`, `OnboardingFeatureRow`) still existed in ContentView.swift causing ~28,000 line diagnostics and `BUILD FAILED`. Removed all duplicate definitions — `ContentView.swift` now contains only `ContentView`, `BookingCalendarAnimation`, and a `CGFloat` helper extension.
+- **Added `#Preview` to ContentView.swift**: Canvas preview was missing entirely. Added `#Preview { ContentView() }` so Xcode canvas works again.
 
-**User's likely next steps**: Build and verify in Xcode, set up Google Apps Script webhook for feedback, continue UI polish or start on calendar integration.
+**Previous session (b802c3f)**: Bug fixes, CarryOverAnimation v3, file split, FeedbackSheet, unit tests.
+
+**User's likely next steps**: Continue feature work — Google Apps Script webhook setup for feedback, calendar integration, or iPad layout.
