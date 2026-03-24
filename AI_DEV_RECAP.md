@@ -24,7 +24,7 @@
 
 **Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2, Xcode 26.2.
 Bundle ID: `com.symonym.Tasquel`
-Repo: https://github.com/SymonymD/Vikov.git
+Repo: https://github.com/SymonymD/Tasquel
 Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
@@ -131,7 +131,7 @@ All features below are implemented and building successfully.
 38. **Theme-aware collapse icon**: Collapse button in expanded cards uses `.white` in dark/retro themes, `Color(.secondaryLabel)` in light.
 39. **Expanded card depth effect**: Expanded card shadow `radius: 10, x: 2, y: 2`. Collapsed cards when dimmed get reduced shadow `radius: 2, y: 1` and lighter dimming `opacity(0.08)`. Creates subtle forward/back depth illusion.
 40. **Expand/collapse animation**: `.easeOut(duration: 0.7)` for smooth card transitions.
-41. **CarryOverAnimation** (onboarding): Abstract looping animation — green ring+checkmark morphs to orange ring+sweeping hand (clock), then back. 3-second loop. Uses hue-shift crossfade for smooth state transitions. Replaces static green checkmark on onboarding page 1. Still being refined.
+41. **BookingCalendarAnimation** (onboarding): Native SwiftUI conversion of Lottie "booking.lottie" animation for onboarding page 1. Draws a calendar with Canvas API — rounded-rect body, gray header, 6 ring pegs, grid lines. Animated: 8 blue day tiles pop in sequentially with spring bounce, white checkmark bounces onto 3rd tile, 5 sparkle crosses twinkle around the top, then all pop out in reverse. 3-second loop. Replaced the old `CarryOverAnimation` + `MorphingCheckChevron`.
 
 ### UI Layout (Post-Redesign)
 
