@@ -9,6 +9,7 @@ struct AddCategorySheet: View {
     @State private var isCreatingNew = false
     @State private var newName = ""
     @State private var newSymbol = "folder"
+    @State private var templateToRemove: CategoryTemplate?
 
     private let symbolOptions = [
         "folder", "star", "heart", "house", "cart",
@@ -85,7 +86,7 @@ struct AddCategorySheet: View {
                             .disabled(alreadyAdded)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    store.removeSavedCategory(template.id)
+                                    templateToRemove = template
                                 } label: {
                                     Label("Remove", systemImage: "trash")
                                 }
@@ -102,6 +103,19 @@ struct AddCategorySheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .confirmationDialog("Remove saved category?", isPresented: Binding(
+                get: { templateToRemove != nil },
+                set: { if !$0 { templateToRemove = nil } }
+            )) {
+                Button("Remove Saved Category", role: .destructive) {
+                    if let templateToRemove {
+                        store.removeSavedCategory(templateToRemove.id)
+                    }
+                    templateToRemove = nil
+                }
+            } message: {
+                Text("You can create this category again later.")
             }
         }
     }

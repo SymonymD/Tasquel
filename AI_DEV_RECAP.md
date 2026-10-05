@@ -22,34 +22,35 @@
 
 ## Project
 
-**Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2, Xcode 26.2.
+**Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2 deployment target.
 Bundle ID: `com.symonym.Tasquel`
 Repo: https://github.com/SymonymD/Tasquel
-Simulator: iPhone 17 Pro (ID: `66BC7B60-5C39-4599-BAD6-839C1BA81204`, iOS 26.2)
+Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-03-23)
+## Current State (as of 2026-10-04)
 
-All features below are implemented and building successfully.
+The current working tree includes the changes below, but they have not been committed. The last full simulator test run passed (21 test definitions / 24 executions, 0 failures). The updated looping welcome animation builds successfully, and its three focused geometry tests pass.
 
 ### Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
-| `Tasquel/Models.swift` | ~207 | All data models: `TaskMode`, `TaskType`, `SubTask`, `ChecklistTask`, `Category`, `Week`, `CategoryTemplate`, `AppearanceMode`, `RetroColor` |
-| `Tasquel/ChecklistStore.swift` | ~492 | `@Observable` store: persistence, business logic, CRUD, rollover, goal tracking, future week sync, auto-complete parent from subtasks, retro color persistence, starter migration |
-| `Tasquel/Theme.swift` | ~135 | `Theme` enum with all color/font functions + `ScanlineOverlay` (extracted from ContentView) |
-| `Tasquel/ContentView.swift` | ~607 | Root `ContentView` only: title, nav capsule, week grid layout, bottom bar, grid helpers, `BookingCalendarAnimation` |
-| `Tasquel/CategoryCard.swift` | ~210 | `CategoryCard` (collapsed) + `ExpandedCategoryCard` |
-| `Tasquel/TaskRowCard.swift` | ~310 | `TaskRowCard` + `SubTaskRowCard` + `AddTaskRowCard` |
-| `Tasquel/AddCategorySheet.swift` | ~160 | `AddCategorySheet` + `DatePickerSheet` |
-| `Tasquel/SettingsSheet.swift` | ~230 | `SettingsSheet` (standard + retro layouts, all shared rows) |
-| `Tasquel/HelpSheet.swift` | ~130 | `HelpSheet` (standard + retro) + `HelpRow` |
-| `Tasquel/RemoveCategorySheet.swift` | ~55 | `RemoveCategorySheet` |
-| `Tasquel/FeedbackSheet.swift` | ~200 | `FeedbackSheet` — in-app feedback via Google Apps Script webhook (standard + retro layouts) |
-| `Tasquel/OnboardingSheet.swift` | ~290 | `OnboardingSheet` + `OnboardingFeatureRow` + `CarryOverAnimation` + `CheckmarkPath` |
-| `TasquelTests/TasquelTests.swift` | ~175 | Unit tests for rollover logic (all three task modes, subtasks, goal progress, deleteCategoryEntirely) |
+| `Tasquel/Models.swift` | 206 | Data models and enums |
+| `Tasquel/ChecklistStore.swift` | 539 | `@Observable` store, persistence, CRUD, rollover, validation, and load-error safeguards |
+| `Tasquel/Theme.swift` | 140 | Theme functions and `ScanlineOverlay` |
+| `Tasquel/ContentView.swift` | 693 | Root view, week grid/layout state, navigation, and bottom bar |
+| `Tasquel/CategoryCard.swift` | 294 | Collapsed/expanded category cards and deletion confirmations |
+| `Tasquel/TaskRowCard.swift` | 563 | Task, subtask, and add-task rows; goal editing and confirmations |
+| `Tasquel/AddCategorySheet.swift` | 188 | Add Category and Date Picker sheets |
+| `Tasquel/SettingsSheet.swift` | 249 | Standard and retro settings layouts |
+| `Tasquel/HelpSheet.swift` | 137 | Help sheet and rows |
+| `Tasquel/RemoveCategorySheet.swift` | 52 | Legacy removal sheet (expanded card no longer presents it) |
+| `Tasquel/FeedbackSheet.swift` | 219 | Feedback UI/webhook code; currently not linked from Settings |
+| `Tasquel/OnboardingSheet.swift` | 484 | Onboarding, looping clock-to-check animation, and its dedicated Xcode preview |
+| `TasquelTests/TasquelTests.swift` | 353 | Rollover, safety, and clock-shape tests |
+| `TasquelUITests/TasquelUITests.swift` | 111 | UI journey and category expansion tests |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
 ### Features Implemented
@@ -93,7 +94,7 @@ All features below are implemented and building successfully.
 20. **Card-based grid UI** (Figma redesign):
     - Replaced `NavigationStack` + `List` with `ZStack` + `ScrollView` + `LazyVGrid`
     - Collapsed cards in 2-column grid with SF Symbol, name, pie chart completion icon, completed count, task dot previews, expand arrow (↗)
-    - Single expanded category (`UUID?`) instead of `Set<UUID>` — tapping a card expands it full-width
+    - Multiple categories can remain expanded simultaneously (see item 42)
     - Expanded card shows all tasks with circles (filled green = done, empty = not), subtasks, add-task field, edit/checkmark toggle
     - Edit mode shows inline HStack of mode icons (carry-over, repeating, one-time) + red trash per task
     - Dashed-border "Add Category" card appears in grid during edit mode
@@ -118,7 +119,7 @@ All features below are implemented and building successfully.
     - CRT-style scanline overlay on cards
     - Settings and Help sheets have dual rendering paths (standard List vs retro ScrollView with terminal-styled sections)
 27. **Retro color palette**: 6 terminal phosphor colors (green, amber, blue, white, red, purple), each with 3 brightness levels (bright, dim, faint). Selectable in Settings when retro theme is active. Persisted via `settings.json`.
-28. **Unified HStack grid layout**: Each row is always an HStack with left/right slots. When a card expands, it stays in its HStack and the neighbor shrinks to `width: 0`. Uses `.id(category.id)` and `.transition(.identity)` for smooth in-place animation. Stable position-based row UUIDs prevent SwiftUI from treating reflows as insertions.
+28. **Grid layout**: Collapsed cards form two-column rows; each expanded card takes a full-width row. The layout tracks visual order so expanding a right-hand neighbor does not trade places with an already-expanded card.
 29. **Expanded card size bumps**: When expanded, font/icon sizes increase — category icon `.body` + `scaleEffect(1.1)`, title `.title3`, edit/pie icons 20pt, task title 16pt, subtask title 14pt, mode/type icons 16pt, collapse icon 20pt white `rectangle.compress.vertical`. Collapsed cards get dimmed overlay (`Color.black.opacity(0.15)`).
 30. **Edit-mode category removal**: Red minus circle (`minus.circle.fill`) overlay in top-right corner of collapsed cards during edit mode. Tapping deletes the category.
 31. **Add category button fills empty slot**: When category count is odd, the dashed "Add Category" card fills the empty right slot in the last row instead of creating a new row.
@@ -131,7 +132,9 @@ All features below are implemented and building successfully.
 38. **Theme-aware collapse icon**: Collapse button in expanded cards uses `.white` in dark/retro themes, `Color(.secondaryLabel)` in light.
 39. **Expanded card depth effect**: Expanded card shadow `radius: 10, x: 2, y: 2`. Collapsed cards when dimmed get reduced shadow `radius: 2, y: 1` and lighter dimming `opacity(0.08)`. Creates subtle forward/back depth illusion.
 40. **Expand/collapse animation**: `.easeOut(duration: 0.7)` for smooth card transitions.
-41. **BookingCalendarAnimation** (onboarding): Native SwiftUI conversion of Lottie "booking.lottie" animation for onboarding page 1. Draws a calendar with Canvas API — rounded-rect body, gray header, 6 ring pegs, grid lines. Animated: 8 blue day tiles pop in sequentially with spring bounce, white checkmark bounces onto 3rd tile, 5 sparkle crosses twinkle around the top, then all pop out in reverse. 3-second loop. Replaced the old `CarryOverAnimation` + `MorphingCheckChevron`.
+41. **Looping welcome animation**: `CarryOverAnimation` draws an analog clock whose two hands begin at noon, sweep to 10:10, then become a standard checkmark while the clock face becomes a task circle. The checkmark bend is exactly at the circle center; its short arm uses a 315° hand angle and the longer arm uses 405°. After a one-second hold, the illustration fades out, resets invisibly, and loops. Reduce Motion still shows the finished state without movement. A dedicated `#Preview("Welcome animation")` makes the loop directly inspectable in Xcode, and `ClockHandsShape` geometry has focused unit tests.
+42. **Independent category expansion across weeks**: `expandedCategoryKeys: Set<CategoryLayoutKey>` allows multiple cards open at once. Keys use category name plus occurrence (rather than UUID, which changes on rollover), so expanded state follows matching categories when navigating between weeks. This is view state, not persistence across app relaunches. UI tests cover neighboring cards and week navigation.
+43. **Audit-driven safety and UX fixes**: Unreadable week/settings JSON now shows a retryable error and is not overwritten; past-week mutations are rejected in the store; goal values must be finite and valid. Task/subtask/category deletion and destructive goal-to-checkbox changes require confirmation. Completed task titles retain normal contrast, and goal target/progress/unit can be edited after setup. Navigation and category cards have clearer accessibility labels; the bottom bar and card sizing were refined.
 
 ### UI Layout (Post-Redesign)
 
@@ -139,7 +142,7 @@ All features below are implemented and building successfully.
 - **Title**: "Week of M/d/yy" centered, `.title.bold()` (monospaced with cursor in retro mode)
 - **Navigation capsule**: Centered `HStack` with `< calendar >` in theme-adaptive capsule
 - **Content**: `ScrollView` + unified HStack rows (2 columns, 8pt spacing)
-- **Expanded card**: Stays in its HStack row, neighbor shrinks to width 0. Bumped font/icon sizes (title `.title3`, icons 16–20pt)
+- **Expanded card**: Takes a full-width row; other expanded cards stay open. Visual ordering prevents neighbors from unexpectedly swapping positions. Bumped font/icon sizes (title `.title3`, icons 16–20pt)
 - **Bottom bar**: `HStack` — gear circle (left), date text (center), pencil/checkmark circle (right)
 - **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
 - **Add Category**: Dashed-border card in grid during edit mode
@@ -169,23 +172,22 @@ c37a93a Fix add category, grid layout bugs, and expanded card sizing
 7b0c956 Dark theme sheets, depth effects, onboarding animation, and UI polish
 b802c3f Bug fixes, file split, CarryOverAnimation v3, feedback sheet, unit tests
 d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
-(current) Fix duplicate type redeclarations after file split, remove orphaned VIKOV.xcodeproj, add #Preview to ContentView
+de4d5f7 Fix duplicate redeclarations, remove VIKOV.xcodeproj, add #Preview
 ```
+
+The 2026-10-04 changes in the working tree are not yet committed.
 
 ## Development Workflow
 
-- Build after each checkpoint: `xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
-- Install to sim: `xcrun simctl install 66BC7B60-5C39-4599-BAD6-839C1BA81204 ~/Library/Developer/Xcode/DerivedData/Tasquel-aviiopvkyuygsagufoplyonwfrif/Build/Products/Debug-iphonesimulator/Tasquel.app`
-- Launch: `xcrun simctl launch 66BC7B60-5C39-4599-BAD6-839C1BA81204 com.symonym.Tasquel`
-- Screenshot: `xcrun simctl io 66BC7B60-5C39-4599-BAD6-839C1BA81204 screenshot /tmp/tasquel.png`
-- Fresh install test: `xcrun simctl uninstall ... && xcrun simctl install ...`
+- Build/test from the project directory: `xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`
+- Use `xcrun simctl list devices available` to find a current simulator ID; the old IDs and DerivedData path below may no longer exist.
+- An isolated iPhone 17 Pro motion-preview simulator used this session had ID `F9A016AE-9AA7-445B-85B5-89F7C4E6D243` (iOS 26.3). The latest looping sequence is recorded at `/private/tmp/tasquel-clock-to-check-loop.mov` (temporary file, not in repo).
 - New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
-- DerivedData path changed: `Tasquel-aviiopvkyuygsagufoplyonwfrif` (was `Tasquel-enfbpsqjcwhtrgdnotmnlfnayzgj`)
 
 24. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
 25. **CarryOverAnimation v3**: Replaced `DispatchQueue.main.asyncAfter` chain with `async/await` + `.task(id: loopCount)`. Benefits: (a) SwiftUI cancels the task when view disappears, preventing multiple loops from stacking; (b) clean `guard !Task.isCancelled` gates prevent stale state updates; (c) added fade-out before loop restart so the instant state reset is invisible. Also fixed ring `rotationEffect` to always start at −90° (12 o'clock).
 26. **File split**: ContentView.swift was 2,270 lines. Split into 9 focused files (Theme.swift, CategoryCard.swift, TaskRowCard.swift, AddCategorySheet.swift, SettingsSheet.swift, HelpSheet.swift, RemoveCategorySheet.swift, OnboardingSheet.swift, FeedbackSheet.swift). ContentView.swift is now 372 lines. Works automatically via `PBXFileSystemSynchronizedRootGroup`.
-27. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., "feedback": ...}` JSON to a Google Apps Script webhook URL. Shows inline status (sending / success / failure). Auto-dismisses 1.5s after success. Webhook URL is a constant in FeedbackSheet.swift — replace with deployed Apps Script URL before shipping.
+27. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., "feedback": ...}` JSON to a Google Apps Script webhook URL. Shows inline status (sending / success / failure). Auto-dismisses 1.5s after success. Webhook URL is a constant in FeedbackSheet.swift — replace with deployed Apps Script URL before shipping. The Settings entry point is currently removed, so the sheet is not reachable from the app UI.
 
 ## Key Decisions & Gotchas
 
@@ -197,7 +199,7 @@ d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
 6. **GitHub auth**: Uses `gh` CLI (installed via Homebrew), HTTPS protocol, account `SymonymD`
 7. **Monday-based weeks**: Must set `calendar.firstWeekday = 2` in `mondayOfWeek(containing:)` — US locale defaults to Sunday which caused Sunday dates to map to the wrong week
 8. **Future week stale data**: `ensureWeekExists` only creates a week once. If you navigate to a future week, go back, add recurring tasks, then navigate forward again, those tasks won't appear unless explicitly synced. Fixed with `syncFutureWeek(for:)` which runs on every future-week navigation.
-9. **Category UUIDs differ per week**: Each week gets fresh category UUIDs from rollForward. Expansion tracking must use single `UUID?` (not `Set<UUID>`) and reset on week navigation.
+9. **Category UUIDs differ per week**: Each week gets fresh category UUIDs from rollover. The current UI instead tracks expansion by category name plus occurrence, allowing multiple open cards and retaining their open state when navigating between weeks. This state is in memory only.
 10. **SourceKit false positives**: Cross-file resolution errors like `Cannot find 'Category' in scope` or `Category (aka 'OpaquePointer')` are transient SourceKit issues — all builds succeed. Ignore these diagnostics.
 11. **Swipe actions require List**: `swipeActions` modifier only works inside `List`. After migrating to `ScrollView` + `LazyVGrid`, swipe actions were replaced with inline edit-mode icons and context menus.
 12. **Rollover resets completed tasks on test data**: When writing test data directly to `checklist.json`, the `ensureWeekExists` init logic may strip completed carry-over tasks and one-time tasks. Completed tasks show as red dots because rollover reset them. This is correct app behavior — only affects manual test data injection.
@@ -212,6 +214,9 @@ d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
 21. **`print()` invisible in simctl logs**: `print()` output doesn't appear in `log show` for simctl-launched apps. Use `os.Logger` for debugging.
 22. **`let` bindings in computed `some View` properties**: Causes "no return statements" compile error. Fix: extract to separate computed property helpers or functions.
 23. **`Section` inside `ForEach` breaks List corner rounding**: SwiftUI loses section boundary info. Fix: unroll sections as direct List children (e.g. `helpSection(0)` through `helpSection(5)`).
+24. **Welcome animation visibility in Xcode (fixed)**: The app-level welcome sheet still appears only while `hasSeenWelcome == false`, but `OnboardingSheet.swift` now has a dedicated `#Preview("Welcome animation")`. Use that preview to inspect the continuously looping motion without resetting onboarding or user data.
+25. **Data-load failure safety**: Do not allow default state to overwrite unreadable `checklist.json` or `settings.json`. `ChecklistStore` now exposes `persistenceError`, blocks saves after decode failure, and offers retry from the root view.
+26. **Test isolation (fixed 2026-10-05)**: `ChecklistStore.init(directory:defaults:)` is injectable. Unit tests use `makeIsolatedStore()` (temp directory + throwaway `UserDefaults` suite), so they no longer read or overwrite the simulator's real `checklist.json`/`settings.json` and run safely in parallel. All 17 unit tests pass. `retryLoadingData()` now runs the same setup as launch (starter seeding, current week, migration).
 
 ## Figma Reference
 
@@ -224,17 +229,13 @@ d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
 
 - **Calendar integration (paid upgrade)**: Pull user's calendar events into Tasquel. Key design decisions still open: (1) events as tasks vs read-only reference vs user choice per-category, (2) payment model (one-time vs subscription), (3) calendar source — Apple EventKit recommended since it covers all calendars synced to device (iCloud, Google, Exchange) without extra OAuth. Existing Settings already has a "Coming Soon" toggle placeholder.
 - **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
+- **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
+- **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
 - iPad-specific layout optimizations
 - Data export/import
 
-## Last Session Summary (2026-03-23)
+## Last Session Summary (2026-10-04)
 
-**What was done**: Fixed build breakage left by a previous Claude session's botched file split:
+**What was done**: Audited the SwiftUI architecture and UX flow, then implemented the safety and interaction fixes listed above. Category cards can now expand independently, keep their visual order, and retain open state when changing weeks. The welcome illustration was redesigned as a two-handed clock that sweeps from noon to 10:10 and morphs into a checkmark. It now loops with a clean fade/reset, uses a steeper conventional checkmark centered in the circle, and has a dedicated replayable Xcode preview. Added unit/UI coverage, built and exercised the app in the simulator, and recorded the final loop.
 
-- **Removed orphaned `VIKOV.xcodeproj`**: Leftover from the app rename. Was missing `project.pbxproj` entirely — just an empty shell causing Xcode open errors.
-- **Fixed duplicate type redeclarations**: The file split (ContentView → 9 files) was done but ContentView.swift was never cleaned up. All split types (`Theme`, `ScanlineOverlay`, `CategoryCard`, `ExpandedCategoryCard`, `TaskRowCard`, `SubTaskRowCard`, `AddTaskRowCard`, `AddCategorySheet`, `DatePickerSheet`, `SettingsSheet`, `HelpSheet`, `HelpRow`, `RemoveCategorySheet`, `OnboardingSheet`, `OnboardingFeatureRow`) still existed in ContentView.swift causing ~28,000 line diagnostics and `BUILD FAILED`. Removed all duplicate definitions — `ContentView.swift` now contains only `ContentView`, `BookingCalendarAnimation`, and a `CGFloat` helper extension.
-- **Added `#Preview` to ContentView.swift**: Canvas preview was missing entirely. Added `#Preview { ContentView() }` so Xcode canvas works again.
-
-**Previous session (b802c3f)**: Bug fixes, CarryOverAnimation v3, file split, FeedbackSheet, unit tests.
-
-**User's likely next steps**: Continue feature work — Google Apps Script webhook setup for feedback, calendar integration, or iPad layout.
+**In progress / next**: Review the final loop with the user and adjust timing/geometry if requested. The implementation and tests are uncommitted. Other open work: feedback webhook/entry point, calendar integration, iPad layout, expansion persistence across relaunch, and data export/import.

@@ -18,6 +18,10 @@ struct TaskRowCard: View {
     @State private var addProgressText = ""
     @State private var goalTargetText = ""
     @State private var goalUnitText = ""
+    @State private var editedGoalProgressText = ""
+    @State private var isEditingGoal = false
+    @State private var showDeleteConfirmation = false
+    @State private var showTypeChangeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -61,13 +65,14 @@ struct TaskRowCard: View {
                 } else {
                     Text(task.title)
                         .font(Theme.isRetro(theme) ? .system(size: 16, design: .monospaced) : .system(size: 16))
-                        .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                         .onTapGesture(count: 2) {
+                            guard !isPastWeek else { return }
                             editedTitle = task.title
                             isEditingTitle = true
                         }
                         .onTapGesture {
-                            if isEditing {
+                            if isEditing && !isPastWeek {
                                 editedTitle = task.title
                                 isEditingTitle = true
                             }
@@ -114,6 +119,7 @@ struct TaskRowCard: View {
             }
         }
         .contextMenu {
+            if !isPastWeek {
             Section("Task Mode") {
                 ForEach(TaskMode.allCases, id: \.self) { mode in
                     Button {
@@ -127,7 +133,7 @@ struct TaskRowCard: View {
             Section("Task Type") {
                 ForEach(TaskType.allCases, id: \.self) { type in
                     Button {
-                        store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+                        selectTaskType(type)
                     } label: {
                         Label(type.label, systemImage: type.symbol)
                         if task.taskType == type { Image(systemName: "checkmark") }
@@ -145,9 +151,24 @@ struct TaskRowCard: View {
                     }
                 }
                 Button("Delete", systemImage: "trash", role: .destructive) {
-                    store.deleteTask(categoryID: categoryID, taskID: task.id)
+                    showDeleteConfirmation = true
                 }
             }
+            }
+        }
+        .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation) {
+            Button("Delete Task", role: .destructive) {
+                store.deleteTask(categoryID: categoryID, taskID: task.id)
+            }
+        } message: {
+            Text("This removes the task and its sub-tasks from this week.")
+        }
+        .confirmationDialog("Change to checkbox?", isPresented: $showTypeChangeConfirmation) {
+            Button("Change Type", role: .destructive) {
+                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: .checkbox)
+            }
+        } message: {
+            Text("This clears the goal target and progress.")
         }
     }
 
@@ -168,7 +189,7 @@ struct TaskRowCard: View {
             }
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
-                    store.deleteTask(categoryID: categoryID, taskID: task.id)
+                    showDeleteConfirmation = true
                 }
             } label: {
                 Image(systemName: "trash")
@@ -185,7 +206,7 @@ struct TaskRowCard: View {
         HStack(spacing: 0) {
             ForEach(TaskType.allCases, id: \.self) { type in
                 Button {
-                    store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+                    selectTaskType(type)
                 } label: {
                     Image(systemName: type.symbol)
                         .font(.system(size: 16))
@@ -255,7 +276,44 @@ struct TaskRowCard: View {
                 }
                 .padding(.leading, 24)
 
-                if !isPastWeek && !task.goalIsComplete {
+                if !isPastWeek {
+                    Button(isEditingGoal ? "Cancel editing goal" : "Edit goal") {
+                        if isEditingGoal {
+                            isEditingGoal = false
+                        } else {
+                            goalTargetText = String(target)
+                            editedGoalProgressText = String(task.goalProgress ?? 0)
+                            goalUnitText = task.goalUnit ?? ""
+                            isEditingGoal = true
+                        }
+                    }
+                    .font(.caption)
+                    .padding(.leading, 24)
+                }
+
+                if isEditingGoal && !isPastWeek {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Target", text: $goalTargetText)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Progress", text: $editedGoalProgressText)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Unit", text: $goalUnitText)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save Goal") {
+                            guard let target = Double(goalTargetText), target.isFinite, target > 0,
+                                  let progress = Double(editedGoalProgressText), progress.isFinite, progress >= 0 else { return }
+                            store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
+                            store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
+                            isEditingGoal = false
+                        }
+                        .disabled(!canSaveEditedGoal)
+                    }
+                    .padding(.leading, 24)
+                }
+
+                if !isPastWeek && !task.goalIsComplete && !isEditingGoal {
                     HStack(spacing: 8) {
                         Image(systemName: "plus").font(.subheadline).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                         TextField("Add progress", text: $addProgressText)
@@ -276,7 +334,7 @@ struct TaskRowCard: View {
                                 .foregroundStyle(.white)
                         }
                         .buttonStyle(.plain)
-                        .disabled(Double(addProgressText) == nil)
+                        .disabled(!(Double(addProgressText).map { $0.isFinite && $0 > 0 } ?? false))
                     }
                     .padding(.leading, 24)
                 }
@@ -297,8 +355,10 @@ struct TaskRowCard: View {
                         if let target = Double(goalTargetText), target > 0 {
                             store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
                         }
-                        goalTargetText = ""
-                        goalUnitText = ""
+                        if Double(goalTargetText).map({ $0.isFinite && $0 > 0 }) == true {
+                            goalTargetText = ""
+                            goalUnitText = ""
+                        }
                     } label: {
                         Text("Set")
                             .font(.caption.bold())
@@ -307,7 +367,7 @@ struct TaskRowCard: View {
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
-                    .disabled(Double(goalTargetText) == nil)
+                    .disabled(!(Double(goalTargetText).map { $0.isFinite && $0 > 0 } ?? false))
                 }
                 .padding(.leading, 24)
             }
@@ -322,6 +382,22 @@ struct TaskRowCard: View {
             store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
         newSubtaskTitle = ""
+    }
+
+    private var canSaveEditedGoal: Bool {
+        guard let target = Double(goalTargetText), target.isFinite, target > 0,
+              let progress = Double(editedGoalProgressText), progress.isFinite, progress >= 0 else { return false }
+        return true
+    }
+
+    private func selectTaskType(_ type: TaskType) {
+        guard !isPastWeek, task.taskType != type else { return }
+        if task.taskType == .goal && type == .checkbox &&
+            (task.goalTarget != nil || task.goalProgress != nil) {
+            showTypeChangeConfirmation = true
+        } else {
+            store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+        }
     }
 
     private func addGoalProgress() {
@@ -349,6 +425,7 @@ struct SubTaskRowCard: View {
 
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -371,7 +448,7 @@ struct SubTaskRowCard: View {
             }
             .buttonStyle(.plain)
 
-            if isEditing && isEditingTitle {
+            if isEditing && !isPastWeek && isEditingTitle {
                 TextField("Sub-task", text: $editedTitle)
                     .font(Theme.isRetro(theme) ? .system(size: 14, design: .monospaced) : .system(size: 14))
                     .onSubmit {
@@ -387,7 +464,7 @@ struct SubTaskRowCard: View {
                     .foregroundStyle(subtask.isCompleted ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     .onTapGesture {
-                        if isEditing {
+                        if isEditing && !isPastWeek {
                             editedTitle = subtask.title
                             isEditingTitle = true
                         }
@@ -396,11 +473,9 @@ struct SubTaskRowCard: View {
 
             Spacer()
 
-            if isEditing {
+            if isEditing && !isPastWeek {
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
-                    }
+                    showDeleteConfirmation = true
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.caption).foregroundStyle(.red)
@@ -410,6 +485,11 @@ struct SubTaskRowCard: View {
         }
         .padding(.leading, 24)
         .padding(.vertical, 2)
+        .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation) {
+            Button("Delete Sub-Task", role: .destructive) {
+                store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+            }
+        }
     }
 }
 

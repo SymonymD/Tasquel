@@ -12,6 +12,10 @@ final class ChecklistStore {
     var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
     var userName: String = ""
+    private(set) var weekLoadError: String?
+    private(set) var settingsLoadError: String?
+
+    var persistenceError: String? { weekLoadError ?? settingsLoadError }
 
     var hasSetName: Bool { !userName.isEmpty }
 
@@ -32,19 +36,32 @@ final class ChecklistStore {
         }
     }
 
-    private let fileURL: URL = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appending(path: "checklist.json")
-    }()
+    private let fileURL: URL
+    private let settingsURL: URL
+    private let defaults: UserDefaults
 
-    private let settingsURL: URL = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appending(path: "settings.json")
-    }()
+    /// `directory` and `defaults` are injectable so tests never touch the app's real data.
+    init(directory: URL = .documentsDirectory, defaults: UserDefaults = .standard) {
+        fileURL = directory.appending(path: "checklist.json")
+        settingsURL = directory.appending(path: "settings.json")
+        self.defaults = defaults
+        userName = defaults.string(forKey: "userName") ?? ""
+        loadAndPrepare()
+    }
 
-    init() {
-        userName = UserDefaults.standard.string(forKey: "userName") ?? ""
+    /// Init order matters: settings → seed starter templates → weeks → current week.
+    /// Stops at the first unreadable file so defaults never overwrite it.
+    private func loadAndPrepare() {
         loadSettings()
+        guard settingsLoadError == nil else { return }
+        seedStarterTemplates()
+        load()
+        guard weekLoadError == nil else { return }
+        let currentWeek = ensureWeekExists(for: Date())
+        migrateStartersIfNeeded(into: currentWeek)
+    }
+
+    private func seedStarterTemplates() {
         if savedCategories.isEmpty {
             savedCategories = CategoryTemplate.starters
             saveSettings()
@@ -59,10 +76,11 @@ final class ChecklistStore {
             }
             if !addedStarters.isEmpty { saveSettings() }
         }
-        load()
-        let currentWeek = ensureWeekExists(for: Date())
-        // One-time migration: add missing starters to current week
-        if !UserDefaults.standard.bool(forKey: "didMigrateStarters_v1") {
+    }
+
+    /// One-time migration: add missing starters to current week
+    private func migrateStartersIfNeeded(into currentWeek: Week) {
+        if !defaults.bool(forKey: "didMigrateStarters_v1") {
             if let wi = weeks.firstIndex(where: { $0.id == currentWeek.id }) {
                 var didAddToWeek = false
                 for starter in CategoryTemplate.starters {
@@ -73,26 +91,36 @@ final class ChecklistStore {
                 }
                 if didAddToWeek { save() }
             }
-            UserDefaults.standard.set(true, forKey: "didMigrateStarters_v1")
+            defaults.set(true, forKey: "didMigrateStarters_v1")
         }
     }
 
     // MARK: - Persistence
 
     func load() {
-        guard FileManager.default.fileExists(atPath: fileURL.path()) else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path()) else {
+            weekLoadError = nil
+            return
+        }
         do {
             let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             weeks = try decoder.decode([Week].self, from: data)
             sortWeeks()
+            weekLoadError = nil
         } catch {
+            weekLoadError = "Your saved weeks could not be opened. The file has not been changed."
             print("Failed to load: \(error)")
         }
     }
 
+    func retryLoadingData() {
+        loadAndPrepare()
+    }
+
     func save() {
+        guard persistenceError == nil else { return }
         do {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
@@ -114,7 +142,10 @@ final class ChecklistStore {
     }
 
     func loadSettings() {
-        guard FileManager.default.fileExists(atPath: settingsURL.path()) else { return }
+        guard FileManager.default.fileExists(atPath: settingsURL.path()) else {
+            settingsLoadError = nil
+            return
+        }
         do {
             let data = try Data(contentsOf: settingsURL)
             let settings = try JSONDecoder().decode(Settings.self, from: data)
@@ -122,12 +153,15 @@ final class ChecklistStore {
             appearanceMode = settings.appearanceMode
             retroColor = settings.retroColor ?? .green
             hasSeenWelcome = settings.hasSeenWelcome
+            settingsLoadError = nil
         } catch {
+            settingsLoadError = "Your settings could not be opened. The file has not been changed."
             print("Failed to load settings: \(error)")
         }
     }
 
     func saveSettings() {
+        guard persistenceError == nil else { return }
         do {
             let settings = Settings(
                 savedCategories: savedCategories,
@@ -159,7 +193,7 @@ final class ChecklistStore {
 
     func setUserName(_ name: String) {
         userName = name
-        UserDefaults.standard.set(name, forKey: "userName")
+        defaults.set(name, forKey: "userName")
     }
 
     // MARK: - Saved Category Templates
@@ -243,6 +277,7 @@ final class ChecklistStore {
     }
 
     func navigateToDate(_ date: Date) {
+        guard persistenceError == nil else { return }
         selectedDate = date
         let week = ensureWeekExists(for: date)
         if week.isFutureWeek {
@@ -309,6 +344,7 @@ final class ChecklistStore {
 
     func addCategory(name: String, symbol: String) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
         weeks[wi].categories.append(Category(name: name, symbol: symbol))
         save()
@@ -316,6 +352,7 @@ final class ChecklistStore {
 
     func deleteCategory(_ categoryID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
         weeks[wi].categories.removeAll { $0.id == categoryID }
         save()
@@ -323,6 +360,7 @@ final class ChecklistStore {
 
     func saveCategoryAsTemplate(_ categoryID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let category = week.categories.first(where: { $0.id == categoryID }) else { return }
         // Don't duplicate
         if !savedCategories.contains(where: { $0.name == category.name }) {
@@ -332,6 +370,7 @@ final class ChecklistStore {
 
     func renameCategory(_ categoryID: UUID, newName: String) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         weeks[wi].categories[ci].name = newName
@@ -342,6 +381,7 @@ final class ChecklistStore {
 
     func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         weeks[wi].categories[ci].tasks.append(ChecklistTask(title: title, mode: mode))
@@ -350,6 +390,7 @@ final class ChecklistStore {
 
     func toggleTask(categoryID: UUID, taskID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -359,6 +400,7 @@ final class ChecklistStore {
 
     func deleteTask(categoryID: UUID, taskID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
@@ -367,6 +409,7 @@ final class ChecklistStore {
 
     func updateTaskMode(categoryID: UUID, taskID: UUID, mode: TaskMode) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -376,6 +419,7 @@ final class ChecklistStore {
 
     func renameTask(categoryID: UUID, taskID: UUID, newTitle: String) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -387,6 +431,7 @@ final class ChecklistStore {
 
     func updateTaskType(categoryID: UUID, taskID: UUID, type: TaskType) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -400,7 +445,9 @@ final class ChecklistStore {
     }
 
     func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, unit: String) {
+        guard target.isFinite, target > 0 else { return }
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -413,7 +460,9 @@ final class ChecklistStore {
     }
 
     func updateGoalProgress(categoryID: UUID, taskID: UUID, progress: Double) {
+        guard progress.isFinite, progress >= 0 else { return }
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -426,6 +475,7 @@ final class ChecklistStore {
     // MARK: - Category Deletion Options
 
     func deleteCategoryEntirely(_ categoryID: UUID) {
+        guard selectedWeek?.isPastWeek == false else { return }
         // Capture the name before deletion — deleteCategory removes it from the week,
         // so looking it up afterward would always fail.
         let categoryName = selectedWeek?.categories.first(where: { $0.id == categoryID })?.name
@@ -444,6 +494,7 @@ final class ChecklistStore {
 
     func addSubtask(categoryID: UUID, taskID: UUID, title: String) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -453,6 +504,7 @@ final class ChecklistStore {
 
     func toggleSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
@@ -468,6 +520,7 @@ final class ChecklistStore {
 
     func deleteSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -477,6 +530,7 @@ final class ChecklistStore {
 
     func renameSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, newTitle: String) {
         guard let week = selectedWeek,
+              !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),

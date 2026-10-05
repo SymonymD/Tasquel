@@ -1,5 +1,44 @@
 import SwiftUI
 
+private enum CategoryDeletion {
+    case thisWeek
+    case entirely
+}
+
+private extension View {
+    func categoryDeletionConfirmation(
+        deletion: Binding<CategoryDeletion?>,
+        category: Category,
+        store: ChecklistStore
+    ) -> some View {
+        confirmationDialog(
+            "Remove \(category.name)?",
+            isPresented: Binding(
+                get: { deletion.wrappedValue != nil },
+                set: { if !$0 { deletion.wrappedValue = nil } }
+            )
+        ) {
+            Button(
+                deletion.wrappedValue == .entirely ? "Delete Entirely" : "Remove from This Week",
+                role: .destructive
+            ) {
+                withAnimation {
+                    if deletion.wrappedValue == .entirely {
+                        store.deleteCategoryEntirely(category.id)
+                    } else {
+                        store.deleteCategory(category.id)
+                    }
+                }
+                deletion.wrappedValue = nil
+            }
+        } message: {
+            Text(deletion.wrappedValue == .entirely
+                 ? "This removes the category and its tasks from this week and removes its saved template."
+                 : "This removes the category and its tasks from this week.")
+        }
+    }
+}
+
 // MARK: - Category Card (Collapsed)
 
 struct CategoryCard: View {
@@ -7,13 +46,17 @@ struct CategoryCard: View {
     let store: ChecklistStore
     var dimmed: Bool = false
     var isEditing: Bool = false
+    var isPastWeek: Bool = false
     let onExpand: () -> Void
+
+    @State private var deletion: CategoryDeletion?
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        Button(action: onExpand) {
+            VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
                 if !Theme.isRetro(theme) {
                     Image(systemName: category.symbol).font(.subheadline)
@@ -58,10 +101,10 @@ struct CategoryCard: View {
                         .font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
             }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
-        .background {
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            .background {
             RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
                 .fill(Theme.cardFill(theme))
                 .overlay(
@@ -69,17 +112,20 @@ struct CategoryCard: View {
                         .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
                 )
                 .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : (dimmed ? 2 : 6), x: 0, y: Theme.isRetro(theme) ? 0 : (dimmed ? 1 : 3))
-        }
-        .overlay {
+            }
+            .overlay {
             if dimmed {
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
                     .fill(Color.black.opacity(0.08))
             }
+            }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(category.name), \(category.completedCount) of \(category.totalCount) tasks complete")
         .overlay(alignment: .topTrailing) {
-            if isEditing {
+            if isEditing && !isPastWeek {
                 Button {
-                    withAnimation { store.deleteCategory(category.id) }
+                    deletion = .thisWeek
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.title3)
@@ -89,19 +135,21 @@ struct CategoryCard: View {
                 .offset(x: 8, y: -8)
             }
         }
-        .onTapGesture { onExpand() }
         .contextMenu {
-            Button("Save for Future Use", systemImage: "square.and.arrow.down") {
-                store.saveCategoryAsTemplate(category.id)
-            }
-            Divider()
-            Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
-                withAnimation { store.deleteCategory(category.id) }
-            }
-            Button("Delete Entirely", systemImage: "trash", role: .destructive) {
-                withAnimation { store.deleteCategoryEntirely(category.id) }
+            if !isPastWeek {
+                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
+                    store.saveCategoryAsTemplate(category.id)
+                }
+                Divider()
+                Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
+                    deletion = .thisWeek
+                }
+                Button("Delete Entirely", systemImage: "trash", role: .destructive) {
+                    deletion = .entirely
+                }
             }
         }
+        .categoryDeletionConfirmation(deletion: $deletion, category: category, store: store)
     }
 
     private func completionIcon(for category: Category) -> some View {
@@ -137,7 +185,7 @@ struct ExpandedCategoryCard: View {
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
 
-    @State private var showDeleteOptions = false
+    @State private var deletion: CategoryDeletion?
 
     private let expandedScale: CGFloat = 1.1
 
@@ -166,8 +214,6 @@ struct ExpandedCategoryCard: View {
             Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
                 .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-
-            Divider().padding(.vertical, 2)
 
             // Tasks
             ForEach(category.tasks) { task in
@@ -211,21 +257,20 @@ struct ExpandedCategoryCard: View {
                 .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 10, x: Theme.isRetro(theme) ? 0 : 2, y: Theme.isRetro(theme) ? 0 : 2)
         }
         .contextMenu {
-            Button("Save for Future Use", systemImage: "square.and.arrow.down") {
-                store.saveCategoryAsTemplate(category.id)
-            }
-            Divider()
-            Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
-                withAnimation { store.deleteCategory(category.id) }
-            }
-            Button("Delete Entirely", systemImage: "trash", role: .destructive) {
-                withAnimation { store.deleteCategoryEntirely(category.id) }
+            if !isPastWeek {
+                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
+                    store.saveCategoryAsTemplate(category.id)
+                }
+                Divider()
+                Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
+                    deletion = .thisWeek
+                }
+                Button("Delete Entirely", systemImage: "trash", role: .destructive) {
+                    deletion = .entirely
+                }
             }
         }
-        .sheet(isPresented: $showDeleteOptions) {
-            RemoveCategorySheet(category: category, store: store)
-                .presentationDetents([.height(260)])
-        }
+        .categoryDeletionConfirmation(deletion: $deletion, category: category, store: store)
     }
 
     private func completionIcon(for category: Category) -> some View {

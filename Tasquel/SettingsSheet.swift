@@ -6,7 +6,6 @@ struct SettingsSheet: View {
     let store: ChecklistStore
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
-    @State private var showFeedback = false
     @State private var editingName = ""
     @State private var isEditingName = false
 
@@ -33,7 +32,6 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
-            .sheet(isPresented: $showFeedback) { FeedbackSheet(store: store) }
         }
         .preferredColorScheme(store.colorScheme)
     }
@@ -59,9 +57,6 @@ struct SettingsSheet: View {
             Section {
                 Button { showHelp = true } label: {
                     Label("How to Use Tasquel", systemImage: "questionmark.circle")
-                }
-                Button { showFeedback = true } label: {
-                    Label("Send Feedback", systemImage: "envelope")
                 }
             } header: {
                 Text("Help")
@@ -97,12 +92,6 @@ struct SettingsSheet: View {
                 retroSection("HELP") {
                     Button { showHelp = true } label: {
                         Text("> How to Use Tasquel")
-                            .font(Theme.bodyFont(theme))
-                            .foregroundStyle(Theme.accent(theme, rc: rc))
-                    }
-                    .buttonStyle(.plain)
-                    Button { showFeedback = true } label: {
-                        Text("> Send Feedback")
                             .font(Theme.bodyFont(theme))
                             .foregroundStyle(Theme.accent(theme, rc: rc))
                     }

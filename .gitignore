@@ -1,0 +1,11 @@
+# macOS metadata (AppleDouble files appear on non-APFS drives like the T7)
+._*
+.DS_Store
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# Local tool state
+.superpowers/

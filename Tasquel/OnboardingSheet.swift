@@ -3,127 +3,180 @@ import SwiftUI
 // MARK: - Carry Over Animation
 
 struct CarryOverAnimation: View {
-    @State private var checkTrim: CGFloat = 0
-    @State private var ringTrim: CGFloat = 0
-    @State private var handAngle: Double = -90
-    @State private var crossfade: Double = 0   // 0 = checkmark, 1 = clock
-    @State private var hue: Double = 0.33      // green
-    @State private var globalOpacity: Double = 0
-    @State private var loopCount: Int = 0      // incrementing restarts the .task
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var hourAngle: Double = 0
+    @State private var minuteAngle: Double = 0
+    @State private var faceSize: CGFloat = 80
+    @State private var faceStroke: CGFloat = 3
+    @State private var tickOpacity: Double = 1
+    @State private var hubOpacity: Double = 1
+    @State private var hue: Double = 0.07
+    @State private var haloScale: CGFloat = 0.9
+    @State private var haloOpacity: Double = 0
+    @State private var illustrationOpacity: Double = 1
 
     private let size: CGFloat = 80
-    private let stroke: CGFloat = 3.5
 
     private var accentColor: Color { Color(hue: hue, saturation: 0.7, brightness: 0.8) }
 
     var body: some View {
         ZStack {
-            // Outer ring
             Circle()
-                .trim(from: 0, to: ringTrim)
-                .stroke(accentColor, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
-                .frame(width: size, height: size)
-                .rotationEffect(.degrees(-90))
+                .fill(accentColor.opacity(0.22))
+                .frame(width: size + 24, height: size + 24)
+                .blur(radius: 9)
+                .scaleEffect(haloScale)
+                .opacity(haloOpacity)
 
-            // Checkmark — fades out as clock fades in
-            CheckmarkPath()
-                .trim(from: 0, to: checkTrim)
+            Circle()
+                .stroke(accentColor, lineWidth: faceStroke)
+                .frame(width: faceSize, height: faceSize)
+
+            ForEach(0..<12) { index in
+                Capsule()
+                    .fill(accentColor.opacity(index.isMultiple(of: 3) ? 0.75 : 0.42))
+                    .frame(width: 2, height: index.isMultiple(of: 3) ? 6 : 3)
+                    .offset(y: -faceSize * 0.4)
+                    .rotationEffect(.degrees(Double(index) * 30))
+                    .opacity(tickOpacity)
+            }
+
+            ClockHandsShape(hourAngle: hourAngle, minuteAngle: minuteAngle)
                 .stroke(accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-                .frame(width: size * 0.38, height: size * 0.38)
-                .opacity(1 - crossfade)
+                .frame(width: size, height: size)
 
-            // Clock hand — pivots from bottom (center of circle).
-            // offset(y: -size*0.15) places its bottom at the ZStack center;
-            // rotationEffect rotates around the ZStack center by default.
-            RoundedRectangle(cornerRadius: 1.5)
+            Circle()
                 .fill(accentColor)
-                .frame(width: 2.5, height: size * 0.3)
-                .offset(y: -(size * 0.15))
-                .rotationEffect(.degrees(handAngle))
-                .opacity(crossfade)
+                .frame(width: 5, height: 5)
+                .opacity(hubOpacity)
         }
-        .opacity(globalOpacity)
-        // .task(id:) cancels the previous task when loopCount changes or view disappears —
-        // prevents multiple loops stacking if the view is removed and re-shown.
-        .task(id: loopCount) {
-            await animate()
+        .frame(width: size + 48, height: size + 48)
+        .opacity(illustrationOpacity)
+        .accessibilityHidden(true)
+        .task(id: reduceMotion) {
+            if reduceMotion {
+                withAnimation(nil) {
+                    illustrationOpacity = 1
+                    hourAngle = ClockHandsShape.checkedHourAngle
+                    minuteAngle = ClockHandsShape.checkedMinuteAngle
+                    faceSize = 72
+                    faceStroke = 4
+                    tickOpacity = 0
+                    hubOpacity = 0
+                    hue = 0.33
+                    haloScale = 1
+                    haloOpacity = 0.1
+                }
+            } else {
+                withAnimation(nil) {
+                    resetToClock()
+                    illustrationOpacity = 1
+                }
+                while !Task.isCancelled {
+                    await animate()
+                    guard !Task.isCancelled else { return }
+
+                    try? await Task.sleep(for: .milliseconds(1_000))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        illustrationOpacity = 0
+                    }
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(nil) { resetToClock() }
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeIn(duration: 0.25)) {
+                        illustrationOpacity = 1
+                    }
+                    try? await Task.sleep(for: .milliseconds(300))
+                }
+            }
         }
     }
 
     @MainActor
+    private func resetToClock() {
+        hourAngle = 0
+        minuteAngle = 0
+        faceSize = size
+        faceStroke = 3
+        tickOpacity = 1
+        hubOpacity = 1
+        hue = 0.07
+        haloScale = 0.9
+        haloOpacity = 0
+    }
+
+    @MainActor
     private func animate() async {
-        func sleep(_ ms: Int) async {
-            try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
-        }
-
-        // Reset state while invisible (the jump is imperceptible)
-        checkTrim = 0
-        ringTrim = 0
-        handAngle = -90
-        crossfade = 0
-        hue = 0.33
-
-        // Fade in
-        withAnimation(.easeIn(duration: 0.25)) { globalOpacity = 1 }
-        await sleep(250)
+        try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
 
-        // Phase 1: Ring draws in + checkmark draws (green — "task complete")
-        withAnimation(.easeOut(duration: 0.5)) {
-            ringTrim = 1
-            checkTrim = 1
+        // The two hands sweep clockwise from noon into the 10:10 position.
+        withAnimation(.easeInOut(duration: 1.6)) {
+            hourAngle = 305
+            minuteAngle = 420
         }
-        await sleep(700)
+        try? await Task.sleep(for: .milliseconds(1_850))
         guard !Task.isCancelled else { return }
 
-        // Phase 2: Crossfade checkmark → clock hand, hue green → orange
-        withAnimation(.easeInOut(duration: 0.4)) {
-            crossfade = 1
-            hue = 0.07
-        }
-        await sleep(400)
-        guard !Task.isCancelled else { return }
-
-        // Phase 3: Clock hand sweeps a full circle ("time passing")
-        withAnimation(.easeInOut(duration: 1.1)) {
-            handAngle = 270
-        }
-        await sleep(1200)
-        guard !Task.isCancelled else { return }
-
-        // Phase 4: Crossfade back to checkmark, hue → green, redraw check
-        checkTrim = 0
-        withAnimation(.easeInOut(duration: 0.4)) {
-            crossfade = 0
+        // The same strokes become a check as the clock face becomes a task circle.
+        withAnimation(.spring(duration: 0.72, bounce: 0.1)) {
+            hourAngle = ClockHandsShape.checkedHourAngle
+            minuteAngle = ClockHandsShape.checkedMinuteAngle
+            faceSize = 72
+            faceStroke = 4
+            tickOpacity = 0
+            hubOpacity = 0
             hue = 0.33
+            haloScale = 1.12
+            haloOpacity = 0.38
         }
-        withAnimation(.easeOut(duration: 0.4).delay(0.15)) {
-            checkTrim = 1
+        try? await Task.sleep(for: .milliseconds(650))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeOut(duration: 0.45)) {
+            haloScale = 1
+            haloOpacity = 0.1
         }
-        await sleep(700)
-        guard !Task.isCancelled else { return }
-
-        // Brief hold on completed state, then fade out cleanly before looping
-        await sleep(400)
-        guard !Task.isCancelled else { return }
-
-        withAnimation(.easeOut(duration: 0.4)) { globalOpacity = 0 }
-        await sleep(450)
-        guard !Task.isCancelled else { return }
-
-        // Trigger next loop
-        loopCount += 1
     }
 }
 
-// MARK: - Checkmark Shape
+// MARK: - Clock Hands / Checkmark Shape
 
-struct CheckmarkPath: Shape {
+struct ClockHandsShape: Shape {
+    static let checkedHourAngle: Double = 315
+    static let checkedMinuteAngle: Double = 405
+
+    var hourAngle: Double = 0
+    var minuteAngle: Double = 0
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(hourAngle, minuteAngle) }
+        set {
+            hourAngle = newValue.first
+            minuteAngle = newValue.second
+        }
+    }
+
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.width * 0.35, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let hourRadians = hourAngle * .pi / 180
+        let minuteRadians = minuteAngle * .pi / 180
+        let hourTip = CGPoint(
+            x: center.x + CGFloat(sin(hourRadians)) * rect.width * 0.22,
+            y: center.y - CGFloat(cos(hourRadians)) * rect.width * 0.22
+        )
+        let minuteTip = CGPoint(
+            x: center.x + CGFloat(sin(minuteRadians)) * rect.width * 0.33,
+            y: center.y - CGFloat(cos(minuteRadians)) * rect.width * 0.33
+        )
+        path.move(to: hourTip)
+        path.addLine(to: center)
+        path.addLine(to: minuteTip)
         return path
     }
 }
@@ -424,4 +477,8 @@ struct OnboardingFeatureRow: View {
             }
         }
     }
+}
+
+#Preview("Welcome animation") {
+    CarryOverAnimation()
 }
