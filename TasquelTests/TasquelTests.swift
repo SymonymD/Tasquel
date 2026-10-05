@@ -23,54 +23,29 @@ private func makeTempDirectory() -> URL {
     return url
 }
 
-@Test("Welcome illustration starts with both clock hands at noon")
-func welcomeClockHandsStartAtNoon() {
-    let points = handPoints(for: ClockHandsShape())
-    #expect(points.count == 3)
-    if points.count == 3 {
-        #expect(points[0].x == 50 && points[0].y < 50)
-        #expect(points[1] == CGPoint(x: 50, y: 50))
-        #expect(points[2].x == 50 && points[2].y < 50)
+@Test("Welcome animation loop has one shared length")
+func welcomeAnimationTimelineLength() {
+    let timeline = KeyframeTimeline(initialValue: WeekCarryOverAnimation.Values()) {
+        WeekCarryOverAnimation.timeline
     }
+    #expect(abs(timeline.duration - 6) < 0.001)
 }
 
-@Test("Clock hands reach 10:10 before becoming a checkmark")
-func welcomeClockHandsReachTenTen() {
-    let points = handPoints(for: ClockHandsShape(hourAngle: 305, minuteAngle: 420))
-    #expect(points.count == 3)
-    if points.count == 3 {
-        #expect(abs(points[0].x - 32) < 0.5 && abs(points[0].y - 37.4) < 0.5)
-        #expect(points[1] == CGPoint(x: 50, y: 50))
-        #expect(abs(points[2].x - 78.6) < 0.5 && abs(points[2].y - 33.5) < 0.5)
+@Test("Reduce Motion frame matches where the animation comes to rest")
+func welcomeAnimationRestingFrameMatchesReduceMotion() {
+    let timeline = KeyframeTimeline(initialValue: WeekCarryOverAnimation.Values()) {
+        WeekCarryOverAnimation.timeline
     }
-}
-
-@Test("The same hands become the two strokes of a checkmark")
-func welcomeClockHandsFormCheckmark() {
-    let points = handPoints(for: ClockHandsShape(
-        hourAngle: ClockHandsShape.checkedHourAngle,
-        minuteAngle: ClockHandsShape.checkedMinuteAngle
-    ))
-    #expect(points.count == 3)
-    if points.count == 3 {
-        #expect(points[0].x < 40 && points[0].y < 40)
-        #expect(points[1] == CGPoint(x: 50, y: 50))
-        #expect(points[2].x > 50 && points[2].y < 30)
-        #expect(hypot(points[0].x - 50, points[0].y - 50)
-                < hypot(points[2].x - 50, points[2].y - 50))
-    }
-}
-
-private func handPoints(for shape: ClockHandsShape) -> [CGPoint] {
-    let path = shape.path(in: CGRect(x: 0, y: 0, width: 100, height: 100))
-    var points: [CGPoint] = []
-    path.forEach { element in
-        switch element {
-        case .move(to: let point), .line(to: let point): points.append(point)
-        default: break
-        }
-    }
-    return points
+    let resting = timeline.value(time: 5.0)
+    let finished = WeekCarryOverAnimation.Values.finished
+    // Springs may still be settling slightly; allow differences too small to see.
+    #expect(abs(resting.check1 - finished.check1) < 0.05)
+    #expect(abs(resting.check2 - finished.check2) < 0.05)
+    #expect(abs(resting.carriedCheck - finished.carriedCheck) < 0.05)
+    #expect(abs(resting.lift - finished.lift) < 0.05)
+    #expect(abs(resting.nextWeekX - finished.nextWeekX) < 0.5)
+    #expect(abs(resting.carriedY - finished.carriedY) < 0.5)
+    #expect(resting.thisWeekFade < 0.01)
 }
 
 // MARK: - Rollover Logic Tests

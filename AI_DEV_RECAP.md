@@ -48,8 +48,9 @@ The current working tree includes the changes below, but they have not been comm
 | `Tasquel/HelpSheet.swift` | 137 | Help sheet and rows |
 | `Tasquel/RemoveCategorySheet.swift` | 52 | Legacy removal sheet (expanded card no longer presents it) |
 | `Tasquel/FeedbackSheet.swift` | 219 | Feedback UI/webhook code; currently not linked from Settings |
-| `Tasquel/OnboardingSheet.swift` | 484 | Onboarding, looping clock-to-check animation, and its dedicated Xcode preview |
-| `TasquelTests/TasquelTests.swift` | 353 | Rollover, safety, and clock-shape tests |
+| `Tasquel/OnboardingSheet.swift` | ~340 | Onboarding flow |
+| `Tasquel/WeekCarryOverAnimation.swift` | ~250 | Welcome carry-over animation (`KeyframeAnimator`) + Xcode preview |
+| `TasquelTests/TasquelTests.swift` | 353 | Rollover, safety, persistence-isolation, and welcome-animation timeline tests |
 | `TasquelUITests/TasquelUITests.swift` | 111 | UI journey and category expansion tests |
 | `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
 
@@ -132,7 +133,7 @@ The current working tree includes the changes below, but they have not been comm
 38. **Theme-aware collapse icon**: Collapse button in expanded cards uses `.white` in dark/retro themes, `Color(.secondaryLabel)` in light.
 39. **Expanded card depth effect**: Expanded card shadow `radius: 10, x: 2, y: 2`. Collapsed cards when dimmed get reduced shadow `radius: 2, y: 1` and lighter dimming `opacity(0.08)`. Creates subtle forward/back depth illusion.
 40. **Expand/collapse animation**: `.easeOut(duration: 0.7)` for smooth card transitions.
-41. **Looping welcome animation**: `CarryOverAnimation` draws an analog clock whose two hands begin at noon, sweep to 10:10, then become a standard checkmark while the clock face becomes a task circle. The checkmark bend is exactly at the circle center; its short arm uses a 315° hand angle and the longer arm uses 405°. After a one-second hold, the illustration fades out, resets invisibly, and loops. Reduce Motion still shows the finished state without movement. A dedicated `#Preview("Welcome animation")` makes the loop directly inspectable in Xcode, and `ClockHandsShape` geometry has focused unit tests.
+41. **Welcome animation (2026-10-05)**: `WeekCarryOverAnimation` replaced the clock-to-checkmark `CarryOverAnimation`/`ClockHandsShape`. A "This week" card checks off two tasks; the third turns orange with the carry-over arrow, lifts while the week slides away and "Next week" slides in beneath it, then lands and checks off green. Built as one `KeyframeAnimator` timeline (6s loop, every track the same length); Reduce Motion shows the finished frame (`Values.finished`). Cards use system colors for dark mode. Unit tests cover loop length and that the resting frame matches the Reduce Motion frame.
 42. **Independent category expansion across weeks**: `expandedCategoryKeys: Set<CategoryLayoutKey>` allows multiple cards open at once. Keys use category name plus occurrence (rather than UUID, which changes on rollover), so expanded state follows matching categories when navigating between weeks. This is view state, not persistence across app relaunches. UI tests cover neighboring cards and week navigation.
 43. **Audit-driven safety and UX fixes**: Unreadable week/settings JSON now shows a retryable error and is not overwritten; past-week mutations are rejected in the store; goal values must be finite and valid. Task/subtask/category deletion and destructive goal-to-checkbox changes require confirmation. Completed task titles retain normal contrast, and goal target/progress/unit can be edited after setup. Navigation and category cards have clearer accessibility labels; the bottom bar and card sizing were refined.
 
@@ -181,7 +182,7 @@ The 2026-10-04 changes in the working tree are not yet committed.
 
 - Build/test from the project directory: `xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`
 - Use `xcrun simctl list devices available` to find a current simulator ID; the old IDs and DerivedData path below may no longer exist.
-- An isolated iPhone 17 Pro motion-preview simulator used this session had ID `F9A016AE-9AA7-445B-85B5-89F7C4E6D243` (iOS 26.3). The latest looping sequence is recorded at `/private/tmp/tasquel-clock-to-check-loop.mov` (temporary file, not in repo).
+- An isolated iPhone 17 Pro motion-preview simulator used this session had ID `F9A016AE-9AA7-445B-85B5-89F7C4E6D243` (iOS 26.3).
 - New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
 
 24. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
@@ -236,6 +237,6 @@ The 2026-10-04 changes in the working tree are not yet committed.
 
 ## Last Session Summary (2026-10-04)
 
-**What was done**: Audited the SwiftUI architecture and UX flow, then implemented the safety and interaction fixes listed above. Category cards can now expand independently, keep their visual order, and retain open state when changing weeks. The welcome illustration was redesigned as a two-handed clock that sweeps from noon to 10:10 and morphs into a checkmark. It now loops with a clean fade/reset, uses a steeper conventional checkmark centered in the circle, and has a dedicated replayable Xcode preview. Added unit/UI coverage, built and exercised the app in the simulator, and recorded the final loop.
+**What was done**: Audited the SwiftUI architecture and UX flow, then implemented the safety and interaction fixes listed above. Category cards can now expand independently, keep their visual order, and retain open state when changing weeks. The welcome illustration was then replaced (2026-10-05) with `WeekCarryOverAnimation`, which acts out the carry-over feature described on the welcome screen (see item 41). Added unit/UI coverage, built and exercised the app in the simulator, and recorded the final loop.
 
 **In progress / next**: Review the final loop with the user and adjust timing/geometry if requested. The implementation and tests are uncommitted. Other open work: feedback webhook/entry point, calendar integration, iPad layout, expansion persistence across relaunch, and data export/import.

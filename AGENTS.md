@@ -39,7 +39,8 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new) + `DatePickerSheet` |
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts) |
 | `Tasquel/HelpSheet.swift` | Help guide |
-| `Tasquel/OnboardingSheet.swift` | Onboarding + `CarryOverAnimation` / `ClockHandsShape` welcome animation |
+| `Tasquel/OnboardingSheet.swift` | Onboarding flow (welcome, how it works, name, categories) |
+| `Tasquel/WeekCarryOverAnimation.swift` | Welcome illustration: `KeyframeAnimator` loop showing an unfinished task carrying into next week |
 | `Tasquel/FeedbackSheet.swift` | Feedback webhook sheet — currently not linked from the UI |
 | `Tasquel/RemoveCategorySheet.swift` | Legacy — no longer presented (cards use confirmation dialogs) |
 
