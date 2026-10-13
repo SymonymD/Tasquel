@@ -296,3 +296,8 @@ struct OnboardingFeatureRow: View {
         }
     }
 }
+
+#Preview("Onboarding") {
+    // Temporary storage so the preview never reads or writes the app's real data.
+    OnboardingSheet(store: ChecklistStore(directory: .temporaryDirectory))
+}

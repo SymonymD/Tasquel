@@ -48,6 +48,28 @@ func welcomeAnimationRestingFrameMatchesReduceMotion() {
     #expect(resting.thisWeekFade < 0.01)
 }
 
+// MARK: - Category Grid Layout
+
+@Test("Collapsed cards pair into two-column rows")
+func gridPairsCollapsedCards() {
+    #expect(CategoryGridLayout.rows(fullWidth: [false, false, false, false, false])
+            == [[0, 1], [2, 3], [4]])
+}
+
+@Test("An expanded card gets its own row and the cards after it keep pairing")
+func gridExpandedCardTakesFullRow() {
+    #expect(CategoryGridLayout.rows(fullWidth: [true, false, false, false])
+            == [[0], [1, 2], [3]])
+}
+
+@Test("A card waiting for a partner stays alone when an expanded card follows")
+func gridHalfCardBeforeExpandedStaysAlone() {
+    #expect(CategoryGridLayout.rows(fullWidth: [false, true, false, false])
+            == [[0], [1], [2, 3]])
+    #expect(CategoryGridLayout.rows(fullWidth: [false, false, false, true])
+            == [[0, 1], [2], [3]])
+}
+
 // MARK: - Rollover Logic Tests
 //
 // These tests exercise ChecklistStore's rollForwardCategories behaviour directly
@@ -262,26 +284,34 @@ struct RolloverTests {
         #expect(rolledTask?.goalTarget == 100, "Carry-over goal task should preserve target")
     }
 
-    // MARK: - deleteCategoryEntirely
+    // MARK: - Category deletion
 
-    @Test("deleteCategoryEntirely removes template from savedCategories")
-    func deleteCategoryEntirelyCleansTemplate() {
+    @Test("Deleting a category removes it from the current and future weeks, keeps past weeks and its template")
+    func deleteCategoryStaysDeleted() {
         let store = makeIsolatedStore()
-        let monday = futureMonday(weeksFromBase: 90)
+        let thisMonday = Week.startOfWeek(containing: Date())
+        let lastMonday = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: thisMonday)!
+        let nextMonday = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: thisMonday)!
+        store.weeks = [lastMonday, thisMonday, nextMonday].map {
+            Week(startDate: $0, categories: [Category(name: "Gone", symbol: "star"), Category(name: "Kept", symbol: "house")])
+        }
+        store.savedCategories = []
+        store.selectedDate = nextMonday  // delete while viewing a future week
 
-        // Seed a week with a category that also has a saved template
-        store.weeks = [Week(startDate: monday)]
-        let category = Category(name: "TestCat", symbol: "star")
-        store.weeks[0].categories = [category]
-        store.savedCategories.append(CategoryTemplate(name: "TestCat", symbol: "star"))
-        store.selectedDate = monday
+        let id = store.selectedWeek!.categories.first { $0.name == "Gone" }!.id
+        store.deleteCategory(id)
 
-        store.deleteCategoryEntirely(category.id)
+        let names = { (date: Date) in store.weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: date) }!.categories.map(\.name) }
+        #expect(names(lastMonday).contains("Gone"), "past weeks keep their history")
+        #expect(!names(thisMonday).contains("Gone"))
+        #expect(!names(nextMonday).contains("Gone"))
+        #expect(names(nextMonday).contains("Kept"))
 
-        #expect(!store.savedCategories.contains(where: { $0.name == "TestCat" }),
-                "deleteCategoryEntirely should remove the matching saved template")
-        #expect(store.selectedWeek?.categories.contains(where: { $0.name == "TestCat" }) != true,
-                "deleteCategoryEntirely should remove category from current week")
+        // Revisiting the future week must not bring it back via future-week sync.
+        store.navigateToDate(thisMonday)
+        store.navigateToDate(nextMonday)
+        #expect(!(store.selectedWeek?.categories.contains { $0.name == "Gone" } ?? true))
+        #expect(store.savedCategories.contains { $0.name == "Gone" }, "kept so it can be re-added")
     }
 }
 
@@ -292,7 +322,7 @@ struct JourneySafetyTests {
         let pastDate = Calendar.current.date(byAdding: .weekOfYear, value: -2, to: Date())!
         let task = ChecklistTask(title: "Original")
         let category = Category(name: "History", symbol: "clock", tasks: [task])
-        store.weeks = [Week(startDate: Week.mondayOfWeek(containing: pastDate), categories: [category])]
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: pastDate), categories: [category])]
         store.selectedDate = pastDate
 
         store.renameTask(categoryID: category.id, taskID: task.id, newTitle: "Changed")
@@ -307,7 +337,7 @@ struct JourneySafetyTests {
         let store = makeIsolatedStore()
         let task = ChecklistTask(title: "Read", taskType: .goal)
         let category = Category(name: "Study", symbol: "book", tasks: [task])
-        store.weeks = [Week(startDate: Week.mondayOfWeek(containing: Date()), categories: [category])]
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
         store.selectedDate = Date()
 
         store.setGoalTarget(categoryID: category.id, taskID: task.id, target: 0, unit: "pages")
@@ -348,5 +378,242 @@ struct JourneySafetyTests {
         #expect(store.persistenceError == nil)
         #expect(!store.savedCategories.isEmpty, "Retry should seed starter templates like a normal launch")
         #expect(store.selectedWeek != nil, "Retry should create the current week")
+    }
+}
+
+struct WeekPreviewTests {
+    @Test("Previewing a week matches navigating to it, without creating it")
+    func previewMatchesNavigation() {
+        let store = makeIsolatedStore()
+        var components = DateComponents()
+        components.year = 2099; components.month = 3; components.day = 2  // a Monday
+        let monday = Calendar.current.date(from: components)!
+        let nextMonday = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: monday)!
+        store.weeks = [Week(startDate: monday, categories: [
+            Category(name: "Work", symbol: "briefcase", tasks: [
+                ChecklistTask(title: "Report", isCompleted: false, mode: .carryOver),
+                ChecklistTask(title: "Gym", isCompleted: true, mode: .repeating),
+                ChecklistTask(title: "Once", isCompleted: false, mode: .oneTime),
+            ])
+        ])]
+
+        let preview = store.previewWeek(for: nextMonday)
+        #expect(store.weeks.count == 1, "previewing must not create the week")
+
+        store.navigateToDate(nextMonday)
+        let actual = store.selectedWeek
+        #expect(preview.categories.map(\.name) == actual?.categories.map(\.name))
+        #expect(preview.categories.map { $0.tasks.map(\.title).sorted() }
+                == actual?.categories.map { $0.tasks.map(\.title).sorted() })
+    }
+}
+
+struct ThisWeekOnlyCategoryTests {
+    private func monday(weeksAfter offset: Int = 0) -> Date {
+        var components = DateComponents()
+        components.year = 2099; components.month = 6; components.day = 1  // a Monday
+        let base = Calendar.current.date(from: components)!
+        return Calendar.current.date(byAdding: .weekOfYear, value: offset, to: base)!
+    }
+
+    @Test("A this-week-only category doesn't roll forward; an every-week one does")
+    func thisWeekOnlyDoesNotRoll() {
+        let store = makeIsolatedStore()
+        store.weeks = [Week(startDate: monday())]
+        store.selectedDate = monday()
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        store.addCategory(name: "Chores", symbol: "house")
+
+        let next = store.ensureWeekExists(for: monday(weeksAfter: 1))
+        #expect(!next.categories.contains { $0.name == "Trip" })
+        #expect(next.categories.contains { $0.name == "Chores" && !$0.isThisWeekOnly })
+    }
+
+    @Test("Future-week previews and sync skip this-week-only categories")
+    func futureSyncSkipsThisWeekOnly() {
+        let store = makeIsolatedStore()
+        store.weeks = [
+            Week(startDate: monday()),
+            Week(startDate: monday(weeksAfter: 1)),
+        ]
+        store.selectedDate = monday()
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+
+        #expect(!store.previewWeek(for: monday(weeksAfter: 1)).categories.contains { $0.name == "Trip" })
+        store.navigateToDate(monday(weeksAfter: 1))
+        #expect(!(store.selectedWeek?.categories.contains { $0.name == "Trip" } ?? true))
+    }
+
+    @Test("Categories saved before the flag existed load as every-week")
+    func legacyCategoryDecodes() throws {
+        let json = #"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","name":"Work","symbol":"briefcase","tasks":[]}"#
+        let category = try JSONDecoder().decode(Category.self, from: Data(json.utf8))
+        #expect(category.name == "Work")
+        #expect(category.isThisWeekOnly == false)
+    }
+}
+
+// MARK: - Calendar Integration
+
+struct CalendarGroupingTests {
+    private let calendar = Calendar.current
+    private var monday: Date {
+        var c = DateComponents(); c.year = 2099; c.month = 6; c.day = 1  // a Monday
+        return calendar.date(from: c)!
+    }
+    private func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        calendar.date(bySettingHour: hour, minute: minute, second: 0, of: calendar.date(byAdding: .day, value: day, to: monday)!)!
+    }
+    private func event(_ title: String, _ start: Date, _ end: Date, allDay: Bool = false) -> CalendarEvent {
+        CalendarEvent(id: title, eventIdentifier: title, title: title, start: start, end: end, isAllDay: allDay, calendarID: "c", color: .blue)
+    }
+    private func days(_ events: [CalendarEvent]) -> [EventDay] {
+        EventGrouping.days(for: events, weekStart: monday, calendar: calendar, timeFormatter: { date in
+            let c = calendar.dateComponents([.hour, .minute], from: date)
+            return String(format: "%02d:%02d", c.hour!, c.minute!)
+        })
+    }
+
+    @Test("Timed events land on their start day; empty days are skipped; all-day sorts first")
+    func timedAndAllDay() {
+        let result = days([
+            event("Lunch", at(1, 12), at(1, 13)),
+            event("Standup", at(1, 9, 30), at(1, 10)),
+            event("Holiday", at(1, 0), at(2, 0), allDay: true),
+        ])
+        #expect(result.count == 1)
+        #expect(result.first?.date == at(1, 0))
+        #expect(result.first?.events.map(\.event.title) == ["Holiday", "Standup", "Lunch"])
+        #expect(result.first?.events.map(\.timeLabel) == ["All day", "09:30", "12:00"])
+    }
+
+    @Test("Multi-day events appear on each day they cover, only within the week")
+    func multiDay() {
+        let result = days([
+            event("Trip", at(-2, 0), at(2, 0), allDay: true),       // started before Monday
+            event("Night shift", at(5, 22), at(6, 6)),              // Saturday night into Sunday
+            event("Conference", at(6, 9), at(9, 17)),               // runs past Sunday
+        ])
+        #expect(result.map { calendar.component(.weekday, from: $0.date) } == [2, 3, 7, 1])  // Mon, Tue, Sat, Sun
+        #expect(result[0].events.first?.timeLabel == "All day")
+        let sunday = result[3].events.map { "\($0.event.title): \($0.timeLabel)" }
+        #expect(sunday.contains("Night shift: Until 06:00"))
+        #expect(sunday.contains("Conference: 09:00"))
+    }
+
+    @Test("Events spanning a whole day in the middle show as continuing")
+    func continuing() {
+        let result = days([event("Retreat", at(2, 15), at(4, 11))])
+        #expect(result.map(\.events.first!.timeLabel) == ["15:00", "Continues", "Until 11:00"])
+    }
+
+    @Test("The service loads a week from the provider and drops it when invalidated")
+    func serviceCaching() async {
+        let service = CalendarService(provider: FakeEventProvider())
+        await service.loadCalendars()
+        #expect(Set(service.defaultSelection) == ["home", "work"], "birthdays are not selected by default")
+        let ids = Set(service.defaultSelection)
+        #expect(service.days(forWeekStarting: monday, calendarIDs: ids) == nil)
+        await service.load(weekStarting: monday, calendarIDs: ids)
+        let loaded = service.days(forWeekStarting: monday, calendarIDs: ids)
+        #expect(loaded?.flatMap(\.events).contains { $0.event.title == "Dentist" } == true)
+        #expect(loaded?.flatMap(\.events).contains { $0.event.title == "Sam's Birthday" } == false)
+        service.invalidate()
+        #expect(service.days(forWeekStarting: monday, calendarIDs: ids) == nil)
+    }
+
+    @Test("Before the calendar list loads, the saved selection is used as-is")
+    func selectionBeforeCalendarsLoad() async {
+        let service = CalendarService(provider: FakeEventProvider())
+        // Regression: at launch the list wasn't loaded, every saved calendar looked
+        // deleted, and no events showed until Settings was opened.
+        #expect(service.effectiveSelection(["work"]) == ["work"])
+        await service.loadCalendars()
+        #expect(service.effectiveSelection(["work"]) == ["work"])
+    }
+
+    @Test("Saved calendars that no longer exist are dropped; if none remain, the default is used")
+    func staleCalendarSelection() async {
+        let service = CalendarService(provider: FakeEventProvider())
+        await service.loadCalendars()
+        #expect(service.effectiveSelection(nil) == ["home", "work"])
+        #expect(service.effectiveSelection(["work", "deleted"]) == ["work"])
+        #expect(service.effectiveSelection(["deleted"]) == ["home", "work"])
+    }
+
+    @Test("Settings saved before calendar integration still load, with it turned off")
+    func legacySettingsLoad() throws {
+        let directory = makeTempDirectory()
+        let legacy = #"{"savedCategories":[],"appearanceMode":"dark","hasSeenWelcome":true}"#
+        try Data(legacy.utf8).write(to: directory.appending(path: "settings.json"))
+        let store = makeIsolatedStore(directory: directory)
+        #expect(store.persistenceError == nil)
+        #expect(store.calendarEventsEnabled == false)
+        #expect(store.selectedCalendarIDs == nil)
+        #expect(store.weekStartsOnSunday == false, "weeks start on Monday by default")
+        store.setCalendarEventsEnabled(true)
+        store.setSelectedCalendarIDs(["a", "b"])
+        let reloaded = makeIsolatedStore(directory: directory)
+        #expect(reloaded.calendarEventsEnabled == true)
+        #expect(reloaded.selectedCalendarIDs == ["a", "b"])
+    }
+}
+
+
+// MARK: - Week Start Day
+
+struct WeekStartTests {
+    private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        Calendar.current.date(from: DateComponents(year: y, month: m, day: d))!
+    }
+
+    @Test("A week starts on the chosen day")
+    func startOfWeek() {
+        let wednesday = date(2099, 6, 3)
+        #expect(Week.startOfWeek(containing: wednesday, firstWeekday: Week.monday) == date(2099, 6, 1))
+        #expect(Week.startOfWeek(containing: wednesday, firstWeekday: Week.sunday) == date(2099, 5, 31))
+        // Sunday itself: the last day of a Monday week, the first day of a Sunday week.
+        let sunday = date(2099, 6, 7)
+        #expect(Week.startOfWeek(containing: sunday, firstWeekday: Week.monday) == date(2099, 6, 1))
+        #expect(Week.startOfWeek(containing: sunday, firstWeekday: Week.sunday) == date(2099, 6, 7))
+    }
+
+    @Test("Switching to Sunday moves every week back a day with its tasks, and switching back restores it")
+    func switchingMovesWeeks() {
+        let directory = makeTempDirectory()
+        let store = makeIsolatedStore(directory: directory)
+        let mondays = [date(2099, 6, 1), date(2099, 6, 8)]
+        store.weeks = mondays.enumerated().map { index, monday in
+            Week(startDate: monday, categories: [Category(name: "Work", symbol: "briefcase",
+                                                          tasks: [ChecklistTask(title: "Task \(index)")])])
+        }
+        store.selectedDate = date(2099, 6, 10)  // Wednesday of the second week
+        let selectedID = store.selectedWeek?.id
+
+        store.setWeekStartsOnSunday(true)
+        // The store keeps weeks newest first, and also ensures the real current week exists.
+        let moved = store.weeks.filter { $0.startDate > date(2099, 1, 1) }.sorted { $0.startDate < $1.startDate }
+        #expect(moved.map(\.startDate) == [date(2099, 5, 31), date(2099, 6, 7)])
+        #expect(moved.map { $0.categories.first?.tasks.first?.title } == ["Task 0", "Task 1"])
+        #expect(store.selectedWeek?.id == selectedID, "the same week stays selected")
+
+        let reloaded = makeIsolatedStore(directory: directory)
+        #expect(reloaded.weekStartsOnSunday)
+        #expect(reloaded.weeks.contains { $0.startDate == date(2099, 5, 31) })
+
+        store.setWeekStartsOnSunday(false)
+        #expect(store.weeks.filter { $0.startDate > date(2099, 1, 1) }.map(\.startDate).sorted() == mondays)
+        #expect(store.selectedWeek?.id == selectedID)
+    }
+
+    @Test("The current week is the one containing today, whatever day it starts on")
+    func currentWeekAnyStart() {
+        let today = Date()
+        let sundayWeek = Week(startDate: Week.startOfWeek(containing: today, firstWeekday: Week.sunday))
+        let mondayWeek = Week(startDate: Week.startOfWeek(containing: today, firstWeekday: Week.monday))
+        #expect(sundayWeek.isCurrentWeek)
+        #expect(mondayWeek.isCurrentWeek)
+        let lastWeek = Week(startDate: Calendar.current.date(byAdding: .day, value: -7, to: sundayWeek.startDate)!)
+        #expect(lastWeek.isPastWeek)
     }
 }

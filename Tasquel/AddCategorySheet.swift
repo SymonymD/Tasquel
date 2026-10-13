@@ -4,12 +4,21 @@ import SwiftUI
 
 struct AddCategorySheet: View {
     let store: ChecklistStore
-    var onAdd: ((String, String) -> Void)? = nil
+    /// Name, symbol, and whether the category is for this week only.
+    var onAdd: ((String, String, Bool) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isCreatingNew = false
     @State private var newName = ""
     @State private var newSymbol = "folder"
     @State private var templateToRemove: CategoryTemplate?
+    @State private var pendingAdd: PendingCategory?
+
+    /// A category waiting for the user to choose "every week" or "this week only".
+    private struct PendingCategory {
+        let name: String
+        let symbol: String
+        let isNew: Bool  // created here, rather than picked from Saved Categories
+    }
 
     private let symbolOptions = [
         "folder", "star", "heart", "house", "cart",
@@ -49,7 +58,7 @@ struct AddCategorySheet: View {
                             }
                             .buttonStyle(.borderless)
                             Spacer()
-                            Button("Add to Week & Save") {
+                            Button("Add Category") {
                                 createNew()
                             }
                             .buttonStyle(.borderless)
@@ -97,6 +106,19 @@ struct AddCategorySheet: View {
             }
             .scrollContentBackground(Theme.isDark(store.appearanceMode) ? .hidden : .automatic)
             .background(Theme.isDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
+            .confirmationDialog(
+                pendingAdd.map { "Add \($0.name)" } ?? "",
+                isPresented: Binding(
+                    get: { pendingAdd != nil },
+                    set: { if !$0 { pendingAdd = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Every Week") { confirmAdd(thisWeekOnly: false) }
+                Button("This Week Only") { confirmAdd(thisWeekOnly: true) }
+            } message: {
+                Text("Every week: it carries into future weeks. This week only: it won't come back next week.")
+            }
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -126,15 +148,24 @@ struct AddCategorySheet: View {
             dismiss()
             return
         }
-        onAdd?(template.name, template.symbol)
-        dismiss()
+        pendingAdd = PendingCategory(name: template.name, symbol: template.symbol, isNew: false)
     }
 
     private func createNew() {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        store.addSavedCategory(name: name, symbol: newSymbol)
-        onAdd?(name, newSymbol)
+        pendingAdd = PendingCategory(name: name, symbol: newSymbol, isNew: true)
+    }
+
+    /// A new category added for every week is also kept in Saved Categories;
+    /// one added for this week only isn't, since it's meant to be temporary.
+    private func confirmAdd(thisWeekOnly: Bool) {
+        guard let pendingAdd else { return }
+        if pendingAdd.isNew && !thisWeekOnly {
+            store.addSavedCategory(name: pendingAdd.name, symbol: pendingAdd.symbol)
+        }
+        onAdd?(pendingAdd.name, pendingAdd.symbol, thisWeekOnly)
+        self.pendingAdd = nil
         dismiss()
     }
 }
@@ -143,12 +174,14 @@ struct AddCategorySheet: View {
 
 struct DatePickerSheet: View {
     let selectedDate: Date
+    let firstWeekday: Int
     let onSelect: (Date) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var pickerDate: Date
 
-    init(selectedDate: Date, onSelect: @escaping (Date) -> Void) {
+    init(selectedDate: Date, firstWeekday: Int, onSelect: @escaping (Date) -> Void) {
         self.selectedDate = selectedDate
+        self.firstWeekday = firstWeekday
         self.onSelect = onSelect
         self._pickerDate = State(initialValue: selectedDate)
     }
@@ -159,7 +192,8 @@ struct DatePickerSheet: View {
                 DatePicker("Select a week", selection: $pickerDate, displayedComponents: .date)
                     .datePickerStyle(.graphical)
                     .tint(.blue)
-                Text("Selected: Week of \(formattedMonday)")
+                    .environment(\.calendar, pickerCalendar)
+                Text("Selected: Week of \(formattedWeekStart)")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding()
@@ -179,10 +213,17 @@ struct DatePickerSheet: View {
         }
     }
 
-    private var formattedMonday: String {
-        let monday = Week.mondayOfWeek(containing: pickerDate)
+    /// The month grid starts on the user's chosen week start day.
+    private var pickerCalendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = firstWeekday
+        return calendar
+    }
+
+    private var formattedWeekStart: String {
+        let start = Week.startOfWeek(containing: pickerDate, firstWeekday: firstWeekday)
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: monday)
+        return formatter.string(from: start)
     }
 }

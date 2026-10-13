@@ -1,75 +1,228 @@
 import SwiftUI
 
-private enum CategoryDeletion {
-    case thisWeek
-    case entirely
-}
-
 private extension View {
     func categoryDeletionConfirmation(
-        deletion: Binding<CategoryDeletion?>,
+        isPresented: Binding<Bool>,
         category: Category,
         store: ChecklistStore
     ) -> some View {
-        confirmationDialog(
-            "Remove \(category.name)?",
-            isPresented: Binding(
-                get: { deletion.wrappedValue != nil },
-                set: { if !$0 { deletion.wrappedValue = nil } }
-            )
-        ) {
-            Button(
-                deletion.wrappedValue == .entirely ? "Delete Entirely" : "Remove from This Week",
-                role: .destructive
-            ) {
-                withAnimation {
-                    if deletion.wrappedValue == .entirely {
-                        store.deleteCategoryEntirely(category.id)
-                    } else {
-                        store.deleteCategory(category.id)
-                    }
-                }
-                deletion.wrappedValue = nil
+        confirmationDialog("Delete \(category.name)?", isPresented: isPresented, titleVisibility: .visible) {
+            Button("Delete Category", role: .destructive) {
+                withAnimation { store.deleteCategory(category.id) }
             }
         } message: {
-            Text(deletion.wrappedValue == .entirely
-                 ? "This removes the category and its tasks from this week and removes its saved template."
-                 : "This removes the category and its tasks from this week.")
+            Text(category.isThisWeekOnly
+                 ? "This removes the category and its tasks from this week."
+                 : "This removes the category and its tasks from this week and all upcoming weeks. Past weeks keep their history. You can add it back from Add Category.")
         }
     }
 }
 
-// MARK: - Category Card (Collapsed)
+// MARK: - Category Grid Card
 
-struct CategoryCard: View {
+/// One card for a category, collapsed or expanded.
+///
+/// The header (icon, name, pie chart) and completion line are shared by both
+/// states, so they move and resize with the card instead of being swapped out.
+/// Only the content below them changes, and it cross-fades.
+struct CategoryGridCard: View {
     let category: Category
     let store: ChecklistStore
-    var dimmed: Bool = false
-    var isEditing: Bool = false
-    var isPastWeek: Bool = false
+    let isExpanded: Bool
+    /// Global edit mode (bottom bar): category removal plus every card's tasks.
+    let isEditing: Bool
+    /// Whether this card's tasks are editable: global edit mode, or this card's own edit button.
+    let isEditingTasks: Bool
+    let isPastWeek: Bool
+    let onToggleEdit: () -> Void
     let onExpand: () -> Void
+    let onCollapse: () -> Void
 
-    @State private var deletion: CategoryDeletion?
+    @State private var showDeleteConfirmation = false
+
+    // Collapsed → expanded sizes; scaled with Dynamic Type. Expanded sizes include
+    // the 15% enlargement applied to everything inside an expanded card.
+    @ScaledMetric(relativeTo: .subheadline) private var collapsedTitleSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .title3) private var expandedTitleSize: CGFloat = 20 * expandedCardScale
+    @ScaledMetric(relativeTo: .body) private var collapsedPieSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .title3) private var expandedPieSize: CGFloat = 20 * expandedCardScale
+    @ScaledMetric(relativeTo: .caption) private var collapsedCaptionSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .subheadline) private var expandedCaptionSize: CGFloat = 15 * expandedCardScale
+
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+    private var cornerRadius: CGFloat { Theme.cardCornerRadius(theme) }
+    private var design: Font.Design { Theme.isRetro(theme) ? .monospaced : .default }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: isExpanded ? 8 : 6) {
+            header
+
+            Text(Theme.isRetro(theme)
+                 ? "done: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " [1WK]" : "")"
+                 : "Completed: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " · This week" : "")")
+                .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            // Both contents stay in place so they move with the card; only the
+            // visible one takes up space.
+            ZStack(alignment: .topLeading) {
+                // Never read by VoiceOver: a collapsed card is announced by its Open button.
+                CollapsedCategoryContent(category: category, store: store)
+                    .accessibilityHidden(true)
+                    .modifier(CardContentCrossFade(isHidden: isExpanded))
+                ExpandedCategoryContent(
+                    category: category, store: store, isEditing: isEditingTasks,
+                    isPastWeek: isPastWeek, onCollapse: onCollapse
+                )
+                .modifier(CardContentCrossFade(isHidden: !isExpanded))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(isExpanded ? 14 * expandedCardScale : 12)
+        .frame(maxWidth: .infinity, minHeight: isExpanded ? 0 : 120, maxHeight: .infinity, alignment: .topLeading)
+        // Contents animate inside the card's moving frame instead of each child
+        // interpolating its own position (which let text run ahead of the card).
+        .geometryGroup()
+        .accessibilityHidden(!isExpanded)  // the Open button below speaks for a collapsed card
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .background { GridCardBackground(theme: theme, rc: rc, isExpanded: isExpanded) }
+        .overlay {
+            if !isExpanded {
+                Button(action: onExpand) {
+                    Color.clear.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(category.name), \(category.isThisWeekOnly ? "this week only, " : "")\(category.completedCount) of \(category.totalCount) tasks complete")
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isEditing && !isPastWeek && !isExpanded {
+                Button {
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, .red)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 8, y: -8)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel("Remove \(category.name)")
+            }
+        }
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: cornerRadius))
+        .contextMenu {
+            if !isPastWeek {
+                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
+                    store.saveCategoryAsTemplate(category.id)
+                }
+                Divider()
+                Button("Delete Category", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+            }
+        }
+        .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            if !Theme.isRetro(theme) {
+                Image(systemName: category.symbol)
+                    .modifier(AnimatableFont(size: isExpanded ? expandedTitleSize * 0.95 : collapsedTitleSize))
+            }
+            Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
+                .modifier(AnimatableFont(
+                    size: isExpanded ? expandedTitleSize : collapsedTitleSize,
+                    weight: .semibold, design: design
+                ))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            // The edit button lives beside the pie chart in space that opens up as
+            // the card expands, so it travels with the pie instead of being inserted.
+            completionIcon
+                .padding(.leading, showsEditButton ? expandedPieSize + 10 : 0)
+                .overlay(alignment: .leading) {
+                    if !isPastWeek {
+                        Button { onToggleEdit() } label: {
+                            Image(systemName: isEditingTasks ? "checkmark.circle.fill" : "square.and.pencil")
+                                .font(.system(size: expandedPieSize))
+                                .foregroundStyle(isEditingTasks ? .green : Theme.textSecondary(theme, rc: rc))
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(showsEditButton ? 1 : 0)
+                        .scaleEffect(showsEditButton ? 1 : 0.5)
+                        .allowsHitTesting(showsEditButton)
+                        .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit tasks in \(category.name)")
+                    }
+                }
+        }
+    }
+
+    /// Hidden during global edit mode, which already covers every card.
+    private var showsEditButton: Bool { isExpanded && !isPastWeek && !isEditing }
+
+    private var completionIcon: some View {
+        let total = category.totalCount
+        let completed = category.completedCount
+        let color: Color = total == 0 ? .gray
+            : completed == 0 ? Theme.completionNone(theme)
+            : completed == total ? Theme.completionAll(theme, rc: rc)
+            : Theme.completionPartial(theme)
+        return Group {
+            if Theme.isRetro(theme) {
+                Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
+                    .font(.system(.caption, design: .monospaced).bold())
+            } else {
+                Image(systemName: "chart.pie.fill")
+                    .modifier(AnimatableFont(size: isExpanded ? expandedPieSize : collapsedPieSize))
+            }
+        }
+        .foregroundStyle(color)
+    }
+}
+
+// MARK: - Card Background
+
+/// The rounded card shape, border, and shadow shared by every grid card.
+struct GridCardBackground: View {
+    let theme: AppearanceMode
+    let rc: RetroColor
+    let isExpanded: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+            .fill(Theme.cardFill(theme))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
+                    .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
+            )
+            .shadow(
+                color: Theme.cardShadow(theme, rc: rc),
+                radius: Theme.isRetro(theme) ? 8 : (isExpanded ? 10 : 6),
+                x: Theme.isRetro(theme) ? 0 : (isExpanded ? 2 : 0),
+                y: Theme.isRetro(theme) ? 0 : (isExpanded ? 2 : 3)
+            )
+    }
+}
+
+// MARK: - Collapsed Content
+
+/// Task preview dots and the open arrow, shown below the header when collapsed.
+private struct CollapsedCategoryContent: View {
+    let category: Category
+    let store: ChecklistStore
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
 
     var body: some View {
-        Button(action: onExpand) {
-            VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                if !Theme.isRetro(theme) {
-                    Image(systemName: category.symbol).font(.subheadline)
-                }
-                Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
-                    .font(Theme.primaryFont(theme)).lineLimit(1)
-                Spacer()
-                completionIcon(for: category)
-            }
-
-            Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
-                .font(Theme.captionFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-
+        VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(category.tasks.prefix(5)) { task in
                     HStack(spacing: 6) {
@@ -101,121 +254,26 @@ struct CategoryCard: View {
                         .font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
             }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-            .background {
-            RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                .fill(Theme.cardFill(theme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                        .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
-                )
-                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : (dimmed ? 2 : 6), x: 0, y: Theme.isRetro(theme) ? 0 : (dimmed ? 1 : 3))
-            }
-            .overlay {
-            if dimmed {
-                RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                    .fill(Color.black.opacity(0.08))
-            }
-            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open \(category.name), \(category.completedCount) of \(category.totalCount) tasks complete")
-        .overlay(alignment: .topTrailing) {
-            if isEditing && !isPastWeek {
-                Button {
-                    deletion = .thisWeek
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white, .red)
-                }
-                .buttonStyle(.plain)
-                .offset(x: 8, y: -8)
-            }
-        }
-        .contextMenu {
-            if !isPastWeek {
-                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
-                    store.saveCategoryAsTemplate(category.id)
-                }
-                Divider()
-                Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
-                    deletion = .thisWeek
-                }
-                Button("Delete Entirely", systemImage: "trash", role: .destructive) {
-                    deletion = .entirely
-                }
-            }
-        }
-        .categoryDeletionConfirmation(deletion: $deletion, category: category, store: store)
-    }
-
-    private func completionIcon(for category: Category) -> some View {
-        let total = category.totalCount
-        let completed = category.completedCount
-        let color: Color = total == 0 ? .gray : completed == 0 ? Theme.completionNone(theme) : completed == total ? Theme.completionAll(theme, rc: rc) : Theme.completionPartial(theme)
-        if Theme.isRetro(theme) {
-            return AnyView(
-                Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(color)
-            )
-        } else {
-            return AnyView(
-                Image(systemName: "chart.pie.fill")
-                    .font(.body)
-                    .foregroundStyle(color)
-            )
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
-// MARK: - Expanded Category Card
+// MARK: - Expanded Content
 
-struct ExpandedCategoryCard: View {
+/// Full task list, add-task field, and collapse button, shown below the header when expanded.
+private struct ExpandedCategoryContent: View {
     let category: Category
     let store: ChecklistStore
     let isEditing: Bool
     let isPastWeek: Bool
-    let onToggleEdit: () -> Void
     let onCollapse: () -> Void
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
 
-    @State private var deletion: CategoryDeletion?
-
-    private let expandedScale: CGFloat = 1.1
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack(alignment: .bottom) {
-                if !Theme.isRetro(theme) {
-                    Image(systemName: category.symbol).font(.body)
-                        .scaleEffect(expandedScale)
-                }
-                Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
-                    .font(Theme.isRetro(theme) ? .system(.title3, design: .monospaced) : .title3)
-                Spacer()
-                if !isPastWeek {
-                    Button { onToggleEdit() } label: {
-                        Image(systemName: isEditing ? "checkmark.circle.fill" : "square.and.pencil")
-                            .font(.system(size: 20))
-                            .foregroundStyle(isEditing ? .green : Theme.textSecondary(theme, rc: rc))
-                    }
-                    .buttonStyle(.plain)
-                }
-                completionIcon(for: category)
-            }
-
-            Text(Theme.isRetro(theme) ? "done: \(category.completedCount)/\(category.totalCount)" : "Completed: \(category.completedCount)/\(category.totalCount)")
-                .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
-                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-
-            // Tasks
+        VStack(alignment: .leading, spacing: 8 * expandedCardScale) {
             ForEach(category.tasks) { task in
                 TaskRowCard(
                     task: task,
@@ -226,69 +284,79 @@ struct ExpandedCategoryCard: View {
                 )
             }
 
-            // Add task
             if !isPastWeek {
                 AddTaskRowCard(categoryID: category.id, store: store)
             }
 
-            // Collapse button
             HStack {
                 Spacer()
                 Button { onCollapse() } label: {
                     if Theme.isRetro(theme) {
-                        Text("[CLOSE]").font(.system(.caption, design: .monospaced))
+                        Text("[CLOSE]").font(.expandedCard(.caption1, design: .monospaced))
                             .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                     } else {
                         Image(systemName: "rectangle.compress.vertical")
-                            .font(.system(size: 20)).foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
+                            .font(.expandedCard(size: 20))
+                            .foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Collapse \(category.name)")
             }
         }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                .fill(Theme.cardFill(theme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius(theme))
-                        .stroke(Theme.cardBorder(theme, rc: rc), lineWidth: Theme.cardBorderWidth(theme))
-                )
-                .shadow(color: Theme.cardShadow(theme, rc: rc), radius: Theme.isRetro(theme) ? 8 : 10, x: Theme.isRetro(theme) ? 0 : 2, y: Theme.isRetro(theme) ? 0 : 2)
-        }
-        .contextMenu {
-            if !isPastWeek {
-                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
-                    store.saveCategoryAsTemplate(category.id)
-                }
-                Divider()
-                Button("Remove from This Week", systemImage: "xmark.circle", role: .destructive) {
-                    deletion = .thisWeek
-                }
-                Button("Delete Entirely", systemImage: "trash", role: .destructive) {
-                    deletion = .entirely
-                }
-            }
-        }
-        .categoryDeletionConfirmation(deletion: $deletion, category: category, store: store)
+    }
+}
+
+// MARK: - Animation Helpers
+
+/// A system font whose point size animates smoothly. Named text styles
+/// (`.subheadline` → `.title3`) can't be interpolated and would jump.
+struct AnimatableFont: ViewModifier, Animatable {
+    var size: CGFloat
+    var weight: Font.Weight = .regular
+    var design: Font.Design = .default
+
+    var animatableData: CGFloat {
+        get { size }
+        set { size = newValue }
     }
 
-    private func completionIcon(for category: Category) -> some View {
-        let total = category.totalCount
-        let completed = category.completedCount
-        let color: Color = total == 0 ? .gray : completed == 0 ? Theme.completionNone(theme) : completed == total ? Theme.completionAll(theme, rc: rc) : Theme.completionPartial(theme)
-        if Theme.isRetro(theme) {
-            return AnyView(
-                Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
-                    .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(color)
-            )
-        } else {
-            return AnyView(
-                Image(systemName: "chart.pie.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(color)
-            )
-        }
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight, design: design))
+    }
+}
+
+/// Hidden content stops taking up space immediately (so the card can shrink)
+/// but fades out in place, cross-fading with the content being shown.
+/// (Toggling `accessibilityHidden` here would corrupt the accessibility frames
+/// of the buttons inside, so VoiceOver visibility is handled by the card.)
+struct CardContentCrossFade: ViewModifier {
+    let isHidden: Bool
+
+    func body(content: Content) -> some View {
+        HiddenContentLayout(isHidden: isHidden) { content }
+            .opacity(isHidden ? 0 : 1)
+            .allowsHitTesting(!isHidden)
+    }
+}
+
+/// While hidden, takes up no space and never widens the card: it reports only the
+/// width it's offered, but still lays its content out at that width. (Hidden task
+/// rows have a minimum width wider than a grid column, which squeezed out the gap
+/// between collapsed cards.)
+private struct HiddenContentLayout: Layout {
+    var isHidden: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        return isHidden ? CGSize(width: proposal.width ?? 0, height: 0) : content.sizeThatFits(proposal)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: bounds.width, height: isHidden ? nil : bounds.height)
+        )
     }
 }
