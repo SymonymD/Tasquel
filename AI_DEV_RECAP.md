@@ -264,6 +264,14 @@ Uncommitted: category card animation rework + Onboarding preview (see Current St
 
 ## Planned / Not Yet Implemented
 
+- **Future / paid upgrade ideas (2026-10-14, not to be built yet)**:
+  - Home and lock screen widgets that tick tasks off without opening the app (likely the most wanted)
+  - History and stats: streaks, goal progress over time (past weeks are already kept)
+  - Reminders: a Sunday nudge to plan the week; per-task reminders
+  - More themes and alternate app icons
+  - Apple Watch app; Siri and Shortcuts support
+  - iCloud sync between iPhone and iPad (users tend to expect it, so maybe free)
+
 - **Calendar integration follow-ups**: profile the week pager with many events; try it on a real device with real accounts; decide pricing (the feature is gated by `FeatureAccess.isCalendarUnlocked`).
 - **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
 - **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
