@@ -399,7 +399,7 @@ final class ChecklistStore {
             } else {
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
-                newCat.tasks = recurringTasks.map(resetRecurringTask)
+                newCat.tasks = recurringTasks.map { resetRecurringTask($0) }
                 week.categories.append(newCat)
                 changed = true
             }
