@@ -342,33 +342,45 @@ struct TaskRowCard: View {
 
     // MARK: Goal Forms
 
-    /// Shown until a goal has a target: unit, then the target amount.
+    /// Shown until a goal has a target: unit and target on one line, wrapping
+    /// onto two lines only when they don't fit.
     private var setGoalForm: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 goalUnitMenu
-                if goalKindSelection == .custom { unitNameField }
-            }
-            HStack(spacing: 8) {
                 goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+                if goalKindSelection == .custom { unitNameField }
                 Spacer(minLength: 0)
-                Button(action: setGoal) { actionPill("Set") }
-                    .buttonStyle(.plain)
-                    .disabled(goalTargetInput.positiveValue(for: goalKindSelection) == nil)
+                setGoalButton
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    goalUnitMenu
+                    if goalKindSelection == .custom { unitNameField }
+                }
+                HStack(spacing: 8) {
+                    goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+                    Spacer(minLength: 0)
+                    setGoalButton
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
     }
 
+    private var setGoalButton: some View {
+        Button(action: setGoal) { actionPill("Set") }
+            .buttonStyle(.plain)
+            .disabled(goalTargetInput.positiveValue(for: goalKindSelection) == nil)
+    }
+
     private var editGoalForm: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                goalUnitMenu
-                if goalKindSelection == .custom { unitNameField }
-            }
             labeledGoalRow("Target") {
+                goalUnitMenu
                 goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+                if goalKindSelection == .custom { unitNameField }
             }
             labeledGoalRow("Progress") {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
@@ -430,11 +442,13 @@ struct TaskRowCard: View {
     }
 
     private var unitNameField: some View {
-        TextField("Unit, e.g. pages", text: $goalUnitText)
+        TextField("Unit", text: $goalUnitText)
             .font(goalFieldFont)
             .foregroundStyle(Theme.textPrimary(theme, rc: rc))
             .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 64 * expandedCardScale)
             .focused($focusedGoalField, equals: GoalFocus(field: .unitName, part: .number))
+            .accessibilityLabel("Unit name, for example pages")
     }
 
     /// A number field, or hours and minutes fields for time goals.
@@ -442,11 +456,11 @@ struct TaskRowCard: View {
     private func goalAmountFields(_ input: Binding<GoalAmountInput>, kind: GoalUnitKind, field: GoalField, placeholder: String) -> some View {
         if kind == .time {
             HStack(spacing: 4) {
-                goalNumberField("0", text: input.hours, focus: GoalFocus(field: field, part: .hours), keyboard: .numberPad, width: 48)
+                goalNumberField("0", text: input.hours, focus: GoalFocus(field: field, part: .hours), keyboard: .numberPad, width: 44)
                     .accessibilityLabel("\(placeholder) hours")
                 Text("h").font(goalFieldFont).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .fixedSize()
-                goalNumberField("0", text: input.minutes, focus: GoalFocus(field: field, part: .minutes), keyboard: .numberPad, width: 48)
+                goalNumberField("0", text: input.minutes, focus: GoalFocus(field: field, part: .minutes), keyboard: .numberPad, width: 44)
                     .accessibilityLabel("\(placeholder) minutes")
                 Text("m").font(goalFieldFont).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .fixedSize()

@@ -39,11 +39,12 @@ final class GoalUITests: XCTestCase {
         let targetHours = app.textFields["Target hours"]
         XCTAssertTrue(targetHours.waitForExistence(timeout: 3))
 
-        // The number pad's Done button closes the keyboard.
+        // While the keyboard is up, the bottom bar becomes a Done button that closes it.
         targetHours.tap()
         targetHours.typeText("2")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
-        app.toolbars.buttons["Done"].tap()
+        XCTAssertFalse(app.buttons["Settings"].exists, "bottom bar hidden while typing")
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "Done closes the keyboard")
 
         app.buttons["Set"].tap()
@@ -61,5 +62,13 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 3))
         XCTAssertTrue(amountMinutes.waitForNonExistence(timeout: 2), "entry hides after Add")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "keyboard closes after Add")
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2), "bottom bar returns")
+
+        // Swiping down on the grid also closes the keyboard.
+        app.buttons["Add progress"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let grid = app.staticTexts["45m / 2h"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: 150)))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
     }
 }

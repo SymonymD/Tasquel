@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var showOnboarding = false
     /// The bottom bar's calendar toggle: expands the bar to show the week's events.
     @State private var showEventsPanel = false
+    /// While the keyboard is up, the bottom bar turns into a Done button.
+    @State private var isKeyboardVisible = false
+    @Namespace private var bottomBarGlass
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -108,15 +111,11 @@ struct ContentView: View {
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .preferredColorScheme(store.colorScheme)
-        // Number pads have no return key, so every task field gets a Done button.
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-                .fontWeight(.semibold)
-            }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = false }
         }
         .sheet(isPresented: $showDatePicker) {
             DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday) { date in
@@ -365,25 +364,75 @@ struct ContentView: View {
     @ViewBuilder
     private var bottomBar: some View {
         if Theme.isRetro(theme) {
-            bottomBarStack
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Theme.navCapsule(theme))
-                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 2))
+            if isKeyboardVisible {
+                keyboardDoneButton
+                    .background(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Theme.navCapsule(theme))
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+                    )
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .transition(.opacity)
+            } else {
+                retroBottomBar
+                    .transition(.opacity)
+            }
         } else {
-            // The content shape makes the whole bar a touch target. Without it, taps on
-            // Settings/Edit fell through to the scrolling grid behind the see-through
-            // bar and the buttons never fired.
-            bottomBarStack
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            // The bar and the Done button share a glass ID, so the bar's glass morphs
+            // into the button when the keyboard opens.
+            GlassEffectContainer {
+                if isKeyboardVisible {
+                    keyboardDoneButton
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .glassEffectID("bottomBar", in: bottomBarGlass)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                } else {
+                    // The content shape makes the whole bar a touch target. Without it, taps on
+                    // Settings/Edit fell through to the scrolling grid behind the see-through
+                    // bar and the buttons never fired.
+                    bottomBarStack
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .glassEffectID("bottomBar", in: bottomBarGlass)
+                }
+            }
         }
+    }
+
+    /// Closes the keyboard; also closes it when swiped down.
+    private var keyboardDoneButton: some View {
+        Button {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        } label: {
+            Label("Done", systemImage: "keyboard.chevron.compact.down")
+                .font(Theme.isRetro(theme) ? .system(.headline, design: .monospaced) : .headline)
+                .foregroundStyle(Theme.isRetro(theme) ? Theme.accent(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 10).onEnded { value in
+                if value.translation.height > 20 {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        )
+    }
+
+    private var retroBottomBar: some View {
+        bottomBarStack
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.navCapsule(theme))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 2))
     }
 
     /// The bar's row, with the events panel expanding above it when toggled on.
@@ -574,7 +623,8 @@ struct ContentView: View {
             .padding(.top, 8)
             .padding(.bottom, 80)
         }
-        .scrollDismissesKeyboard(.interactively)
+        // Swiping the grid (up or down) closes the keyboard.
+        .scrollDismissesKeyboard(.immediately)
     }
 
     // MARK: - Grid Order & Expansion
