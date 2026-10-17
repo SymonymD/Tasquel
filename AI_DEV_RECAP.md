@@ -270,7 +270,6 @@ Uncommitted: category card animation rework + Onboarding preview (see Current St
 - **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
 - **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
 - **Card animation follow-ups**: verify with categories that have many tasks, in light and retro themes, and in edit mode; renaming a category closes its expanded card (expansion is keyed by name); consider keeping the grid's scroll position when changing weeks; consider haptic feedback on week change.
-- **Cleanup decisions**: `RemoveCategorySheet.swift` is unused (cards use confirmation dialogs); `Tasquel/booking.lottie` is untracked (original Lottie the SwiftUI animations were based on) — commit as reference or delete.
 - iPad-specific layout optimizations
 - Data export/import
 
