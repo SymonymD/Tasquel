@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SettingsSheet: View {
     let store: ChecklistStore
+    let calendar: CalendarService
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
     @State private var editingName = ""
@@ -32,6 +33,10 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
+            .task {
+                calendar.refreshAuthorization()
+                await calendar.loadCalendars()
+            }
         }
         .preferredColorScheme(store.colorScheme)
     }
@@ -50,8 +55,18 @@ struct SettingsSheet: View {
                 appearanceRows
             }
             .listRowBackground(darkCardBg)
-            Section("Calendar") {
-                calendarRow
+            Section("Week") {
+                weekStartRow
+            }
+            .listRowBackground(darkCardBg)
+            Section {
+                calendarSection
+            } header: {
+                Text("Calendar")
+            } footer: {
+                if FeatureAccess.isCalendarUnlocked {
+                    Text("Shows the week's events in an Events card. Events stay on your device and are never changed.")
+                }
             }
             .listRowBackground(darkCardBg)
             Section {
@@ -86,8 +101,11 @@ struct SettingsSheet: View {
                 retroSection("TERMINAL_COLOR") {
                     retroColorPalette
                 }
+                retroSection("WEEK") {
+                    weekStartRow
+                }
                 retroSection("CALENDAR") {
-                    calendarRow
+                    calendarSection
                 }
                 retroSection("HELP") {
                     Button { showHelp = true } label: {
@@ -228,6 +246,38 @@ struct SettingsSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var calendarSection: some View {
+        if FeatureAccess.isCalendarUnlocked {
+            CalendarSettingsRows(store: store, calendar: calendar)
+        } else {
+            calendarRow
+        }
+    }
+
+    /// Sunday or Monday. Changing it moves saved weeks by a day so tasks stay with their week.
+    private var weekStartRow: some View {
+        HStack {
+            if retro {
+                Text("> Week Starts On").font(Theme.bodyFont(theme))
+            } else {
+                Label("Week Starts On", systemImage: "calendar.day.timeline.left")
+            }
+            Spacer()
+            Picker("Week Starts On", selection: Binding(
+                get: { store.weekStartsOnSunday },
+                set: { store.setWeekStartsOnSunday($0) }
+            )) {
+                Text(retro ? "SUN" : "Sunday").tag(true)
+                Text(retro ? "MON" : "Monday").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .labelsHidden()
+        }
+    }
+
+    /// Shown while calendar integration is locked (future paid unlock).
     @ViewBuilder
     private var calendarRow: some View {
         HStack {

@@ -99,9 +99,23 @@ struct Category: Codable, Identifiable, Equatable {
     var name: String
     var symbol: String
     var tasks: [ChecklistTask] = []
+    /// Added "for this week only": not rolled forward into later weeks.
+    var isThisWeekOnly = false
 
     var completedCount: Int { tasks.filter(\.isCompleted).count }
     var totalCount: Int { tasks.count }
+}
+
+extension Category {
+    /// Decodes `isThisWeekOnly` leniently so data saved before it existed still loads.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        tasks = try container.decode([ChecklistTask].self, forKey: .tasks)
+        isThisWeekOnly = try container.decodeIfPresent(Bool.self, forKey: .isThisWeekOnly) ?? false
+    }
 }
 
 struct Week: Codable, Identifiable, Equatable {
@@ -115,8 +129,15 @@ struct Week: Codable, Identifiable, Equatable {
         return "Week of \(formatter.string(from: startDate))"
     }
 
+    /// The day after the week's last day.
+    var endDate: Date {
+        Calendar.current.date(byAdding: .day, value: 7, to: startDate) ?? startDate
+    }
+
+    /// Whether today falls within this week (works for any week start day).
     var isCurrentWeek: Bool {
-        Calendar.current.isDate(startDate, inSameDayAs: Week.mondayOfWeek(containing: Date()))
+        let now = Date()
+        return startDate <= now && now < endDate
     }
 
     var isFutureWeek: Bool {
@@ -127,11 +148,17 @@ struct Week: Codable, Identifiable, Equatable {
         !isCurrentWeek && !isFutureWeek
     }
 
-    static func mondayOfWeek(containing date: Date) -> Date {
+    /// Calendar weekday numbers for the supported week start days.
+    static let sunday = 1
+    static let monday = 2
+
+    /// Start (midnight) of the week containing `date`. `firstWeekday` is 1 for
+    /// Sunday or 2 for Monday; the store passes the user's setting.
+    static func startOfWeek(containing date: Date, firstWeekday: Int = monday) -> Date {
         var calendar = Calendar.current
-        calendar.firstWeekday = 2  // Monday-based weeks
+        calendar.firstWeekday = firstWeekday  // must be set, or US locales default to Sunday
         var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        components.weekday = 2
+        components.weekday = firstWeekday
         return calendar.date(from: components) ?? date
     }
 }

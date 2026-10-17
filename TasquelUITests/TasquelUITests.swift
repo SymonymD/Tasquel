@@ -91,6 +91,11 @@ final class TasquelUITests: XCTestCase {
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         work.tap()
+        // Let Work finish opening: Errands slides to a new row, and tapping it
+        // mid-slide can land where it used to be.
+        XCTAssertTrue(app.buttons["Collapse Work"].waitForExistence(timeout: 5))
+        let settled = expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: errands)
+        wait(for: [settled], timeout: 5)
         errands.tap()
         XCTAssertFalse(work.exists)
         XCTAssertFalse(errands.exists)
@@ -107,5 +112,33 @@ final class TasquelUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Errands"].waitForExistence(timeout: 5))
         XCTAssertFalse(work.exists, "Work should still be expanded after returning")
         XCTAssertFalse(errands.exists, "Errands should still be expanded after returning")
+    }
+
+    /// Regression: the see-through bottom bar let taps fall through to the grid,
+    /// so Settings and Edit did nothing.
+    @MainActor
+    func testBottomBarButtonsRespond() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
+            app.buttons["Next"].tap()
+            app.buttons["Next"].tap()
+            app.buttons["Next"].tap()
+            app.buttons["Continue"].tap()
+            app.buttons["Skip"].tap()
+            app.buttons["Let's Go!"].tap()
+        }
+
+        let settingsButton = app.buttons["Settings"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+        settingsButton.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3), "Settings should open")
+        app.buttons["Done"].firstMatch.tap()
+
+        let editButton = app.buttons["Edit"]
+        XCTAssertTrue(editButton.waitForExistence(timeout: 3))
+        editButton.tap()
+        XCTAssertTrue(app.staticTexts["Add Category"].waitForExistence(timeout: 3), "Edit mode should show Add Category")
     }
 }

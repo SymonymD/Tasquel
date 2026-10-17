@@ -28,9 +28,9 @@ Repo: https://github.com/SymonymD/Tasquel
 Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-10-04)
+## Current State (as of 2026-10-10)
 
-The current working tree includes the changes below, but they have not been committed. The last full simulator test run passed (21 test definitions / 24 executions, 0 failures). The updated looping welcome animation builds successfully, and its three focused geometry tests pass.
+Committed and pushed to `main` through `800ce9b` (audit fixes, test isolation, new welcome animation). **Uncommitted in the working tree**: the category card animation rework (`CategoryGridLayout.swift`, `CategoryCard.swift`, `ContentView.swift`), week swiping (`ContentView.swift`), grid layout unit tests, the `#Preview("Onboarding")` in `OnboardingSheet.swift`, and this recap. The user approved the card animation in the simulator; week swiping is verified by UI tests and recordings but not yet tried by the user. Last runs: 19 unit tests + the 2 expansion UI tests passing; temporary swipe tests passing (deleted after use). `CLAUDE.md`/`AGENTS.md` don't yet describe the card rework or week swiping.
 
 ### Files
 
@@ -38,21 +38,22 @@ The current working tree includes the changes below, but they have not been comm
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
 | `Tasquel/Models.swift` | 206 | Data models and enums |
-| `Tasquel/ChecklistStore.swift` | 539 | `@Observable` store, persistence, CRUD, rollover, validation, and load-error safeguards |
+| `Tasquel/ChecklistStore.swift` | 547 | `@Observable` store, persistence, CRUD, rollover, validation, load-error safeguards; `init(directory:defaults:)` injectable for tests |
 | `Tasquel/Theme.swift` | 140 | Theme functions and `ScanlineOverlay` |
-| `Tasquel/ContentView.swift` | 693 | Root view, week grid/layout state, navigation, and bottom bar |
-| `Tasquel/CategoryCard.swift` | 294 | Collapsed/expanded category cards and deletion confirmations |
+| `Tasquel/ContentView.swift` | 489 | Root view, week grid (order + expansion state), week paging (swipe/arrows), navigation, bottom bar |
+| `Tasquel/CategoryCard.swift` | 349 | `CategoryGridCard` (one card for both states: shared header, cross-faded content, context menu, deletion confirmations) + collapsed/expanded content views + `AnimatableFont` |
+| `Tasquel/CategoryGridLayout.swift` | 83 | Custom `Layout`: two-column grid where expanded cards take a full row |
 | `Tasquel/TaskRowCard.swift` | 563 | Task, subtask, and add-task rows; goal editing and confirmations |
 | `Tasquel/AddCategorySheet.swift` | 188 | Add Category and Date Picker sheets |
 | `Tasquel/SettingsSheet.swift` | 249 | Standard and retro settings layouts |
 | `Tasquel/HelpSheet.swift` | 137 | Help sheet and rows |
 | `Tasquel/RemoveCategorySheet.swift` | 52 | Legacy removal sheet (expanded card no longer presents it) |
 | `Tasquel/FeedbackSheet.swift` | 219 | Feedback UI/webhook code; currently not linked from Settings |
-| `Tasquel/OnboardingSheet.swift` | ~340 | Onboarding flow |
-| `Tasquel/WeekCarryOverAnimation.swift` | ~250 | Welcome carry-over animation (`KeyframeAnimator`) + Xcode preview |
-| `TasquelTests/TasquelTests.swift` | 353 | Rollover, safety, persistence-isolation, and welcome-animation timeline tests |
+| `Tasquel/OnboardingSheet.swift` | 303 | Onboarding flow + `#Preview("Onboarding")` (temp-directory store) |
+| `Tasquel/WeekCarryOverAnimation.swift` | 253 | Welcome carry-over animation (`KeyframeAnimator`) + `#Preview("Week carry-over")` |
+| `TasquelTests/TasquelTests.swift` | 374 | 19 tests: rollover, safety/persistence isolation, welcome-animation timeline, grid row rule |
 | `TasquelUITests/TasquelUITests.swift` | 111 | UI journey and category expansion tests |
-| `CLAUDE.md` | ~91 | Architecture reference for Claude Code |
+| `CLAUDE.md` / `AGENTS.md` | 89 | Architecture reference for Claude Code / Codex (keep in sync) |
 
 ### Features Implemented
 
@@ -120,8 +121,8 @@ The current working tree includes the changes below, but they have not been comm
     - CRT-style scanline overlay on cards
     - Settings and Help sheets have dual rendering paths (standard List vs retro ScrollView with terminal-styled sections)
 27. **Retro color palette**: 6 terminal phosphor colors (green, amber, blue, white, red, purple), each with 3 brightness levels (bright, dim, faint). Selectable in Settings when retro theme is active. Persisted via `settings.json`.
-28. **Grid layout**: Collapsed cards form two-column rows; each expanded card takes a full-width row. The layout tracks visual order so expanding a right-hand neighbor does not trade places with an already-expanded card.
-29. **Expanded card size bumps**: When expanded, font/icon sizes increase — category icon `.body` + `scaleEffect(1.1)`, title `.title3`, edit/pie icons 20pt, task title 16pt, subtask title 14pt, mode/type icons 16pt, collapse icon 20pt white `rectangle.compress.vertical`. Collapsed cards get dimmed overlay (`Color.black.opacity(0.15)`).
+28. **Grid layout**: Collapsed cards form two-column rows; each expanded card takes a full-width row. Expanding the right-hand card of a row moves it into its left neighbor's slot (via `categoryDisplayOrder`) so it opens in place. Implemented by `CategoryGridLayout` since 2026-10-05 (see item 44).
+29. **Expanded card size bumps**: When expanded, header sizes grow — title 15→20pt, pie chart 17→20pt, "Completed" 12→15pt (all `@ScaledMetric`, animated via `AnimatableFont`); name is semibold in both states. Task title 16pt, subtask title 14pt, mode/type icons 16pt, collapse icon 20pt `rectangle.compress.vertical`. (The old dimmed overlay on neighbor cards is gone.)
 30. **Edit-mode category removal**: Red minus circle (`minus.circle.fill`) overlay in top-right corner of collapsed cards during edit mode. Tapping deletes the category.
 31. **Add category button fills empty slot**: When category count is odd, the dashed "Add Category" card fills the empty right slot in the last row instead of creating a new row.
 32. **Add category callback pattern**: AddCategorySheet uses `onAdd` closure instead of calling `store.addCategory` directly — prevents store mutation inside sheet from interfering with dismiss.
@@ -132,18 +133,35 @@ The current working tree includes the changes below, but they have not been comm
 37. **Help sheet section fix**: Unrolled `ForEach` around `Section` in Help sheet to fix missing bottom corner rounding on middle sections.
 38. **Theme-aware collapse icon**: Collapse button in expanded cards uses `.white` in dark/retro themes, `Color(.secondaryLabel)` in light.
 39. **Expanded card depth effect**: Expanded card shadow `radius: 10, x: 2, y: 2`. Collapsed cards when dimmed get reduced shadow `radius: 2, y: 1` and lighter dimming `opacity(0.08)`. Creates subtle forward/back depth illusion.
-40. **Expand/collapse animation**: `.easeOut(duration: 0.7)` for smooth card transitions.
+40. **Expand/collapse animation**: One `ContentView.cardSpring` (`.spring(duration: 0.45, bounce: 0.12)`) for expand, collapse, and neighbor reflow (was `.easeOut(duration: 0.7)`).
 41. **Welcome animation (2026-10-05)**: `WeekCarryOverAnimation` replaced the clock-to-checkmark `CarryOverAnimation`/`ClockHandsShape`. A "This week" card checks off two tasks; the third turns orange with the carry-over arrow, lifts while the week slides away and "Next week" slides in beneath it, then lands and checks off green. Built as one `KeyframeAnimator` timeline (6s loop, every track the same length); Reduce Motion shows the finished frame (`Values.finished`). Cards use system colors for dark mode. Unit tests cover loop length and that the resting frame matches the Reduce Motion frame.
 42. **Independent category expansion across weeks**: `expandedCategoryKeys: Set<CategoryLayoutKey>` allows multiple cards open at once. Keys use category name plus occurrence (rather than UUID, which changes on rollover), so expanded state follows matching categories when navigating between weeks. This is view state, not persistence across app relaunches. UI tests cover neighboring cards and week navigation.
 43. **Audit-driven safety and UX fixes**: Unreadable week/settings JSON now shows a retryable error and is not overwritten; past-week mutations are rejected in the store; goal values must be finite and valid. Task/subtask/category deletion and destructive goal-to-checkbox changes require confirmation. Completed task titles retain normal contrast, and goal target/progress/unit can be edited after setup. Navigation and category cards have clearer accessibility labels; the bottom bar and card sizing were refined.
+
+44. **Category card animation rework (2026-10-05, uncommitted)**:
+    - `CategoryGridLayout` (custom `Layout`) places every card directly; `.categoryGridFullWidth(_:)` marks expanded cards. Replaces the old row-of-HStacks structure, so cards keep a stable identity and SwiftUI animates position and size: the tapped card grows in place and neighbors slide instead of popping. Row rule is unit-tested (`CategoryGridLayout.rows(fullWidth:)`).
+    - Cards are keyed by `CategoryLayoutKey` (name + occurrence), so the same card view persists across weeks.
+    - `CategoryGridCard` is one card for both states. Header (icon, name, edit button, pie chart) and "Completed" line are shared and resize smoothly; the pie chart rides the card's trailing edge. The edit button sits in space that opens beside the pie chart, so it slides out from behind it.
+    - Below the header, collapsed (task dots) and expanded (task list, add task, collapse button) content are both always mounted and cross-faded via `CardContentCrossFade`; only the visible one takes space.
+    - `.geometryGroup()` on the card keeps contents moving with the card's animated frame. `zIndex` keeps the most recently toggled card above sliding neighbors.
+    - Removed unused `BookingCalendarAnimation` (~230 lines) from `ContentView.swift`.
+45. **Repo hygiene (2026-10-05)**: `.gitignore` added (AppleDouble `._*` files from the exFAT T7 drive, `.DS_Store`, Xcode user data, `.superpowers/`); previously tracked `._*` files untracked. `AGENTS.md` mirrors `CLAUDE.md` for Codex.
+46. **Week swiping (2026-10-06, uncommitted)**:
+    - Horizontal drag on the week grid moves it with the finger (`weekDragOffset`); release past 25% of the width or a flick past 50% (predicted end) pages to the adjacent week; shorter drags spring back. The drag axis is locked on first movement (`weekSwipeAxis`), so vertical drags only scroll. Gesture is a `simultaneousGesture` so the `ScrollView` still scrolls.
+    - `changeWeek(to:)` animates the current week off-screen (0.16s ease-in), then the new week arrives from the opposite edge via an insertion-only transition (`weekArrivalOffset`, spring 0.35s). The ‹ › arrows, Go to Today, and the date picker all route through it, so the slide always matches the direction of travel. Reduce Motion uses a fade. `isChangingWeek` blocks overlapping changes.
+    - The grid is `.disabled` during a horizontal swipe / week change so a swipe that starts on a card or checkbox doesn't tap it (see gotcha 36).
+    - Side effects: changing weeks resets the grid's scroll position to the top (grid has `.id(week.startDate)`); a long sideways drag inside a text field could change weeks (not observed).
+47. **Task row and editing changes (2026-10-10, uncommitted)**: Expanded cards draw everything 15% larger (`expandedCardScale`, `Font.expandedCard`). Task rows show a mode icon (tap for Carry Over / Repeating / One-Time; highlighted for checkbox tasks), a goal icon that toggles goal ↔ checkbox, and a trash can in edit mode. A card's own edit button edits only its tasks; the bottom-bar edit mode is for categories, collapses all cards, and blocks opening them. Deleting a category removes it from the current and future weeks (past weeks keep history) and keeps its template; `RemoveCategorySheet.swift` was removed. "This Week Only" categories (`isThisWeekOnly`) don't roll forward.
+49. **Week start setting and header swap (2026-10-10, uncommitted)**: Settings ▸ Week Starts On (Sunday/Monday); switching moves every saved week by one day so tasks stay with their week. The header now shows today's date and the bottom bar shows "Week of …" (with Go to Today on other weeks).
+48. **Calendar integration (2026-10-10, uncommitted)**: See `docs/plans/2026-10-10-calendar-integration.md`. Settings toggle + calendar picker; a calendar toggle next to Settings expands the bottom bar to list the viewed week's events (tap opens the Calendar app at the event's date); refresh on calendar changes and foregrounding; `FeatureAccess.isCalendarUnlocked` for a future paywall. Launch arguments `-fakeCalendar` and `-isolatedData` for tests.
 
 ### UI Layout (Post-Redesign)
 
 - **Root**: `ZStack` with `Theme.background()` adaptive background
 - **Title**: "Week of M/d/yy" centered, `.title.bold()` (monospaced with cursor in retro mode)
 - **Navigation capsule**: Centered `HStack` with `< calendar >` in theme-adaptive capsule
-- **Content**: `ScrollView` + unified HStack rows (2 columns, 8pt spacing)
-- **Expanded card**: Takes a full-width row; other expanded cards stay open. Visual ordering prevents neighbors from unexpectedly swapping positions. Bumped font/icon sizes (title `.title3`, icons 16–20pt)
+- **Content**: `ScrollView` + `CategoryGridLayout` (2 columns, 8pt spacing)
+- **Expanded card**: Takes a full-width row; other expanded cards stay open. Grows from its grid slot with header text/icons resizing smoothly (title 20pt, icons 20pt)
 - **Bottom bar**: `HStack` — gear circle (left), date text (center), pencil/checkmark circle (right)
 - **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
 - **Add Category**: Dashed-border card in grid during edit mode
@@ -174,15 +192,19 @@ c37a93a Fix add category, grid layout bugs, and expanded card sizing
 b802c3f Bug fixes, file split, CarryOverAnimation v3, feedback sheet, unit tests
 d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
 de4d5f7 Fix duplicate redeclarations, remove VIKOV.xcodeproj, add #Preview
+50ee264 Audit fixes, independent card expansion, clock welcome animation, test isolation
+800ce9b Replace clock welcome animation with week carry-over animation
 ```
 
-The 2026-10-04 changes in the working tree are not yet committed.
+Uncommitted: category card animation rework + Onboarding preview (see Current State).
 
 ## Development Workflow
 
 - Build/test from the project directory: `xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`
 - Use `xcrun simctl list devices available` to find a current simulator ID; the old IDs and DerivedData path below may no longer exist.
-- An isolated iPhone 17 Pro motion-preview simulator used this session had ID `F9A016AE-9AA7-445B-85B5-89F7C4E6D243` (iOS 26.3).
+- **Checking motion without watching it**: record the simulator with `xcrun simctl io <id> recordVideo` while a temporary UI test drives the taps (build with `build-for-testing` first, then `test-without-building` so the video is short), then extract frames with `AVAssetImageGenerator` in a small Swift script (`ffmpeg` is not installed). For `KeyframeAnimator` views, `KeyframeTimeline(...).value(time:)` renders exact frames without a simulator. Make temporary UI tests assert outcomes (e.g. the card actually collapsed), not just tap. Delete them afterwards.
+- **Fresh-install checks** (e.g. onboarding): `xcrun simctl clone` the simulator, uninstall the app on the clone, test there, then delete the clone — never wipe the user's simulator data.
+- **Ask the user before running simulator tests/recordings** — they collide with Xcode previews (gotcha 33). Use the iPhone 17 Pro simulator (`6F2B8302-…`), not the iPhone 17 Pro Max the user runs the app on (`5CF3C145-…`).
 - New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
 
 24. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
@@ -215,9 +237,24 @@ The 2026-10-04 changes in the working tree are not yet committed.
 21. **`print()` invisible in simctl logs**: `print()` output doesn't appear in `log show` for simctl-launched apps. Use `os.Logger` for debugging.
 22. **`let` bindings in computed `some View` properties**: Causes "no return statements" compile error. Fix: extract to separate computed property helpers or functions.
 23. **`Section` inside `ForEach` breaks List corner rounding**: SwiftUI loses section boundary info. Fix: unroll sections as direct List children (e.g. `helpSection(0)` through `helpSection(5)`).
-24. **Welcome animation visibility in Xcode (fixed)**: The app-level welcome sheet still appears only while `hasSeenWelcome == false`, but `OnboardingSheet.swift` now has a dedicated `#Preview("Welcome animation")`. Use that preview to inspect the continuously looping motion without resetting onboarding or user data.
+24. **Welcome animation visibility in Xcode**: The app-level welcome sheet appears only while `hasSeenWelcome == false`. Use `#Preview("Week carry-over")` in `WeekCarryOverAnimation.swift`, or `#Preview("Onboarding")` in `OnboardingSheet.swift` (Live mode to tap through), without resetting user data.
 25. **Data-load failure safety**: Do not allow default state to overwrite unreadable `checklist.json` or `settings.json`. `ChecklistStore` now exposes `persistenceError`, blocks saves after decode failure, and offers retry from the root view.
-26. **Test isolation (fixed 2026-10-05)**: `ChecklistStore.init(directory:defaults:)` is injectable. Unit tests use `makeIsolatedStore()` (temp directory + throwaway `UserDefaults` suite), so they no longer read or overwrite the simulator's real `checklist.json`/`settings.json` and run safely in parallel. All 17 unit tests pass. `retryLoadingData()` now runs the same setup as launch (starter seeding, current week, migration).
+26. **Test isolation (fixed 2026-10-05)**: `ChecklistStore.init(directory:defaults:)` is injectable. Unit tests use `makeIsolatedStore()` (temp directory + throwaway `UserDefaults` suite), so they no longer read or overwrite the simulator's real `checklist.json`/`settings.json` and run safely in parallel. Tests that build a store must use `makeIsolatedStore()`. `retryLoadingData()` now runs the same setup as launch (starter seeding, current week, migration).
+27. **Layout animation needs stable identity**: Cards nested in per-row `HStack`s with position-keyed rows were treated as new views when they changed rows, so they popped instead of sliding. A custom `Layout` with every card as a direct subview fixes this.
+28. **Inserted views appear at their final position**: A view inserted mid-animation (e.g. via `if`) is placed at its end position while its container is still moving, so it looks detached. Keep both versions mounted and toggle opacity/space instead (`CardContentCrossFade`), or anchor new elements to something that already moves (the edit button is an overlay on the pie chart).
+29. **`.geometryGroup()`**: Without it, children of an animating container interpolate their own positions and can run ahead of it (the "Completed" line left the card's edge). `.geometryGroup()` on the card makes contents animate within its frame.
+30. **Named font styles don't animate**: `.subheadline` → `.title3` jumps. Animate the point size instead (`AnimatableFont` modifier with `animatableData`), sized with `@ScaledMetric` for Dynamic Type. Weight can't interpolate, so keep it constant.
+31. **Toggling `accessibilityHidden` corrupts frames**: Switching `.accessibilityHidden(isHidden)` on a container made the collapse button report the whole content area as its frame, so taps (and VoiceOver) missed it and collapsing broke. Keep `accessibilityHidden` constant on inner content; handle visibility at the card level.
+32. **Removal transitions keep their layout space**: A view leaving via `.opacity` still occupies space until the transition finishes, holding a collapsing card at its old size. Use a transition/modifier that drops the view's height immediately while it fades.
+33. **Xcode previews break if the preview simulator is touched from the CLI** (still failing as of 2026-10-07; Xcode had been running for 5+ days without the recommended restart): After heavy `xcodebuild`/`simctl` work, a preview showed "Failed to launch"; shutting down the preview device set (`xcrun simctl --set previews shutdown all`) got it loading, but the canvas then ignored taps. The preview app itself was healthy (main thread idle), so the canvas's input connection was stale. Recommended fix: quit and reopen Xcode (not yet confirmed by the user). Avoid simulator work while the user is using previews.
+34. **"A build only device cannot be used to run this target"**: Xcode's run destination was "Any iOS Device (arm64)". Pick an iOS Simulator in the toolbar's destination menu.
+35. **`LayoutValueKey` and default MainActor isolation**: The key type must be `nonisolated` or the build warns (an error in Swift 6 mode) because `Layout` reads it from a nonisolated context.
+36. **`allowsHitTesting(false)` doesn't cancel a touch in progress**: When content moves with the finger, a swipe that starts on a button ends "inside" it and fires the button. Disabling hit testing mid-drag didn't stop it; `.disabled(...)` did, because a button checks `isEnabled` when the touch ends. No visible dimming on the plain-styled buttons.
+37. **Removal transitions use stale state; transactions are per property** (known SwiftUI behavior, designed around rather than reproduced here): A removed view animates with the transition from its last render, so a direction flag set in the same update as the change is ignored for removal (insertion reads the new state). Setting the same property twice in one update ("jump, then animate back") coalesces into one animation from the old value. Work-around used for week paging: different properties for out/in, outgoing via an offset animation, incoming via an insertion transition, and the snap-back in a `disablesAnimations` transaction.
+38. **Running on the user's iPhone (2026-10-07, unresolved)**: Their iPhone 16 Pro Max (iOS 26.5.2, Developer Mode on) is paired but `devicectl` shows it `unavailable`, with no connection since 2026-03-24, so it doesn't appear as a run destination. The Mac is on the 10.0.0.x LAN via Ethernet and Wi-Fi. Fix: connect once by cable, then enable "Connect via network" in Window ▸ Devices and Simulators. Xcode is 26.2 (older than the phone's iOS 26.5) and may need updating if it can't prepare the device. Check with `xcrun devicectl list devices`.
+39. **`.disabled` cancels gestures attached inside it**: The events panel disables its event buttons while being dragged (so a drag can't open an event). With the swipe-down gesture attached inside the disabled subtree, the drag cancelled itself as soon as it started. Attach the gesture outside `.disabled`.
+40. **A vertical `ScrollView` swallows vertical drags even when its content fits**, so a parent swipe-down gesture never fires. The events panel only uses a `ScrollView` when the list is taller than its maximum height. (XCUITest's `swipeDown()` on a small element also drags only a short distance; use `press(forDuration:thenDragTo:withVelocity:)`.)
+
 
 ## Figma Reference
 
@@ -232,11 +269,22 @@ The 2026-10-04 changes in the working tree are not yet committed.
 - **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
 - **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
 - **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
+- **Card animation follow-ups**: verify with categories that have many tasks, in light and retro themes, and in edit mode; renaming a category closes its expanded card (expansion is keyed by name); consider keeping the grid's scroll position when changing weeks; consider haptic feedback on week change.
+- **Cleanup decisions**: `RemoveCategorySheet.swift` is unused (cards use confirmation dialogs); `Tasquel/booking.lottie` is untracked (original Lottie the SwiftUI animations were based on) — commit as reference or delete.
 - iPad-specific layout optimizations
 - Data export/import
 
-## Last Session Summary (2026-10-04)
+## Last Session Summary (2026-10-04 → 2026-10-07, Claude Code)
 
-**What was done**: Audited the SwiftUI architecture and UX flow, then implemented the safety and interaction fixes listed above. Category cards can now expand independently, keep their visual order, and retain open state when changing weeks. The welcome illustration was then replaced (2026-10-05) with `WeekCarryOverAnimation`, which acts out the carry-over feature described on the welcome screen (see item 41). Added unit/UI coverage, built and exercised the app in the simulator, and recorded the final loop.
+**What was done**:
+- Reviewed GPT's uncommitted audit work; fixed test isolation (tests had been overwriting the simulator's real data), made retry-after-load-failure run full setup, added `.gitignore`, updated `CLAUDE.md`/`AGENTS.md`. Committed and pushed (`50ee264`).
+- Fixed the clock-to-checkmark geometry, then replaced it with a new `WeekCarryOverAnimation` (storyboarded first, built with `KeyframeAnimator`). Committed and pushed (`800ce9b`). Added an Onboarding preview.
+- Reworked category card animations: custom `CategoryGridLayout`, one card view with a shared smoothly-resizing header, cross-faded content, `.geometryGroup()`. Verified frame-by-frame from simulator recordings; fixed several issues found that way (gotchas 27–32). User approved it in the simulator.
+- Added week swiping with direction-matched slides for swipes, arrows, Go to Today, and the date picker (item 46). Recordings caught a swipe opening the card under the finger; fixed with `.disabled` (gotcha 36).
+- Diagnosed Xcode preview failures (gotcha 33, unresolved until Xcode is restarted) and why the user's iPhone doesn't appear as a run destination (gotcha 38).
 
-**In progress / next**: Review the final loop with the user and adjust timing/geometry if requested. The implementation and tests are uncommitted. Other open work: feedback webhook/entry point, calendar integration, iPad layout, expansion persistence across relaunch, and data export/import.
+**In progress / next**:
+- User to try week swiping in the simulator; tune threshold or speed if needed.
+- User to reconnect the iPhone by cable (and possibly update Xcode) to run this build on device.
+- Commit and push everything uncommitted (card rework, week swiping, Onboarding preview, recap), and update `CLAUDE.md`/`AGENTS.md` for the new grid and paging.
+- Other open work: feedback webhook/entry point, calendar integration, iPad layout, expansion persistence across relaunch, data export/import.

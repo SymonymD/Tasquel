@@ -12,19 +12,20 @@ struct HelpSheet: View {
 
     private let helpSections: [(title: String, items: [(symbol: String, title: String, detail: String)])] = [
         ("Weekly Checklist", [
-            ("calendar", "Navigate Weeks", "Use the arrows or tap the calendar icon to jump to any week. Future weeks can be pre-populated. Past weeks can be reviewed."),
-            ("square.grid.2x2", "Category Cards", "Tap a card to expand and view all tasks. Tap the collapse arrow to return to grid view. Long-press for options: save, remove, or delete."),
-            ("pencil", "Edit Mode", "Tap the pencil icon to enter edit mode. From here you can add categories, change task modes, and delete tasks using the inline icons."),
+            ("calendar", "Navigate Weeks", "Swipe left or right, use the arrows, or tap the calendar icon to jump to any week. Future weeks can be pre-populated. Past weeks can be reviewed."),
+            ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings, then tap the calendar button next to Settings to see the week's events. Tap an event to open it in Calendar. Choose which calendars to include in Settings; events stay on your device."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. Long-press a card to save it for future use or delete it."),
+            ("pencil", "Edit Mode", "Tap the pencil in the bottom bar to add or delete categories; cards stay closed while editing. Deleting a category removes it from this week on, and you can add it back from Add Category. To edit one card's tasks, tap the edit icon inside that open card."),
         ]),
         ("Task Modes", [
             ("arrow.uturn.forward", "Carry Over", "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
             ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
             ("1.circle", "One-Time", "This week only. Will not carry forward or repeat, whether completed or not."),
-            ("hand.draw", "Changing Modes", "In edit mode, use the inline mode icons on each task. Or long-press a task for the context menu. Double-tap a task title to edit it inline."),
+            ("hand.draw", "Changing Modes", "Tap a task's mode icon to choose Carry Over, Repeating, or One-Time. In edit mode, a trash can deletes the task. Double-tap a task title to rename it, or long-press a task for all options."),
         ]),
         ("Task Types", [
             ("checkmark.circle", "Checkbox", "Standard task — tap the circle to mark complete. This is the default type for all new tasks."),
-            ("target", "Goal", "Track progress toward a numeric target (e.g. 50 push-ups). Tap the progress ring to update. Auto-completes when the target is reached."),
+            ("target", "Goal", "Track progress toward a numeric target (e.g. 50 push-ups). Tap the target icon to make a task a goal, and tap it again to switch back to a checkbox. Auto-completes when the target is reached."),
             ("arrow.left.arrow.right", "Switching Types", "Long-press a task and choose a type from the context menu."),
         ]),
         ("Sub-Tasks", [

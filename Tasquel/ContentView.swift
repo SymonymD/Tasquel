@@ -2,14 +2,33 @@ import SwiftUI
 // MARK: - Root View
 
 struct ContentView: View {
-    @State private var store = ChecklistStore()
+    @State private var store = ChecklistStore.makeDefault()
+    @State private var calendarService = CalendarService.makeDefault()
     @State private var showDatePicker = false
     @State private var showSettings = false
     @State private var showAddCategory = false
     @State private var expandedCategoryKeys: Set<CategoryLayoutKey> = []
     @State private var categoryDisplayOrder: [CategoryLayoutKey] = []
+    @State private var lastToggledCategory: CategoryLayoutKey?
     @State private var isEditing = false
+    /// Cards whose own edit button is on (only their tasks become editable).
+    @State private var editingCategoryKeys: Set<CategoryLayoutKey> = []
     @State private var showOnboarding = false
+    /// The bottom bar's calendar toggle: expands the bar to show the week's events.
+    @State private var showEventsPanel = false
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+
+    // Week paging (swipe or arrows): last/this/next week sit side by side.
+    // Read only by PagerTrack, so dragging moves the pages without rebuilding them.
+    @State private var pager = WeekPagerState()
+    @State private var pagerTarget: PagerTarget?
+    @State private var arrivingWeekTitle: String?  // shown from release until the new week takes over
+    @State private var weekSwipeAxis: Axis?
+    @State private var weekDragOrigin: CGFloat = 0  // translation when the swipe was recognized
+    @State private var isChangingWeek = false
+    @State private var weekPageWidth: CGFloat = 400
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -23,15 +42,15 @@ struct ContentView: View {
             Theme.background(theme).ignoresSafeArea()
 
             VStack(spacing: 12) {
-                if Theme.isRetro(theme) {
-                    Text("> \(store.selectedWeek?.displayTitle ?? "Tasquel")_")
-                        .font(Theme.titleFont(theme))
-                        .padding(.top, 8)
-                } else {
-                    Text(store.selectedWeek?.displayTitle ?? "Tasquel")
-                        .font(Theme.titleFont(theme))
-                        .padding(.top, 8)
-                }
+                // Today's date; the viewed week is shown in the bottom bar.
+                Text(Theme.isRetro(theme) ? "> \(todayDateString)_" : todayDateString)
+                    .font(Theme.titleFont(theme))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 56)  // clear of the Expand All button
+                    .frame(maxWidth: .infinity)
+                .overlay(alignment: .trailing) { expandAllButton }
+                .padding(.top, 8)
 
                 if let error = store.persistenceError {
                     Spacer()
@@ -50,7 +69,23 @@ struct ContentView: View {
                     Spacer()
                 } else if let week = store.selectedWeek {
                     weekNavigationBar
-                    weekContent(week)
+                    PagerTrack(pager: pager) {
+                        // Keyed by week, so the page that slides in keeps its identity when
+                        // it becomes current; only the new off-screen neighbor is built.
+                        ForEach(pagerPages(current: week)) { page in
+                            weekContent(page.week)
+                                .offset(x: CGFloat(page.slot) * weekPageWidth)
+                                // Neighbor pages are only for show while paging.
+                                .allowsHitTesting(page.slot == 0)
+                                .accessibilityHidden(page.slot != 0)
+                                // A swipe that starts on a card or checkbox must not tap it: the
+                                // content moves with the finger, so the touch never leaves the button.
+                                // (allowsHitTesting doesn't cancel a touch already in progress.)
+                                .disabled(page.slot != 0 || weekSwipeAxis == .horizontal || isChangingWeek)
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekPageWidth = $0 }
+                    .simultaneousGesture(weekSwipeGesture)
                 } else {
                     Spacer()
                     ContentUnavailableView("No Week Data", systemImage: "calendar.badge.exclamationmark")
@@ -74,17 +109,17 @@ struct ContentView: View {
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .preferredColorScheme(store.colorScheme)
         .sheet(isPresented: $showDatePicker) {
-            DatePickerSheet(selectedDate: store.selectedDate) { date in
-                withAnimation { store.navigateToDate(date) }
+            DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday) { date in
+                changeWeek(to: date)
             }
             .presentationDetents([.medium])
         }
         .sheet(isPresented: $showSettings) {
-            SettingsSheet(store: store)
+            SettingsSheet(store: store, calendar: calendarService)
         }
         .sheet(isPresented: $showAddCategory) {
-            AddCategorySheet(store: store) { name, symbol in
-                store.addCategory(name: name, symbol: symbol)
+            AddCategorySheet(store: store) { name, symbol, thisWeekOnly in
+                store.addCategory(name: name, symbol: symbol, thisWeekOnly: thisWeekOnly)
                 isEditing = false
             }
             .presentationDetents([.medium, .large])
@@ -98,8 +133,183 @@ struct ContentView: View {
                 showOnboarding = true
             }
         }
+        .task {
+            // The calendar list is needed to resolve the saved selection; without it no
+            // events load until Settings is opened.
+            await calendarService.loadCalendars()
+        }
+        .onChange(of: scenePhase) {
+            // Calendars may have changed (or access revoked) while away.
+            guard scenePhase == .active else { return }
+            calendarService.refreshAuthorization()
+            calendarService.invalidate()
+            Task { await calendarService.loadCalendars() }
+        }
+        .onChange(of: isEditing) {
+            // Edit mode is for managing categories: collapse everything.
+            guard isEditing else { return }
+            withAnimation(Self.cardSpring) {
+                expandedCategoryKeys.removeAll()
+                editingCategoryKeys.removeAll()
+                categoryDisplayOrder.removeAll()
+                lastToggledCategory = nil
+            }
+        }
         .onChange(of: store.selectedDate) {
             if isPastWeek { isEditing = false }
+        }
+    }
+
+    // MARK: - Week Paging
+
+    /// Horizontal drags move the week grid with the finger; releasing past a
+    /// quarter of the width (or flicking) pages to the adjacent week. Vertical
+    /// drags are left to the scroll view.
+    private var weekSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                if weekSwipeAxis == nil {
+                    weekSwipeAxis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                    // Track from here so the grid doesn't jump by the recognition distance.
+                    weekDragOrigin = value.translation.width
+                }
+                guard weekSwipeAxis == .horizontal, !isChangingWeek else { return }
+                pager.offset = value.translation.width - weekDragOrigin
+            }
+            .onEnded { value in
+                defer { weekSwipeAxis = nil }
+                guard weekSwipeAxis == .horizontal, !isChangingWeek else { return }
+                let distance = value.translation.width - weekDragOrigin
+                let predicted = value.predictedEndTranslation.width - weekDragOrigin
+                let velocity = value.velocity.width
+                if abs(distance) > weekPageWidth * 0.25 || abs(predicted) > weekPageWidth * 0.5 {
+                    let weeks = (abs(distance) > weekPageWidth * 0.25 ? distance : predicted) < 0 ? 1 : -1
+                    changeWeek(by: weeks, velocity: velocity)
+                } else {
+                    withAnimation(pagingSpring(to: 0, velocity: velocity)) { pager.offset = 0 }
+                }
+            }
+    }
+
+    /// A spring from the current drag offset to `target` that starts at the finger's
+    /// speed, so releasing a flick continues it instead of braking and re-easing.
+    private func pagingSpring(to target: CGFloat, velocity: CGFloat) -> Animation {
+        let remaining = target - pager.offset
+        // interpolatingSpring's velocity is in "fractions of the change per second".
+        // Capped below the point where a critically damped spring would overshoot,
+        // since an overshoot would show as a jump when the new week takes over.
+        let relative = abs(remaining) > 1 ? max(0, min(12, velocity / remaining)) : 0
+        return .interpolatingSpring(duration: 0.4, bounce: 0, initialVelocity: relative)
+    }
+
+    private func changeWeek(by weeks: Int, velocity: CGFloat = 0) {
+        guard let date = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: store.selectedDate) else { return }
+        changeWeek(to: date, velocity: velocity)
+    }
+
+    /// A week shown in a neighbor slot instead of the adjacent week, for jumps
+    /// of more than one week (date picker, Go to Today).
+    private struct PagerTarget {
+        let slot: Int
+        let date: Date
+    }
+
+    private struct PagerPage: Identifiable {
+        let slot: Int  // -1 = left of the current week, 0 = current, 1 = right
+        let week: Week
+        var id: Date { week.startDate }
+    }
+
+    /// The current week with a neighbor on each side.
+    private func pagerPages(current: Week) -> [PagerPage] {
+        [-1, 0, 1].map { slot in
+            guard slot != 0 else { return PagerPage(slot: 0, week: current) }
+            if let pagerTarget, pagerTarget.slot == slot {
+                return PagerPage(slot: slot, week: store.previewWeek(for: pagerTarget.date))
+            }
+            let date = Calendar.current.date(byAdding: .weekOfYear, value: slot, to: current.startDate) ?? current.startDate
+            return PagerPage(slot: slot, week: store.previewWeek(for: date))
+        }
+    }
+
+    /// Pages to the week containing `date`: the neighbor slot slides in (with the
+    /// current week sliding out) in one motion, then becomes the current week in place.
+    private func changeWeek(to date: Date, velocity: CGFloat = 0) {
+        guard !isChangingWeek, let current = store.selectedWeek else { return }
+        let target = store.startOfWeek(containing: date)
+        guard !Calendar.current.isDate(target, inSameDayAs: current.startDate) else {
+            withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 }
+            return
+        }
+        guard !reduceMotion else {
+            pager.offset = 0
+            withAnimation(.easeInOut(duration: 0.2)) { store.navigateToDate(date) }
+            return
+        }
+
+        let slot = target > current.startDate ? 1 : -1
+        if let adjacent = Calendar.current.date(byAdding: .weekOfYear, value: slot, to: current.startDate),
+           !Calendar.current.isDate(store.startOfWeek(containing: adjacent), inSameDayAs: target) {
+            pagerTarget = PagerTarget(slot: slot, date: date)  // off-screen, so no visible swap
+        }
+        isChangingWeek = true
+        // The title switches now; the page hands over only once the slide has fully
+        // settled, so the cards never snap the last few points into place.
+        arrivingWeekTitle = store.previewWeek(for: date).displayTitle
+        let endOffset = -CGFloat(slot) * weekPageWidth
+        withAnimation(pagingSpring(to: endOffset, velocity: velocity), completionCriteria: .removed) {
+            pager.offset = endOffset
+        } completion: {
+            // The neighbor page now fills the screen. Make it the current week in
+            // place, without animation: it moves to slot 0 as the offset returns to 0.
+            var settle = Transaction()
+            settle.disablesAnimations = true
+            withTransaction(settle) {
+                store.navigateToDate(date)
+                pagerTarget = nil
+                arrivingWeekTitle = nil
+                pager.offset = 0
+            }
+            isChangingWeek = false
+        }
+    }
+
+    // MARK: - Expand / Collapse All
+
+    /// Collapses every card when any is open; otherwise opens them all.
+    @ViewBuilder
+    private var expandAllButton: some View {
+        if store.persistenceError == nil, !isEditing, let week = store.selectedWeek, !gridEntries(for: week).isEmpty {
+            let anyExpanded = gridEntries(for: week).contains { expandedCategoryKeys.contains($0.id) }
+            Button {
+                withAnimation(Self.cardSpring) {
+                    if anyExpanded {
+                        expandedCategoryKeys.removeAll()
+                        editingCategoryKeys.removeAll()
+                    } else {
+                        expandedCategoryKeys = Set(gridEntries(for: week).map(\.id))
+                    }
+                    categoryDisplayOrder.removeAll()
+                    lastToggledCategory = nil
+                }
+            } label: {
+                Group {
+                    if Theme.isRetro(theme) {
+                        Text(anyExpanded ? "[-]" : "[+]")
+                            .font(.system(.body, design: .monospaced).bold())
+                    } else {
+                        Image(systemName: anyExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                            .font(.title3)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 12)
+            .accessibilityLabel(anyExpanded ? "Collapse all categories" : "Expand all categories")
         }
     }
 
@@ -108,7 +318,7 @@ struct ContentView: View {
     private var weekNavigationBar: some View {
         HStack(spacing: 20) {
             Button {
-                withAnimation { store.navigateWeek(by: -1) }
+                changeWeek(by: -1)
             } label: {
                 Image(systemName: "chevron.left").font(.body.bold())
             }
@@ -119,7 +329,7 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             Button {
-                withAnimation { store.navigateWeek(by: 1) }
+                changeWeek(by: 1)
             } label: {
                 Image(systemName: "chevron.right").font(.body.bold())
             }
@@ -145,7 +355,7 @@ struct ContentView: View {
     @ViewBuilder
     private var bottomBar: some View {
         if Theme.isRetro(theme) {
-            bottomBarContent
+            bottomBarStack
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
@@ -153,22 +363,39 @@ struct ContentView: View {
                         .fill(Theme.navCapsule(theme))
                         .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 2))
         } else {
-            bottomBarContent
+            // The content shape makes the whole bar a touch target. Without it, taps on
+            // Settings/Edit fell through to the scrolling grid behind the see-through
+            // bar and the buttons never fired.
+            bottomBarStack
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
+                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        }
+    }
+
+    /// The bar's row, with the events panel expanding above it when toggled on.
+    private var bottomBarStack: some View {
+        VStack(spacing: 8) {
+            if showEventsPanel && showsEventsToggle {
+                eventsPanel
+                Divider()
+            }
+            bottomBarContent
         }
     }
 
     private var bottomBarContent: some View {
         HStack {
-            // Settings
+            // Settings and the calendar toggle (fixed width so the date stays centered)
+            HStack(spacing: 4) {
             Button { showSettings = true } label: {
                 Image(systemName: Theme.isRetro(theme) ? "terminal" : "gearshape.fill")
-                    .font(.title3)
+                    .font(.system(size: Self.barIconSize))
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    .frame(width: 44, height: 44)
+                    .frame(width: Self.barButtonSize, height: Self.barButtonSize)
                     .background {
                         if Theme.isRetro(theme) {
                             RoundedRectangle(cornerRadius: 2)
@@ -178,20 +405,24 @@ struct ContentView: View {
                     }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
+            if showsEventsToggle {
+                eventsToggle
+            }
+            }
+            .frame(width: Self.barButtonSize * 2 + 4, alignment: .leading)
 
             Spacer()
 
-            // Date / Go to Today
+            // Viewed week / Go to Today
             if store.selectedWeek?.isCurrentWeek == true {
-                Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
-                    .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
+                weekTitleText
             } else {
                 Button {
-                    withAnimation { store.navigateToDate(Date()) }
+                    changeWeek(to: Date())
                 } label: {
                     VStack(spacing: 1) {
-                        Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
-                            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
+                        weekTitleText
                         Text(Theme.isRetro(theme) ? "> GO_TO_TODAY" : "Go to Today")
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.accent(theme, rc: rc))
@@ -209,9 +440,9 @@ struct ContentView: View {
                 } label: {
                     if isEditing {
                         Image(systemName: "checkmark")
-                            .font(.title3)
+                            .font(.system(size: Self.barIconSize))
                             .foregroundStyle(Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
-                            .frame(width: 44, height: 44)
+                            .frame(width: Self.barButtonSize, height: Self.barButtonSize)
                             .background {
                                 if Theme.isRetro(theme) {
                                     RoundedRectangle(cornerRadius: 2)
@@ -224,9 +455,9 @@ struct ContentView: View {
                             }
                     } else {
                         Image(systemName: "pencil")
-                            .font(.title3)
+                            .font(.system(size: Self.barIconSize))
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                            .frame(width: 44, height: 44)
+                            .frame(width: Self.barButtonSize, height: Self.barButtonSize)
                             .background {
                                 if Theme.isRetro(theme) {
                                     RoundedRectangle(cornerRadius: 2)
@@ -237,10 +468,21 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
+                .frame(width: Self.barButtonSize * 2 + 4, alignment: .trailing)
             } else {
-                Color.clear.frame(width: 44, height: 44)
+                Color.clear.frame(width: Self.barButtonSize * 2 + 4, height: Self.barButtonSize)
             }
         }
+    }
+
+    /// "Week of 10/5/26" for the viewed week (or the one arriving while paging).
+    private var weekTitleText: some View {
+        let title = arrivingWeekTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
+        return Text(Theme.isRetro(theme) ? "[\(title)]" : title)
+            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private var todayDateString: String {
@@ -260,43 +502,52 @@ struct ContentView: View {
 
     // MARK: - Week Content
 
+    /// Bottom bar icons: 20% larger than the original .title3 (20pt), with matching tap areas.
+    private static let barIconSize: CGFloat = 24
+    private static let barButtonSize: CGFloat = 52
+
+    /// One spring for expand, collapse, and the reflow of neighboring cards.
+    private static let cardSpring = Animation.spring(duration: 0.45, bounce: 0.12)
+
     @ViewBuilder
     private func weekContent(_ week: Week) -> some View {
         let categories = week.categories
         let showAdd = isEditing && !week.isPastWeek
 
-        // An expanded card takes a full row; other open cards remain open.
         ScrollView {
             VStack(spacing: 8) {
-                let rows = buildGridRows(categories: categories, showAddButton: showAdd)
-                ForEach(rows) { row in
-                    if row.isExpandedRow {
-                        // Expanded card takes full width
-                        gridCardSlot(row.left, week: week)
-                    } else if row.isAddRow && row.left == nil {
-                        // Standalone add button (even category count)
-                        HStack(spacing: 8) {
-                            addCategoryButton
-                            Color.clear.frame(maxWidth: .infinity)
-                        }
-                    } else if row.isAddRow {
-                        // Add button fills empty right slot
-                        HStack(spacing: 8) {
-                            gridCardSlot(row.left, week: week)
-                            addCategoryButton
-                        }
-                    } else if row.right == nil {
-                        // Last odd card — half width
-                        HStack(spacing: 8) {
-                            gridCardSlot(row.left, week: week)
-                            Color.clear.frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        // Normal 2-column row
-                        HStack(spacing: 8) {
-                            gridCardSlot(row.left, week: week)
-                            gridCardSlot(row.right, week: week)
-                        }
+                // Expanded cards take a full row; other open cards remain open.
+                CategoryGridLayout(spacing: 8) {
+                    ForEach(gridEntries(for: week)) { entry in
+                        let isExpanded = expandedCategoryKeys.contains(entry.id)
+                        CategoryGridCard(
+                            category: entry.category,
+                            store: store,
+                            isExpanded: isExpanded,
+                            isEditing: isEditing,
+                            isEditingTasks: isEditing || editingCategoryKeys.contains(entry.id),
+                            isPastWeek: week.isPastWeek,
+                            onToggleEdit: {
+                                withAnimation(.snappy(duration: 0.25)) {
+                                    if editingCategoryKeys.contains(entry.id) {
+                                        editingCategoryKeys.remove(entry.id)
+                                    } else {
+                                        editingCategoryKeys.insert(entry.id)
+                                    }
+                                }
+                            },
+                            onExpand: { expandCard(entry.id, in: week) },
+                            onCollapse: {
+                                withAnimation(Self.cardSpring) { collapseCategory(entry.id) }
+                            }
+                        )
+                        .categoryGridFullWidth(isExpanded)
+                        // The card being opened or closed stays above neighbors sliding past it.
+                        .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
+                    }
+                    if showAdd {
+                        addCategoryButton
+                            .transition(.opacity)
                     }
                 }
 
@@ -315,21 +566,20 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Grid Layout Helpers
-
-    private struct GridRow: Identifiable {
-        let id: Int
-        let left: Category?
-        let right: Category?
-        var isAddRow: Bool = false
-        var isExpandedRow: Bool = false  // left is the expanded card; renders full-width
-    }
+    // MARK: - Grid Order & Expansion
 
     /// Weeks create new category IDs, so layout state follows a category's name.
     /// The occurrence distinguishes categories with the same name in one week.
     private struct CategoryLayoutKey: Hashable {
         let name: String
         let occurrence: Int
+
+    }
+
+    /// Keyed by `CategoryLayoutKey` so a card keeps its identity across weeks.
+    private struct CategoryGridEntry: Identifiable {
+        let id: CategoryLayoutKey
+        let category: Category
     }
 
     private func categoryKeys(for categories: [Category]) -> [UUID: CategoryLayoutKey] {
@@ -343,102 +593,127 @@ struct ContentView: View {
         return keys
     }
 
-    private func buildGridRows(categories: [Category], showAddButton: Bool) -> [GridRow] {
-        let keysByID = categoryKeys(for: categories)
-        let categoriesByKey = Dictionary(uniqueKeysWithValues: categories.compactMap { category in
-            keysByID[category.id].map { ($0, category) }
-        })
-        let orderedKeys = categoryDisplayOrder.filter { categoriesByKey[$0] != nil }
-        let orderedKeySet = Set(orderedKeys)
-        let orderedCategories = orderedKeys.compactMap { categoriesByKey[$0] }
-            + categories.filter { category in
-                keysByID[category.id].map { !orderedKeySet.contains($0) } ?? true
-            }
-        var rows: [GridRow] = []
-        var index = 0
-        while index < orderedCategories.count {
-            let left = orderedCategories[index]
-            if keysByID[left.id].map({ expandedCategoryKeys.contains($0) }) ?? false {
-                rows.append(GridRow(id: rows.count, left: left, right: nil, isExpandedRow: true))
-                index += 1
-            } else {
-                let nextIndex = index + 1
-                let right = nextIndex < orderedCategories.count
-                    && !(keysByID[orderedCategories[nextIndex].id].map { expandedCategoryKeys.contains($0) } ?? false)
-                    ? orderedCategories[nextIndex] : nil
-                rows.append(GridRow(id: rows.count, left: left, right: right))
-                index += right == nil ? 1 : 2
-            }
+    /// Cards in display order: any reordering from expansion first, then the rest.
+    private func gridEntries(for week: Week) -> [CategoryGridEntry] {
+        let keysByID = categoryKeys(for: week.categories)
+        let entries = week.categories.compactMap { category in
+            keysByID[category.id].map { CategoryGridEntry(id: $0, category: category) }
         }
-
-        if showAddButton {
-            // Put add button in the empty right slot of the last non-expanded row if available
-            if let last = rows.last, last.right == nil, !last.isAddRow, !last.isExpandedRow {
-                rows[rows.count - 1] = GridRow(id: last.id, left: last.left, right: nil, isAddRow: true)
-            } else {
-                rows.append(GridRow(id: rows.count, left: nil, right: nil, isAddRow: true))
-            }
-        }
-        return rows
+        let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let ordered = categoryDisplayOrder.compactMap { entriesByKey[$0] }
+        let orderedKeys = Set(ordered.map(\.id))
+        return ordered + entries.filter { !orderedKeys.contains($0.id) }
     }
 
-    private func expandCategory(_ categoryID: UUID, in categories: [Category]) {
-        let keysByID = categoryKeys(for: categories)
-        guard let categoryKey = keysByID[categoryID] else { return }
-        let rows = buildGridRows(categories: categories, showAddButton: false)
-        if let row = rows.first(where: { $0.right?.id == categoryID }),
-           let leftID = row.left?.id,
-           let leftKey = keysByID[leftID] {
-            let visualOrder = rows.flatMap { [$0.left?.id, $0.right?.id] }
-                .compactMap { $0.flatMap { keysByID[$0] } }
-            if let leftIndex = visualOrder.firstIndex(of: leftKey) {
-                categoryDisplayOrder = visualOrder.filter { $0 != categoryKey }
-                categoryDisplayOrder.insert(categoryKey, at: leftIndex)
-            }
-        }
-        expandedCategoryKeys.insert(categoryKey)
+    /// Expanding the right-hand card of a row moves it into its left neighbor's
+    /// slot, so it opens in place instead of dropping below an already-open card.
+    private func expandCard(_ key: CategoryLayoutKey, in week: Week) {
+        guard !isEditing else { return }  // edit mode keeps cards collapsed
+        withAnimation(Self.cardSpring) { expandCategory(key, in: week) }
     }
 
-    private func collapseCategory(_ categoryID: UUID, in categories: [Category]) {
-        guard let categoryKey = categoryKeys(for: categories)[categoryID] else { return }
-        expandedCategoryKeys.remove(categoryKey)
+    private func expandCategory(_ key: CategoryLayoutKey, in week: Week) {
+        var order = gridEntries(for: week).map(\.id)
+        let rows = CategoryGridLayout.rows(fullWidth: order.map { expandedCategoryKeys.contains($0) })
+        if let row = rows.first(where: { $0.count == 2 && order[$0[1]] == key }) {
+            order.remove(at: row[1])
+            order.insert(key, at: row[0])
+            categoryDisplayOrder = order
+        }
+        expandedCategoryKeys.insert(key)
+        lastToggledCategory = key
+    }
+
+    private func collapseCategory(_ key: CategoryLayoutKey) {
+        editingCategoryKeys.remove(key)
+        expandedCategoryKeys.remove(key)
+        lastToggledCategory = key
         if expandedCategoryKeys.isEmpty { categoryDisplayOrder.removeAll() }
     }
 
-    /// Renders a single grid slot — collapsed card, expanded card, or shrunk-to-zero neighbor
-    @ViewBuilder
-    private func gridCardSlot(_ category: Category?, week: Week) -> some View {
-        if let category {
-            let categoryKey = categoryKeys(for: week.categories)[category.id]
-            let isExpanded = categoryKey.map { expandedCategoryKeys.contains($0) } ?? false
+    // MARK: - Calendar Events (bottom bar)
 
-            if isExpanded {
-                ExpandedCategoryCard(
-                    category: category,
-                    store: store,
-                    isEditing: isEditing,
-                    isPastWeek: week.isPastWeek,
-                    onToggleEdit: { withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() } },
-                    onCollapse: {
-                        withAnimation(.easeOut(duration: 0.7)) {
-                            collapseCategory(category.id, in: week.categories)
-                        }
-                    }
-                )
-                .id(category.id)
-                .transition(.identity)
-            } else {
-                CategoryCard(category: category, store: store, isEditing: isEditing, isPastWeek: week.isPastWeek) {
-                    withAnimation(.easeOut(duration: 0.7)) {
-                        expandCategory(category.id, in: week.categories)
+    /// The calendar toggle appears once events are turned on in Settings.
+    private var showsEventsToggle: Bool {
+        FeatureAccess.isCalendarUnlocked && store.calendarEventsEnabled && calendarService.isAuthorized
+    }
+
+    private var eventsToggle: some View {
+        Button {
+            withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel.toggle() }
+        } label: {
+            Image(systemName: Theme.isRetro(theme) ? "calendar" : (showEventsPanel ? "calendar.circle.fill" : "calendar"))
+                .font(.system(size: Self.barIconSize))
+                .foregroundStyle(weekHasEvents ? eventsGreen : (showEventsPanel ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)))
+                .frame(width: Self.barButtonSize, height: Self.barButtonSize)
+                .background {
+                    if Theme.isRetro(theme) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Theme.cardFill(theme))
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(
+                                showEventsPanel ? Theme.accent(theme, rc: rc) : Theme.cardBorder(theme, rc: rc), lineWidth: 1))
                     }
                 }
-                .id(category.id)
-                .transition(.identity)
-            }
-        } else {
-            Color.clear.frame(maxWidth: .infinity)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(showEventsPanel ? "Hide events" : "Show events")
+        .accessibilityValue(weekHasEvents ? "Has events this week" : "")
+        // Load the viewed week's events even while the panel is closed, to color the icon.
+        .task(id: eventsLoadKey) {
+            guard let key = eventsLoadKey else { return }
+            await calendarService.load(weekStarting: key.weekStart, calendarIDs: key.calendarIDs)
+        }
+    }
+
+    private var eventsGreen: Color {
+        Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green
+    }
+
+    /// Whether the viewed week has any events from the chosen calendars.
+    private var weekHasEvents: Bool {
+        guard let key = eventsLoadKey else { return false }
+        return !(calendarService.days(forWeekStarting: key.weekStart, calendarIDs: key.calendarIDs) ?? []).isEmpty
+    }
+
+    private var eventsLoadKey: EventsLoadKey? {
+        guard let week = store.selectedWeek else { return nil }
+        return EventsLoadKey(
+            weekStart: week.startDate,
+            calendarIDs: Set(calendarService.effectiveSelection(store.selectedCalendarIDs)),
+            generation: calendarService.generation
+        )
+    }
+
+    @ViewBuilder
+    private var eventsPanel: some View {
+        if let week = store.selectedWeek {
+            let calendarIDs = Set(calendarService.effectiveSelection(store.selectedCalendarIDs))
+            CalendarEventsPanel(
+                store: store,
+                days: calendarService.days(forWeekStarting: week.startDate, calendarIDs: calendarIDs),
+                onOpen: openInCalendar,
+                onDismiss: {
+                    withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = false }
+                }
+            )
+            .task(id: EventsLoadKey(weekStart: week.startDate, calendarIDs: calendarIDs, generation: calendarService.generation)) {
+                await calendarService.load(weekStarting: week.startDate, calendarIDs: calendarIDs)
+            }
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+    }
+
+    /// Opens the Calendar app at the event's date (iOS can't open a specific event).
+    private func openInCalendar(_ event: CalendarEvent) {
+        if let url = URL(string: "calshow:\(event.start.timeIntervalSinceReferenceDate)") {
+            openURL(url)
+        }
+    }
+
+    private struct EventsLoadKey: Hashable {
+        let weekStart: Date
+        let calendarIDs: Set<String>
+        let generation: Int
     }
 
     @ViewBuilder
@@ -460,231 +735,24 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 }
-struct BookingCalendarAnimation: View {
-    @State private var tileScales: [CGFloat] = Array(repeating: 0, count: 8)
-    @State private var checkScale: CGFloat = 0
-    @State private var sparkleOpacity: Double = 0
-    @State private var sparkleScales: [CGFloat] = Array(repeating: 0, count: 5)
 
-    // 8 day tiles in a 4x2 grid — staggered pop-in timing (seconds)
-    private let tileDelays: [Double] = [0.0, 0.2, 0.4, 0.73, 0.93, 1.13, 1.33, 1.53]
-    // Sparkle timing
-    private let sparkleDelays: [Double] = [0.13, 0.17, 0.53, 0.9, 0.83]
+// MARK: - Week Pager Support
 
-    private let lineColor = Color(white: 0.28)
-    private let tileColor = Color(red: 0.15, green: 0.53, blue: 0.96)
-    private let headerFill = Color(white: 0.91)
-
-    var body: some View {
-        Canvas { context, size in
-            let s = min(size.width / 210, size.height / 156)
-            let ox = (size.width - 210 * s) / 2
-            let oy = (size.height - 156 * s) / 2
-
-            // Helper to scale points
-            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-                CGPoint(x: ox + x * s, y: oy + y * s)
-            }
-            func v(_ val: CGFloat) -> CGFloat { val * s }
-
-            // --- Calendar body (rounded rect) ---
-            let bodyRect = CGRect(x: ox, y: oy + 22 * s, width: 210 * s, height: 134 * s)
-            let bodyPath = Path(roundedRect: bodyRect, cornerRadius: v(11))
-            context.fill(bodyPath, with: .color(.white))
-            context.stroke(bodyPath, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-
-            // --- Header bar ---
-            var headerPath = Path()
-            headerPath.addRoundedRect(in: CGRect(x: ox, y: oy + 22 * s, width: 210 * s, height: 30 * s),
-                                       cornerSize: CGSize(width: v(11), height: v(11)))
-            // Clip bottom corners of header
-            let headerClip = CGRect(x: ox, y: oy + 22 * s, width: 210 * s, height: 30 * s)
-            let headerVisual = Path(roundedRect: headerClip, cornerRadii: .init(topLeading: v(11), bottomLeading: 0, bottomTrailing: 0, topTrailing: v(11)))
-            context.fill(headerVisual, with: .color(headerFill))
-            context.stroke(headerVisual, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-
-            // --- Horizontal divider below header ---
-            var divider = Path()
-            divider.move(to: p(0, 52))
-            divider.addLine(to: p(210, 52))
-            context.stroke(divider, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-
-            // --- Vertical divider ---
-            var vDiv = Path()
-            vDiv.move(to: p(105, 52))
-            vDiv.addLine(to: p(105, 156))
-            context.stroke(vDiv, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-
-            // --- Horizontal mid divider ---
-            var hDiv = Path()
-            hDiv.move(to: p(0, 104))
-            hDiv.addLine(to: p(210, 104))
-            context.stroke(hDiv, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-
-            // --- Ring pegs (6 circles on top) ---
-            let pegXs: [CGFloat] = [31.4, 59, 86.5, 114.1, 141.7, 169.3]
-            for px in pegXs {
-                // Peg stem
-                var stem = Path()
-                stem.move(to: p(px, 8))
-                stem.addLine(to: p(px, 30))
-                context.stroke(stem, with: .color(lineColor), style: StrokeStyle(lineWidth: v(3), lineCap: .round))
-                // Peg circle
-                let pegCircle = Path(ellipseIn: CGRect(x: ox + (px - 6.4) * s, y: oy, width: v(12.8), height: v(12.8)))
-                context.fill(pegCircle, with: .color(.white))
-                context.stroke(pegCircle, with: .color(lineColor), style: StrokeStyle(lineWidth: v(1.7)))
-            }
-
-            // --- Day tiles (4 columns x 2 rows) ---
-            let tilePositions: [(x: CGFloat, y: CGFloat)] = [
-                (30, 68), (76.5, 68), (123, 68), (170, 68),   // row 1
-                (170, 114), (123, 114), (76, 114), (30, 114),  // row 2
-            ]
-            let tileSize: CGFloat = 35
-
-            for (i, pos) in tilePositions.enumerated() {
-                let sc = tileScales[i]
-                guard sc > 0.01 else { continue }
-                let cx = ox + pos.x * s
-                let cy = oy + pos.y * s
-                let half = tileSize * s * sc / 2
-                let tileRect = CGRect(x: cx - half, y: cy - half, width: half * 2, height: half * 2)
-                let tilePath = Path(roundedRect: tileRect, cornerRadius: half * 0.35)
-                context.fill(tilePath, with: .color(tileColor.opacity(Double(sc.clamped(to: 0...1)))))
-            }
-
-            // --- Checkmark on tile at (123, 68) ---
-            if checkScale > 0.01 {
-                let cx = ox + 123 * s
-                let cy = oy + 68 * s
-                let cs = checkScale.clamped(to: 0...1.5)
-                var check = Path()
-                check.move(to: CGPoint(x: cx - 6 * s * cs, y: cy + 1 * s * cs))
-                check.addLine(to: CGPoint(x: cx - 1.5 * s * cs, y: cy + 6 * s * cs))
-                check.addLine(to: CGPoint(x: cx + 7 * s * cs, y: cy - 6 * s * cs))
-                context.stroke(check, with: .color(.white),
-                               style: StrokeStyle(lineWidth: v(2.5) * cs, lineCap: .round, lineJoin: .round))
-            }
-
-            // --- Sparkles ---
-            let sparklePositions: [(x: CGFloat, y: CGFloat)] = [
-                (190, -8), (206, 14), (122, -2), (-24, -12), (-38, 8)
-            ]
-            for (i, sp) in sparklePositions.enumerated() {
-                let sc = sparkleScales[i]
-                guard sc > 0.01 else { continue }
-                let cx = ox + sp.x * s
-                let cy = oy + sp.y * s
-                let arm = 4 * s * sc
-                let starColor = Color(red: 0.22, green: 0.22, blue: 0.86)
-                var star = Path()
-                star.move(to: CGPoint(x: cx - arm, y: cy))
-                star.addLine(to: CGPoint(x: cx + arm, y: cy))
-                star.move(to: CGPoint(x: cx, y: cy - arm))
-                star.addLine(to: CGPoint(x: cx, y: cy + arm))
-                context.stroke(star, with: .color(starColor.opacity(sparkleOpacity)),
-                               style: StrokeStyle(lineWidth: v(0.7), lineCap: .round))
-            }
-        }
-        .onAppear { runLoop() }
-    }
-
-    private func runLoop() {
-        // Reset
-        tileScales = Array(repeating: 0, count: 8)
-        checkScale = 0
-        sparkleOpacity = 0
-        sparkleScales = Array(repeating: 0, count: 5)
-
-        // Pop in tiles sequentially
-        for i in 0..<8 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + tileDelays[i]) {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                    tileScales[i] = 1.1
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + tileDelays[i] + 0.2) {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                    tileScales[i] = 1.0
-                }
-            }
-        }
-
-        // Checkmark appears at ~0.87s, bounces
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.87) {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                checkScale = 1.3
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.07) {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.65)) {
-                checkScale = 1.0
-            }
-        }
-
-        // Sparkles fade in and twinkle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) {
-            withAnimation(.easeIn(duration: 1.3)) {
-                sparkleOpacity = 1.0
-            }
-        }
-        for i in 0..<5 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + sparkleDelays[i]) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    sparkleScales[i] = 1.0
-                }
-            }
-            // Twinkle out and back
-            DispatchQueue.main.asyncAfter(deadline: .now() + sparkleDelays[i] + 0.8) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    sparkleScales[i] = 0
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + sparkleDelays[i] + 1.3) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    sparkleScales[i] = 0.8
-                }
-            }
-        }
-
-        // Pop out tiles (reverse order, staggered from ~2.4s)
-        for i in 0..<8 {
-            let outDelay = 2.4 + Double(i) * 0.06
-            DispatchQueue.main.asyncAfter(deadline: .now() + outDelay) {
-                withAnimation(.spring(response: 0.15, dampingFraction: 0.7)) {
-                    tileScales[7 - i] = 1.1
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + outDelay + 0.1) {
-                withAnimation(.easeIn(duration: 0.15)) {
-                    tileScales[7 - i] = 0
-                }
-            }
-        }
-
-        // Fade out checkmark and sparkles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(.easeIn(duration: 0.2)) {
-                checkScale = 0
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(.easeIn(duration: 0.3)) {
-                sparkleOpacity = 0
-                for i in 0..<5 { sparkleScales[i] = 0 }
-            }
-        }
-
-        // Loop after full cycle (3s = 90 frames @ 30fps)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-            runLoop()
-        }
-    }
+/// Horizontal offset of the week pages. Kept out of ContentView's own state so a
+/// drag only re-renders `PagerTrack`, not the three pages of cards.
+@Observable
+private final class WeekPagerState {
+    var offset: CGFloat = 0
 }
 
-private extension CGFloat {
-    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+/// Lays the pages out in a ZStack and shifts them by the pager offset.
+private struct PagerTrack<Content: View>: View {
+    let pager: WeekPagerState
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack { content }
+            .offset(x: pager.offset)
     }
 }
 

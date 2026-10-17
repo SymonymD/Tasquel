@@ -40,6 +40,10 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts) |
 | `Tasquel/HelpSheet.swift` | Help guide |
 | `Tasquel/OnboardingSheet.swift` | Onboarding flow (welcome, how it works, name, categories) |
+| `Tasquel/CategoryGridLayout.swift` | Custom `Layout`: two-column card grid, expanded cards take a full row |
+| `Tasquel/CalendarService.swift` | Calendar integration: EventKit/fake providers, day grouping, permission, per-week event cache, `FeatureAccess` |
+| `Tasquel/CalendarSettings.swift` | Settings rows and calendar picker for calendar integration |
+| `Tasquel/CalendarEventsPanel.swift` | The week's events, shown inside the bottom bar when its calendar toggle is on |
 | `Tasquel/WeekCarryOverAnimation.swift` | Welcome illustration: `KeyframeAnimator` loop showing an unfinished task carrying into next week |
 | `Tasquel/FeedbackSheet.swift` | Feedback webhook sheet — currently not linked from the UI |
 | `Tasquel/RemoveCategorySheet.swift` | Legacy — no longer presented (cards use confirmation dialogs) |
@@ -71,7 +75,11 @@ Key behaviors:
 
 - **Card grid** (`ScrollView`, not `List`): collapsed cards in 2-column rows; an expanded card takes a full-width row. Multiple cards can be open; expansion is tracked by `CategoryLayoutKey` (name + occurrence) since UUIDs change per week, so open cards persist across week navigation (in memory only).
 - **Bottom bar**: settings (left), date / go-to-today (center), edit/done (right), on a Liquid Glass capsule (bordered box in retro).
-- **Edit mode**: inline mode/type icons, delete buttons, add-category card. Hidden for past weeks.
+- **Edit mode (bottom bar)**: category management — add-category card and delete badges; all cards collapse and can't open. A card's own edit button edits only that card's tasks (trash cans, renaming). Deleting a category removes it from the current and all future weeks (past weeks keep history) and keeps its saved template.
+- **Week paging**: last/this/next week are laid side by side (`PagerTrack`); drag offset lives in `WeekPagerState` so dragging doesn't rebuild pages.
+- **Header / bottom bar**: the header shows today's date; the bottom bar shows Settings, the calendar toggle (when calendar events are on), the viewed week ("Week of …", with Go to Today on other weeks), and Edit.
+- **Calendar events**: the bottom bar's calendar toggle expands the bar to show the viewed week's events (`CalendarEventsPanel`), fed by `CalendarService`; tapping an event opens the Calendar app at its date. Event data is never persisted.
+- **Week start**: Sunday or Monday (Settings ▸ Week). Use `store.startOfWeek(containing:)`, never a hard-coded Monday; changing the setting moves saved weeks by one day.
 - **Destructive actions** (delete task/sub-task/category/template, goal → checkbox) go through `confirmationDialog`.
 - **No swipe actions** (they require `List`); use context menus and edit-mode controls.
 - **Retro theme**: every view branches on `Theme.isRetro(theme)` for monospaced fonts/terminal styling.
@@ -82,6 +90,11 @@ Key behaviors:
 - Approachable Concurrency enabled
 - Upcoming feature: Member Import Visibility
 - No external dependencies — pure Apple frameworks
+
+## Testing Launch Arguments
+
+- `-isolatedData`: the app uses throwaway storage (never the simulator's real data). Fresh data shows onboarding first.
+- `-fakeCalendar`: sample calendar events instead of EventKit.
 
 ## Test Targets
 
