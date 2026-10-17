@@ -108,6 +108,16 @@ struct ContentView: View {
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .preferredColorScheme(store.colorScheme)
+        // Number pads have no return key, so every task field gets a Done button.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .fontWeight(.semibold)
+            }
+        }
         .sheet(isPresented: $showDatePicker) {
             DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday) { date in
                 changeWeek(to: date)
@@ -564,6 +574,7 @@ struct ContentView: View {
             .padding(.top, 8)
             .padding(.bottom, 80)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - Grid Order & Expansion

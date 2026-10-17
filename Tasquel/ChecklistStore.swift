@@ -342,6 +342,7 @@ final class ChecklistStore {
                     newTask.goalTarget = task.goalTarget
                     newTask.goalProgress = 0  // Reset progress for repeating
                     newTask.goalUnit = task.goalUnit
+                    newTask.goalUnitKind = task.goalUnitKind
                     return newTask
                 }
 
@@ -354,6 +355,7 @@ final class ChecklistStore {
                     newTask.goalTarget = task.goalTarget
                     newTask.goalProgress = task.goalProgress  // Carry existing progress
                     newTask.goalUnit = task.goalUnit
+                    newTask.goalUnitKind = task.goalUnitKind
                     return newTask
                 }
 
@@ -413,6 +415,7 @@ final class ChecklistStore {
         newTask.goalTarget = task.goalTarget
         newTask.goalProgress = 0
         newTask.goalUnit = task.goalUnit
+        newTask.goalUnitKind = task.goalUnitKind
         return newTask
     }
 
@@ -540,19 +543,25 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].goalTarget = nil
             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
             weeks[wi].categories[ci].tasks[ti].goalUnit = nil
+            weeks[wi].categories[ci].tasks[ti].goalUnitKind = nil
         }
         save()
     }
 
-    func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, unit: String) {
+    /// Sets a goal's target and unit. Time targets are in minutes. `unit` names a
+    /// custom unit; without a `kind`, a non-empty unit means a custom goal.
+    func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, kind: GoalUnitKind? = nil, unit: String = "") {
         guard target.isFinite, target > 0 else { return }
+        let unit = unit.trimmingCharacters(in: .whitespaces)
+        let kind = kind ?? (unit.isEmpty ? .quantity : .custom)
         guard let week = selectedWeek,
               !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalTarget = target
-        weeks[wi].categories[ci].tasks[ti].goalUnit = unit
+        weeks[wi].categories[ci].tasks[ti].goalUnitKind = kind
+        weeks[wi].categories[ci].tasks[ti].goalUnit = kind == .custom ? unit : nil
         // Auto-update completion
         let progress = weeks[wi].categories[ci].tasks[ti].goalProgress ?? 0
         weeks[wi].categories[ci].tasks[ti].isCompleted = progress >= target

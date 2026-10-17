@@ -53,6 +53,34 @@ enum TaskType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Goal Unit
+
+/// What a goal counts. Time goals store their target and progress in minutes.
+enum GoalUnitKind: String, Codable, CaseIterable {
+    case quantity
+    case time
+    case custom
+
+    var label: String {
+        switch self {
+        case .quantity: "Quantity"
+        case .time: "Time"
+        case .custom: "Custom"
+        }
+    }
+
+    /// A goal value for display: "1h 30m" for time, otherwise the number.
+    func format(_ value: Double) -> String {
+        guard self == .time else {
+            return value.formatted(.number.precision(.fractionLength(0...2)))
+        }
+        let minutes = Int(value.rounded())
+        let hours = minutes / 60, remainder = minutes % 60
+        if hours == 0 { return "\(remainder)m" }
+        return remainder == 0 ? "\(hours)h" : "\(hours)h \(remainder)m"
+    }
+}
+
 // MARK: - Sub-Task
 
 struct SubTask: Codable, Identifiable, Equatable {
@@ -73,6 +101,8 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var goalTarget: Double? = nil
     var goalProgress: Double? = nil
     var goalUnit: String? = nil
+    /// What the goal counts. `nil` for goals saved before units had a kind; see `goalKind`.
+    var goalUnitKind: GoalUnitKind? = nil
 
     var allSubtasksCompleted: Bool {
         subtasks.allSatisfy(\.isCompleted)
@@ -82,10 +112,21 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
         subtasks.filter(\.isCompleted).count
     }
 
+    /// The goal's unit kind. Older goals count a quantity, or a custom unit if one was typed.
+    var goalKind: GoalUnitKind {
+        goalUnitKind ?? ((goalUnit ?? "").isEmpty ? .quantity : .custom)
+    }
+
+    /// The unit name shown after the numbers (custom goals only).
+    var goalUnitLabel: String? {
+        guard goalKind == .custom, let unit = goalUnit, !unit.isEmpty else { return nil }
+        return unit
+    }
+
     var goalFraction: String {
-        let progress = goalProgress ?? 0
-        let target = goalTarget ?? 0
-        return "\(Int(progress))/\(Int(target))"
+        let progress = goalKind.format(goalProgress ?? 0)
+        let target = goalKind.format(goalTarget ?? 0)
+        return goalKind == .time ? "\(progress) / \(target)" : "\(progress)/\(target)"
     }
 
     var goalIsComplete: Bool {

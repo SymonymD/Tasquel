@@ -617,3 +617,68 @@ struct WeekStartTests {
         #expect(lastWeek.isPastWeek)
     }
 }
+
+// MARK: - Goal Units
+
+struct GoalUnitTests {
+    @Test("Time goals show hours and minutes")
+    func timeFormatting() {
+        #expect(GoalUnitKind.time.format(90) == "1h 30m")
+        #expect(GoalUnitKind.time.format(300) == "5h")
+        #expect(GoalUnitKind.time.format(45) == "45m")
+        #expect(GoalUnitKind.time.format(0) == "0m")
+
+        var task = ChecklistTask(title: "Practice", taskType: .goal)
+        task.goalUnitKind = .time
+        task.goalTarget = 300
+        task.goalProgress = 90
+        #expect(task.goalFraction == "1h 30m / 5h")
+        #expect(task.goalUnitLabel == nil)
+    }
+
+    @Test("Goals saved before unit kinds load as quantity, or custom when a unit was typed")
+    func legacyGoalKind() throws {
+        let json = #"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","title":"Read","isCompleted":false,"mode":"carryOver","subtasks":[],"taskType":"goal","goalTarget":20,"goalProgress":5,"goalUnit":"pages"}"#
+        let task = try JSONDecoder().decode(ChecklistTask.self, from: Data(json.utf8))
+        #expect(task.goalKind == .custom)
+        #expect(task.goalUnitLabel == "pages")
+        #expect(task.goalFraction == "5/20")
+        #expect(ChecklistTask(title: "Push-ups", taskType: .goal).goalKind == .quantity)
+    }
+
+    @Test("Hours and minutes entry becomes minutes; switching units carries the amount")
+    func amountInput() {
+        var input = GoalAmountInput()
+        input.hours = "1"
+        input.minutes = "30"
+        #expect(input.value(for: .time) == 90)
+        #expect(input.converted(from: .time, to: .quantity).number == "1.5")
+        #expect(GoalAmountInput().positiveValue(for: .time) == nil)
+        #expect(GoalAmountInput(150, kind: .time).hours == "2")
+        #expect(GoalAmountInput(150, kind: .time).minutes == "30")
+
+        var count = GoalAmountInput()
+        count.number = "3"
+        #expect(count.converted(from: .quantity, to: .time).hours == "3")
+        #expect(count.converted(from: .quantity, to: .custom) == count)
+    }
+
+    @Test("Setting a goal stores its unit kind, and it rolls into the next week")
+    func setGoalStoresKind() {
+        let store = makeIsolatedStore()
+        let task = ChecklistTask(title: "Practice", mode: .repeating, taskType: .goal)
+        let category = Category(name: "Music", symbol: "music.note", tasks: [task])
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+
+        store.setGoalTarget(categoryID: category.id, taskID: task.id, target: 120, kind: .time, unit: "ignored")
+        let saved = store.selectedWeek?.categories.first?.tasks.first
+        #expect(saved?.goalUnitKind == .time)
+        #expect(saved?.goalUnit == nil, "Only custom goals keep a unit name")
+
+        let nextStart = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: store.weeks[0].startDate)!
+        let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks.first
+        #expect(rolled?.goalUnitKind == .time)
+        #expect(rolled?.goalTarget == 120)
+    }
+}

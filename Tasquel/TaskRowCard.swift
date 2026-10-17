@@ -32,14 +32,26 @@ struct TaskRowCard: View {
 
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
+    @FocusState private var isTitleFocused: Bool
     @State private var newSubtaskTitle = ""
-    @State private var addProgressText = ""
-    @State private var goalTargetText = ""
+    @State private var goalKindSelection: GoalUnitKind = .quantity
+    @State private var goalTargetInput = GoalAmountInput()
     @State private var goalUnitText = ""
-    @State private var editedGoalProgressText = ""
+    @State private var editedProgressInput = GoalAmountInput()
+    @State private var addProgressInput = GoalAmountInput()
     @State private var isEditingGoal = false
+    @State private var isAddingProgress = false
+    @FocusState private var focusedGoalField: GoalFocus?
     @State private var showDeleteConfirmation = false
     @State private var showTypeChangeConfirmation = false
+
+    /// The goal text fields, for moving the keyboard between them.
+    nonisolated private enum GoalField: Hashable { case target, editProgress, addProgress, unitName }
+    nonisolated private enum GoalFieldPart: Hashable { case number, hours, minutes }
+    nonisolated private struct GoalFocus: Hashable {
+        let field: GoalField
+        let part: GoalFieldPart
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -73,12 +85,11 @@ struct TaskRowCard: View {
                 if isEditingTitle {
                     TextField("Task name", text: $editedTitle)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
-                        .onSubmit {
-                            let title = editedTitle.trimmingCharacters(in: .whitespaces)
-                            if !title.isEmpty {
-                                store.renameTask(categoryID: categoryID, taskID: task.id, newTitle: title)
-                            }
-                            isEditingTitle = false
+                        .focused($isTitleFocused)
+                        .onSubmit(commitTitle)
+                        // Closing the keyboard (Done, or scrolling) also saves the name.
+                        .onChange(of: isTitleFocused) { _, focused in
+                            if !focused && isEditingTitle { commitTitle() }
                         }
                 } else {
                     Text(task.title)
@@ -249,7 +260,7 @@ struct TaskRowCard: View {
                     .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.dotComplete(theme, rc: rc))
             } else if let target = task.goalTarget, target > 0 {
-                Text("[\(Int(task.goalProgress ?? 0))/\(Int(target))]")
+                Text("[\(task.goalFraction)]")
                     .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.accent(theme, rc: rc))
             } else {
@@ -292,110 +303,189 @@ struct TaskRowCard: View {
                     Text(task.goalFraction)
                         .font(Theme.isRetro(theme) ? .expandedCard(.caption1, weight: .bold, design: .monospaced) : .expandedCard(.caption1, weight: .bold).monospacedDigit())
                         .foregroundStyle(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
-                    if let unit = task.goalUnit, !unit.isEmpty {
+                    if let unit = task.goalUnitLabel {
                         Text(unit).font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     }
                 }
                 .padding(.leading, 24 * expandedCardScale)
 
                 if !isPastWeek {
-                    Button(isEditingGoal ? "Cancel editing goal" : "Edit goal") {
-                        if isEditingGoal {
-                            isEditingGoal = false
-                        } else {
-                            goalTargetText = String(target)
-                            editedGoalProgressText = String(task.goalProgress ?? 0)
-                            goalUnitText = task.goalUnit ?? ""
-                            isEditingGoal = true
+                    HStack(spacing: 20) {
+                        Button(isEditingGoal ? "Cancel" : "Edit Goal") {
+                            if isEditingGoal { closeGoalEditing() } else { startEditingGoal(target: target) }
+                        }
+                        .accessibilityLabel(isEditingGoal ? "Cancel editing goal" : "Edit goal")
+                        if !task.goalIsComplete || isAddingProgress {
+                            Button(isAddingProgress ? "Cancel" : "Add Progress") {
+                                if isAddingProgress { closeAddProgress() } else { startAddingProgress() }
+                            }
+                            .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
                         }
                     }
-                    .font(.expandedCard(.caption1))
+                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                     .padding(.leading, 24 * expandedCardScale)
                 }
 
                 if isEditingGoal && !isPastWeek {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("Target", text: $goalTargetText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Progress", text: $editedGoalProgressText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Unit", text: $goalUnitText)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save Goal") {
-                            guard let target = Double(goalTargetText), target.isFinite, target > 0,
-                                  let progress = Double(editedGoalProgressText), progress.isFinite, progress >= 0 else { return }
-                            store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
-                            store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
-                            isEditingGoal = false
-                        }
-                        .disabled(!canSaveEditedGoal)
-                    }
-                    .font(.expandedCard(.body))
-                    .padding(.leading, 24 * expandedCardScale)
+                    editGoalForm
                 }
 
-                if !isPastWeek && !task.goalIsComplete && !isEditingGoal {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus").font(.expandedCard(.subheadline)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                        TextField("Add progress", text: $addProgressText)
-                            .font(.expandedCard(.subheadline))
-                            .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.plain)
-                            .padding(.bottom, 4)
-                            .overlay(alignment: .bottom) {
-                                Rectangle().fill(Theme.textTertiary(theme, rc: rc)).frame(height: 1)
-                            }
-                            .onSubmit(addGoalProgress)
-                        Button { addGoalProgress() } label: {
-                            Text("Add")
-                                .font(.expandedCard(.caption1, weight: .bold))
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(Theme.accent(theme, rc: rc), in: Capsule())
-                                .foregroundStyle(.white)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!(Double(addProgressText).map { $0.isFinite && $0 > 0 } ?? false))
-                    }
-                    .padding(.leading, 24 * expandedCardScale)
+                if isAddingProgress && !isPastWeek && !isEditingGoal {
+                    addProgressRow
                 }
             } else if !isPastWeek {
-                HStack(spacing: 8) {
-                    TextField("Target", text: $goalTargetText)
-                        .font(Theme.isRetro(theme) ? .expandedCard(.subheadline, design: .monospaced) : .expandedCard(.subheadline))
-                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70 * expandedCardScale)
-                    Text("—").font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                    TextField("Unit", text: $goalUnitText)
-                        .font(Theme.isRetro(theme) ? .expandedCard(.subheadline, design: .monospaced) : .expandedCard(.subheadline))
-                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                        .textFieldStyle(.roundedBorder)
-                    Button {
-                        if let target = Double(goalTargetText), target > 0 {
-                            store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, unit: goalUnitText)
-                        }
-                        if Double(goalTargetText).map({ $0.isFinite && $0 > 0 }) == true {
-                            goalTargetText = ""
-                            goalUnitText = ""
-                        }
-                    } label: {
-                        Text("Set")
-                            .font(.expandedCard(.caption1, weight: .bold))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Theme.accent(theme, rc: rc), in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!(Double(goalTargetText).map { $0.isFinite && $0 > 0 } ?? false))
-                }
-                .padding(.leading, 24 * expandedCardScale)
+                setGoalForm
             }
         }
         .padding(.top, 2)
+    }
+
+    // MARK: Goal Forms
+
+    /// Shown until a goal has a target: unit, then the target amount.
+    private var setGoalForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                goalUnitMenu
+                if goalKindSelection == .custom { unitNameField }
+            }
+            HStack(spacing: 8) {
+                goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+                Spacer(minLength: 0)
+                Button(action: setGoal) { actionPill("Set") }
+                    .buttonStyle(.plain)
+                    .disabled(goalTargetInput.positiveValue(for: goalKindSelection) == nil)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 24 * expandedCardScale)
+    }
+
+    private var editGoalForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                goalUnitMenu
+                if goalKindSelection == .custom { unitNameField }
+            }
+            labeledGoalRow("Target") {
+                goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+            }
+            labeledGoalRow("Progress") {
+                goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
+            }
+            Button("Save Goal", action: saveEditedGoal)
+                .disabled(!canSaveEditedGoal)
+        }
+        .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 24 * expandedCardScale)
+    }
+
+    /// Revealed by Add Progress; hides again after Add.
+    private var addProgressRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus").font(.expandedCard(.subheadline)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            goalAmountFields($addProgressInput, kind: task.goalKind, field: .addProgress, placeholder: "Amount")
+            if let unit = task.goalUnitLabel {
+                Text(unit).font(goalFieldFont).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+            }
+            Spacer(minLength: 0)
+            Button(action: addGoalProgress) { actionPill("Add") }
+                .buttonStyle(.plain)
+                .disabled(addProgressInput.positiveValue(for: task.goalKind) == nil)
+        }
+        .padding(.leading, 24 * expandedCardScale)
+        .onAppear {
+            focusedGoalField = GoalFocus(field: .addProgress, part: task.goalKind == .time ? .hours : .number)
+        }
+    }
+
+    /// Quantity, Time, or Custom. Switching carries a typed amount across (hours ↔ number).
+    private var goalUnitMenu: some View {
+        Menu {
+            Picker("Unit", selection: Binding(
+                get: { goalKindSelection },
+                set: { newKind in
+                    goalTargetInput = goalTargetInput.converted(from: goalKindSelection, to: newKind)
+                    editedProgressInput = editedProgressInput.converted(from: goalKindSelection, to: newKind)
+                    goalKindSelection = newKind
+                }
+            )) {
+                ForEach(GoalUnitKind.allCases, id: \.self) { kind in
+                    Text(kind.label).tag(kind)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(goalKindSelection.label)
+                Image(systemName: "chevron.up.chevron.down").font(.expandedCard(.caption2))
+            }
+            .font(goalFieldFont)
+            .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Goal unit: \(goalKindSelection.label)")
+    }
+
+    private var unitNameField: some View {
+        TextField("Unit, e.g. pages", text: $goalUnitText)
+            .font(goalFieldFont)
+            .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+            .textFieldStyle(.roundedBorder)
+            .focused($focusedGoalField, equals: GoalFocus(field: .unitName, part: .number))
+    }
+
+    /// A number field, or hours and minutes fields for time goals.
+    @ViewBuilder
+    private func goalAmountFields(_ input: Binding<GoalAmountInput>, kind: GoalUnitKind, field: GoalField, placeholder: String) -> some View {
+        if kind == .time {
+            HStack(spacing: 4) {
+                goalNumberField("0", text: input.hours, focus: GoalFocus(field: field, part: .hours), keyboard: .numberPad, width: 48)
+                    .accessibilityLabel("\(placeholder) hours")
+                Text("h").font(goalFieldFont).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .fixedSize()
+                goalNumberField("0", text: input.minutes, focus: GoalFocus(field: field, part: .minutes), keyboard: .numberPad, width: 48)
+                    .accessibilityLabel("\(placeholder) minutes")
+                Text("m").font(goalFieldFont).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .fixedSize()
+            }
+        } else {
+            goalNumberField(placeholder, text: input.number, focus: GoalFocus(field: field, part: .number), keyboard: .decimalPad, width: 90)
+        }
+    }
+
+    private func goalNumberField(_ placeholder: String, text: Binding<String>, focus: GoalFocus, keyboard: UIKeyboardType, width: CGFloat) -> some View {
+        TextField(placeholder, text: text)
+            .font(goalFieldFont)
+            .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+            .keyboardType(keyboard)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: width * expandedCardScale)
+            .focused($focusedGoalField, equals: focus)
+    }
+
+    private func labeledGoalRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .frame(width: 64 * expandedCardScale, alignment: .leading)
+            content()
+        }
+    }
+
+    private func actionPill(_ title: String) -> some View {
+        Text(title)
+            .font(.expandedCard(.caption1, weight: .bold))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Theme.accent(theme, rc: rc), in: Capsule())
+            .foregroundStyle(.white)
+    }
+
+    private var goalFieldFont: Font {
+        Theme.isRetro(theme) ? .expandedCard(.subheadline, design: .monospaced) : .expandedCard(.subheadline)
     }
 
     private func addSubtask() {
@@ -407,10 +497,64 @@ struct TaskRowCard: View {
         newSubtaskTitle = ""
     }
 
+    private func commitTitle() {
+        let title = editedTitle.trimmingCharacters(in: .whitespaces)
+        if !title.isEmpty {
+            store.renameTask(categoryID: categoryID, taskID: task.id, newTitle: title)
+        }
+        isEditingTitle = false
+    }
+
+    // MARK: Goal Actions
+
+    private func setGoal() {
+        guard let target = goalTargetInput.positiveValue(for: goalKindSelection) else { return }
+        store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, kind: goalKindSelection, unit: goalUnitText)
+        goalTargetInput = GoalAmountInput()
+        goalUnitText = ""
+        focusedGoalField = nil
+    }
+
+    private func startEditingGoal(target: Double) {
+        let kind = task.goalKind
+        goalKindSelection = kind
+        goalTargetInput = GoalAmountInput(target, kind: kind)
+        editedProgressInput = GoalAmountInput(task.goalProgress ?? 0, kind: kind)
+        goalUnitText = task.goalUnit ?? ""
+        closeAddProgress()
+        isEditingGoal = true
+    }
+
+    private func closeGoalEditing() {
+        isEditingGoal = false
+        goalTargetInput = GoalAmountInput()
+        goalUnitText = ""
+        focusedGoalField = nil
+    }
+
     private var canSaveEditedGoal: Bool {
-        guard let target = Double(goalTargetText), target.isFinite, target > 0,
-              let progress = Double(editedGoalProgressText), progress.isFinite, progress >= 0 else { return false }
-        return true
+        goalTargetInput.positiveValue(for: goalKindSelection) != nil
+            && editedProgressInput.value(for: goalKindSelection) != nil
+    }
+
+    private func saveEditedGoal() {
+        guard let target = goalTargetInput.positiveValue(for: goalKindSelection),
+              let progress = editedProgressInput.value(for: goalKindSelection) else { return }
+        store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, kind: goalKindSelection, unit: goalUnitText)
+        store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
+        closeGoalEditing()
+    }
+
+    private func startAddingProgress() {
+        if isEditingGoal { closeGoalEditing() }
+        addProgressInput = GoalAmountInput()
+        isAddingProgress = true
+    }
+
+    private func closeAddProgress() {
+        isAddingProgress = false
+        addProgressInput = GoalAmountInput()
+        focusedGoalField = nil
     }
 
     private func selectTaskType(_ type: TaskType) {
@@ -423,13 +567,66 @@ struct TaskRowCard: View {
         }
     }
 
+    /// Adds the typed amount, then hides the entry row and closes the keyboard.
     private func addGoalProgress() {
-        guard let amount = Double(addProgressText), amount > 0 else { return }
+        guard let amount = addProgressInput.positiveValue(for: task.goalKind) else { return }
         let current = task.goalProgress ?? 0
         withAnimation(.snappy(duration: 0.2)) {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: current + amount)
+            closeAddProgress()
         }
-        addProgressText = ""
+    }
+}
+
+// MARK: - Goal Amount Input
+
+/// Text typed for one goal amount: a number, or hours and minutes for time goals.
+struct GoalAmountInput: Equatable {
+    var number = ""
+    var hours = ""
+    var minutes = ""
+
+    init() {}
+
+    /// Prefilled with a saved value (minutes for time goals).
+    init(_ value: Double, kind: GoalUnitKind) {
+        if kind == .time {
+            let total = Int(value.rounded())
+            hours = String(total / 60)
+            minutes = String(total % 60)
+        } else {
+            number = value.formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+        }
+    }
+
+    /// The typed value (minutes for time goals), or nil if it isn't a valid amount.
+    func value(for kind: GoalUnitKind) -> Double? {
+        if kind == .time {
+            guard !(hours.isEmpty && minutes.isEmpty),
+                  let h = hours.isEmpty ? 0 : Double(hours),
+                  let m = minutes.isEmpty ? 0 : Double(minutes),
+                  h.isFinite, m.isFinite, h >= 0, m >= 0 else { return nil }
+            return h * 60 + m
+        }
+        guard let n = Double(number), n.isFinite, n >= 0 else { return nil }
+        return n
+    }
+
+    /// The typed value if it's greater than zero.
+    func positiveValue(for kind: GoalUnitKind) -> Double? {
+        value(for: kind).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// The same amount after switching units: a number becomes hours, and time becomes hours.
+    func converted(from old: GoalUnitKind, to new: GoalUnitKind) -> GoalAmountInput {
+        guard (old == .time) != (new == .time) else { return self }
+        var result = GoalAmountInput()
+        if new == .time {
+            result.hours = number
+        } else if let minutes = value(for: .time) {
+            result.number = (minutes / 60).formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+        }
+        return result
     }
 }
 
@@ -448,7 +645,16 @@ struct SubTaskRowCard: View {
 
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
+    @FocusState private var isTitleFocused: Bool
     @State private var showDeleteConfirmation = false
+
+    private func commitTitle() {
+        let title = editedTitle.trimmingCharacters(in: .whitespaces)
+        if !title.isEmpty {
+            store.renameSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id, newTitle: title)
+        }
+        isEditingTitle = false
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -474,12 +680,11 @@ struct SubTaskRowCard: View {
             if isEditing && !isPastWeek && isEditingTitle {
                 TextField("Sub-task", text: $editedTitle)
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
-                    .onSubmit {
-                        let title = editedTitle.trimmingCharacters(in: .whitespaces)
-                        if !title.isEmpty {
-                            store.renameSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id, newTitle: title)
-                        }
-                        isEditingTitle = false
+                    .focused($isTitleFocused)
+                    .onSubmit(commitTitle)
+                    // Closing the keyboard (Done, or scrolling) also saves the name.
+                    .onChange(of: isTitleFocused) { _, focused in
+                        if !focused && isEditingTitle { commitTitle() }
                     }
             } else {
                 Text(subtask.title)
