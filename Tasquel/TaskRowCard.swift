@@ -150,7 +150,7 @@ struct TaskRowCard: View {
         .contextMenu {
             if !isPastWeek {
             Section("Task Mode") {
-                ForEach(TaskMode.allCases, id: \.self) { mode in
+                ForEach(TaskMode.choices(including: task.mode), id: \.self) { mode in
                     Button {
                         store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
                     } label: {
@@ -212,7 +212,7 @@ struct TaskRowCard: View {
                 get: { task.mode },
                 set: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) }
             )) {
-                ForEach(TaskMode.allCases, id: \.self) { mode in
+                ForEach(TaskMode.choices(including: task.mode), id: \.self) { mode in
                     Label(mode.label, systemImage: mode.symbol).tag(mode)
                 }
             }
@@ -761,6 +761,9 @@ struct AddTaskRowCard: View {
                         ForEach(TaskType.allCases, id: \.self) { type in
                             Button {
                                 newType = type
+                                // Checkbox adds the task right away; a goal waits for Return
+                                // so its mode can be picked too.
+                                if type != .goal { addTask() }
                             } label: {
                                 Label(type.label, systemImage: type.symbol)
                                 if newType == type { Image(systemName: "checkmark") }
@@ -768,9 +771,10 @@ struct AddTaskRowCard: View {
                         }
                     }
                     Section("Task Mode") {
-                        ForEach(TaskMode.allCases, id: \.self) { mode in
+                        ForEach(TaskMode.choices(), id: \.self) { mode in
                             Button {
                                 newMode = mode
+                                addTask()
                             } label: {
                                 Label(mode.label, systemImage: mode.symbol)
                                 if newMode == mode { Image(systemName: "checkmark") }
@@ -785,6 +789,7 @@ struct AddTaskRowCard: View {
                     .font(.expandedCard(.caption2)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .padding(4).background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
                 }
+                .accessibilityLabel("New task type and mode: \(newType.label), \(newMode.label)")
             }
         }
     }

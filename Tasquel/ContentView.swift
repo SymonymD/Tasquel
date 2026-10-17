@@ -564,6 +564,8 @@ struct ContentView: View {
     /// Bottom bar icons: 20% larger than the original .title3 (20pt), with matching tap areas.
     private static let barIconSize: CGFloat = 24
     private static let barButtonSize: CGFloat = 52
+    /// Room above the keyboard taken by the Done button.
+    private static let keyboardDoneClearance: CGFloat = 64
 
     /// One spring for expand, collapse, and the reflow of neighboring cards.
     private static let cardSpring = Animation.spring(duration: 0.45, bounce: 0.12)
@@ -623,8 +625,10 @@ struct ContentView: View {
             .padding(.top, 8)
             .padding(.bottom, 80)
         }
-        // Swiping the grid (up or down) closes the keyboard.
-        .scrollDismissesKeyboard(.immediately)
+        // Dragging down into the keyboard closes it; scrolling up keeps it open.
+        .scrollDismissesKeyboard(.interactively)
+        // Keeps the field being edited (and its options) clear of the Done button.
+        .safeAreaPadding(.bottom, isKeyboardVisible ? Self.keyboardDoneClearance : 0)
     }
 
     // MARK: - Grid Order & Expansion

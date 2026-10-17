@@ -20,8 +20,7 @@ struct HelpSheet: View {
         ("Task Modes", [
             ("arrow.uturn.forward", "Carry Over", "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
             ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
-            ("1.circle", "One-Time", "This week only. Will not carry forward or repeat, whether completed or not."),
-            ("hand.draw", "Changing Modes", "Tap a task's mode icon to choose Carry Over, Repeating, or One-Time. In edit mode, a trash can deletes the task. Double-tap a task title to rename it, or long-press a task for all options."),
+            ("hand.draw", "Changing Modes", "Tap a task's mode icon to choose Carry Over or Repeating. In edit mode, a trash can deletes the task. Double-tap a task title to rename it, or long-press a task for all options."),
         ]),
         ("Task Types", [
             ("checkmark.circle", "Checkbox", "Standard task — tap the circle to mark complete. This is the default type for all new tasks."),

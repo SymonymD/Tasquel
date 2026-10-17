@@ -64,11 +64,32 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "keyboard closes after Add")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2), "bottom bar returns")
 
-        // Swiping down on the grid also closes the keyboard.
+        // Swiping down into the keyboard also closes it.
         app.buttons["Add progress"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 3))
         let grid = app.staticTexts["45m / 2h"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: 150)))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
+        grid.press(forDuration: 0.05, thenDragTo: keyboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
+
+        // Adding a task below the goal: its options stay clear of the Done button, scrolling
+        // up keeps the keyboard open, and choosing a mode adds the task.
+        let addTask2 = app.textFields["Add task"]
+        addTask2.tap()
+        addTask2.typeText("Stretch")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type and mode")).firstMatch
+        XCTAssertTrue(options.waitForExistence(timeout: 2))
+        let done = app.buttons["Done"]
+        XCTAssertLessThan(options.frame.maxY, done.frame.minY, "Done must not cover the new task's options")
+
+        let header = app.staticTexts["Work"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        header.press(forDuration: 0.05, thenDragTo: header.withOffset(CGVector(dx: 0, dy: -120)))
+        XCTAssertTrue(keyboard.exists, "scrolling up keeps the keyboard open")
+
+        options.tap()
+        app.buttons["Repeating"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "choosing a mode adds the task")
+        XCTAssertFalse(app.buttons["One-Time"].exists)
     }
 }

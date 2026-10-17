@@ -5,7 +5,14 @@ import Foundation
 enum TaskMode: String, Codable, CaseIterable {
     case carryOver
     case repeating
+    /// No longer offered (Carry Over covers it); kept so saved one-time tasks still load.
     case oneTime
+
+    /// The modes offered in menus. A task that's still one-time also lists it, so its
+    /// current mode stays selectable.
+    static func choices(including current: TaskMode? = nil) -> [TaskMode] {
+        current == .oneTime ? [.carryOver, .repeating, .oneTime] : [.carryOver, .repeating]
+    }
 
     var label: String {
         switch self {

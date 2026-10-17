@@ -74,8 +74,6 @@ struct OnboardingSheet: View {
              "Default mode. If not completed by end of the week, it rolls forward to the next — so nothing falls through the cracks."),
             ("repeat", "Repeating",
              "Appears every week automatically regardless of completion. Great for recurring habits. Resets each new week."),
-            ("1.circle", "One-Time",
-             "This week only. Will not carry forward or repeat, whether completed or not."),
         ]),
         ("Task Types", "checklist.checked", [
             ("checkmark.circle", "Checkbox",
