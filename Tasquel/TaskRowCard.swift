@@ -153,7 +153,7 @@ struct TaskRowCard: View {
                 // Inline icons: add sub-task (checkbox tasks), type and mode, and delete in edit mode
                 if !isPastWeek {
                     HStack(spacing: 0) {
-                        if task.taskType == .checkbox { addSubtaskButton }
+                        if task.taskType == .checkbox && !isEditing { addSubtaskButton }
                         taskOptionsButton
                         if isEditing { deleteButton }
                     }
@@ -175,7 +175,8 @@ struct TaskRowCard: View {
                         isListItem: task.taskType == .list
                     )
                 }
-                if !isPastWeek && (task.taskType == .list || isAddingSubtask) {
+                // Adding is off while the card is in edit mode.
+                if !isPastWeek && !isEditing && (task.taskType == .list || isAddingSubtask) {
                     HStack(spacing: 8) {
                         Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                             .font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
@@ -226,11 +227,11 @@ struct TaskRowCard: View {
                     editedTitle = task.title
                     isEditingTitle = true
                 }
-                if task.taskType == .list && !isPastWeek {
+                if task.taskType == .list && !isPastWeek && !isEditing {
                     Button("Add Item", systemImage: "plus") {
                         isSubtaskFieldFocused = true
                     }
-                } else if task.taskType == .checkbox && !isPastWeek {
+                } else if task.taskType == .checkbox && !isPastWeek && !isEditing {
                     Button("Add Sub-Task", systemImage: "list.bullet.indent") { startAddingSubtask() }
                 }
                 Button("Delete", systemImage: "trash", role: .destructive) {
@@ -239,14 +240,12 @@ struct TaskRowCard: View {
             }
             }
         }
-        .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation) {
+        .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete Task", role: .destructive) {
                 store.deleteTask(categoryID: categoryID, taskID: task.id)
             }
         } message: {
-            Text(task.taskType == .list
-                 ? "This removes the list and its items from this week."
-                 : "This removes the task and its sub-tasks from this week.")
+            Text(deleteTaskMessage)
         }
         .confirmationDialog("Change to \(pendingType.label)?", isPresented: $showTypeChangeConfirmation, titleVisibility: .visible) {
             Button("Change Type", role: .destructive) {
@@ -255,6 +254,14 @@ struct TaskRowCard: View {
         } message: {
             Text("This clears the goal target and progress.")
         }
+    }
+
+    private var deleteTaskMessage: String {
+        let count = task.subtasks.count
+        let what = task.taskType == .list ? "list" : "task"
+        guard count > 0 else { return "This removes the \(what) from this week." }
+        let items = task.taskType == .list ? (count == 1 ? "item" : "items") : (count == 1 ? "sub-task" : "sub-tasks")
+        return "This removes the whole \(what), including its \(count) \(items), from this week."
     }
 
     /// Row icons are 10% larger than the other expanded-card elements.
@@ -748,30 +755,25 @@ struct SubTaskRowCard: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Button {
-                guard !isPastWeek else { return }
-                withAnimation(.snappy(duration: 0.2)) {
-                    store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
-                }
-            } label: {
-                if Theme.isRetro(theme) {
-                    Text(subtask.isCompleted ? "[x]" : "[ ]")
-                        .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
-                        .foregroundStyle(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                } else {
-                    Circle()
-                        .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
-                        .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+            // In edit mode the checkbox becomes a delete button on the left, well away
+            // from the task's own trash can on the right.
+            if isEditing && !isPastWeek {
+                Button {
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.expandedCard(.subheadline))
+                        .foregroundStyle(.white, Theme.destructive(theme))
                         .frame(width: expandedCardControl(14), height: expandedCardControl(14))
                 }
+                .buttonStyle(.plain)
+                .padding(8)
+                .contentShape(Rectangle())
+                .padding(-8)
+                .accessibilityLabel(isListItem ? "Delete item \(subtask.title)" : "Delete sub-task \(subtask.title)")
+            } else {
+                checkbox
             }
-            .buttonStyle(.plain)
-            // A bigger touch target than the small circle, without changing the layout.
-            .padding(8)
-            .contentShape(Rectangle())
-            .padding(-8)
-            .accessibilityLabel("Check \(subtask.title)")
-            .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
 
             if isEditing && !isPastWeek && isEditingTitle {
                 TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle)
@@ -796,24 +798,41 @@ struct SubTaskRowCard: View {
             }
 
             Spacer()
-
-            if isEditing && !isPastWeek {
-                Button {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.expandedCard(.caption1)).foregroundStyle(.red)
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.leading, 24 * expandedCardScale)
         .padding(.vertical, 2)
-        .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation) {
+        .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button(isListItem ? "Delete Item" : "Delete Sub-Task", role: .destructive) {
                 store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
             }
         }
+    }
+
+    private var checkbox: some View {
+        Button {
+            guard !isPastWeek else { return }
+            withAnimation(.snappy(duration: 0.2)) {
+                store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+            }
+        } label: {
+            if Theme.isRetro(theme) {
+                Text(subtask.isCompleted ? "[x]" : "[ ]")
+                    .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
+                    .foregroundStyle(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+            } else {
+                Circle()
+                    .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                    .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                    .frame(width: expandedCardControl(14), height: expandedCardControl(14))
+            }
+        }
+        .buttonStyle(.plain)
+        // A bigger touch target than the small circle, without changing the layout.
+        .padding(8)
+        .contentShape(Rectangle())
+        .padding(-8)
+        .accessibilityLabel("Check \(subtask.title)")
+        .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
     }
 }
 

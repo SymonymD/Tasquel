@@ -359,7 +359,8 @@ private struct ExpandedCategoryContent: View {
                 )
             }
 
-            if !isPastWeek {
+            // Adding is off while the card is in edit mode.
+            if !isPastWeek && !isEditing {
                 AddTaskRowCard(categoryID: category.id, store: store)
             }
 

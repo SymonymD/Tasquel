@@ -197,4 +197,34 @@ final class GoalUITests: XCTestCase {
         study.tap()
         XCTAssertTrue(app.buttons["Collapse Study"].waitForExistence(timeout: 3), "the moved card still opens")
     }
+
+    /// In a card's edit mode nothing can be added, and a sub-task's delete button sits on
+    /// the left, away from the task's trash can on the right.
+    @MainActor
+    func testEditModeHidesAddingAndSeparatesDeletes() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Pharmacy\n")
+        app.buttons["Add sub-task to Pharmacy"].tap()
+        app.textFields["Add sub-task"].typeText("Refill\n")
+        app.buttons["Done"].tap()
+
+        app.buttons["Edit Errands"].tap()
+        XCTAssertFalse(app.textFields["Add task"].exists, "no adding tasks in edit mode")
+        XCTAssertFalse(app.buttons["Add sub-task to Pharmacy"].exists, "no adding sub-tasks in edit mode")
+        let deleteTask = app.buttons["Delete Pharmacy"]
+        let deleteSubtask = app.buttons["Delete sub-task Refill"]
+        XCTAssertTrue(deleteSubtask.waitForExistence(timeout: 3))
+        XCTAssertLessThan(deleteSubtask.frame.maxX, deleteTask.frame.minX - 100, "the two deletes are far apart")
+
+        deleteSubtask.tap()
+        app.buttons["Delete Sub-Task"].tap()
+        XCTAssertFalse(app.staticTexts["Refill"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.staticTexts["Pharmacy"].exists, "the task stays")
+    }
 }
