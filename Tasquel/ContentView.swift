@@ -539,7 +539,8 @@ struct ContentView: View {
                                 }
                             }
                     } else {
-                        Image(systemName: "pencil")
+                        // Not a pencil: that's each card's own edit button.
+                        Image(systemName: "square.grid.2x2")
                             .font(.system(size: Self.barIconSize))
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                             .frame(width: Self.barButtonSize, height: Self.barButtonSize)
@@ -652,7 +653,7 @@ struct ContentView: View {
                     ContentUnavailableView(
                         "No Categories",
                         systemImage: "folder.badge.plus",
-                        description: Text("Tap the pencil to add categories.")
+                        description: Text("Tap the grid button below to add categories.")
                     )
                     .padding(.top, 40)
                 }

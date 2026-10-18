@@ -394,15 +394,7 @@ final class ChecklistStore {
             // Repeating tasks always carry forward (reset to incomplete)
             let repeatingTasks = category.tasks
                 .filter { $0.mode == .repeating }
-                .map { task in
-                    var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: task.subtasks.map { SubTask(title: $0.title) })
-                    newTask.taskType = task.taskType
-                    newTask.goalTarget = task.goalTarget
-                    newTask.goalProgress = 0  // Reset progress for repeating
-                    newTask.goalUnit = task.goalUnit
-                    newTask.goalUnitKind = task.goalUnitKind
-                    return newTask
-                }
+                .map { Self.resetRecurringTask($0) }
 
             // Carry-over tasks only if incomplete
             let carryOverTasks = category.tasks
@@ -556,8 +548,14 @@ final class ChecklistStore {
         return changed
     }
 
+    /// Next week's copy of a repeating task: unchecked, with goal progress back to zero.
+    /// A repeating list keeps its items as they were, checked ones included (like a
+    /// standing shopping list), and is done only if every item is still checked.
     private static func resetRecurringTask(_ task: ChecklistTask) -> ChecklistTask {
-        var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: task.subtasks.map { SubTask(title: $0.title) })
+        let keepsItems = task.taskType == .list
+        let subtasks = task.subtasks.map { SubTask(title: $0.title, isCompleted: keepsItems && $0.isCompleted) }
+        var newTask = ChecklistTask(title: task.title, mode: .repeating, subtasks: subtasks)
+        newTask.isCompleted = keepsItems && !subtasks.isEmpty && subtasks.allSatisfy(\.isCompleted)
         newTask.taskType = task.taskType
         newTask.goalTarget = task.goalTarget
         newTask.goalProgress = 0

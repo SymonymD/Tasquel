@@ -26,17 +26,17 @@ struct HelpSheet: View {
         ("After This Week", [
             ("1.circle", "One-Time", "This week only. New tasks start as One-Time."),
             ("arrow.uturn.forward", "Carry Over", "If it isn't finished by the end of the week, it moves to next week. A list or sub-tasks bring only what's left; a goal keeps its progress."),
-            ("repeat", "Repeating", "Comes back every week, unchecked, whether or not you finished it. A repeating goal starts from zero; a repeating list brings all its items back."),
+            ("repeat", "Repeating", "Comes back every week, unchecked, whether or not you finished it. A repeating goal starts from zero; a repeating list keeps its items, with checked ones still checked."),
         ]),
         ("Sub-Tasks", [
             ("plus", "Adding Sub-Tasks", "Tap + on a checkbox task, type a sub-task and press Return to add another. Press Return on an empty line to finish."),
             ("checkmark.circle", "Completing Sub-Tasks", "Tap a sub-task's circle to check it off. When every sub-task is checked, the task checks itself off."),
         ]),
         ("Managing Categories", [
-            ("pencil", "Edit Mode", "Tap the pencil in the bottom bar to add or delete categories, or hold and drag a card to move it. Cards stay closed while editing."),
+            ("square.grid.2x2", "Edit Mode", "Tap the grid button in the bottom bar to add or delete categories, or hold and drag a card to move it. Cards stay closed while editing."),
             ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and future weeks."),
             ("trash", "Deleting Categories", "Deleting a category removes it from this week on. Past weeks keep their history, and you can add it back from Add Category."),
-            ("square.stack", "Saved Categories", "Add Category offers your saved categories. Edit, reorder or delete them in Settings ▸ Saved Categories. Long-press a card and choose \"Save for Future Use\" to save one."),
+            ("square.stack", "Saved Categories", "Add Category offers your saved categories. Edit, reorder or delete them in Settings ▸ Saved Categories. A category you add for every week is saved automatically."),
         ]),
         ("Upcoming Features", [
             ("calendar.badge.plus", "Calendar Integration", "A future paid upgrade will allow importing your personal calendar events directly into Tasquel as tasks."),

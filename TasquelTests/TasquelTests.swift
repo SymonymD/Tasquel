@@ -720,7 +720,7 @@ struct TaskTypeAndModeTests {
         #expect(saved?.mode == .repeating)
     }
 
-    @Test("A repeating list comes back next week with every item unchecked")
+    @Test("A repeating list comes back next week with its items as they were")
     func repeatingList() {
         let store = makeIsolatedStore()
         let list = ChecklistTask(title: "Groceries", mode: .repeating,
@@ -732,7 +732,8 @@ struct TaskTypeAndModeTests {
         let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks.first
         #expect(rolled?.taskType == .list)
         #expect(rolled?.subtasks.map(\.title) == ["Eggs", "Milk"])
-        #expect(rolled?.subtasks.allSatisfy { !$0.isCompleted } == true)
+        #expect(rolled?.subtasks.map(\.isCompleted) == [true, false], "checked items stay checked")
+        #expect(rolled?.isCompleted == false)
     }
 }
 

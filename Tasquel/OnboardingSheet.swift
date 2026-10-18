@@ -46,10 +46,10 @@ struct OnboardingSheet: View {
     private let tipItems: [FeatureItem] = [
         ("slider.horizontal.3", "Type and Mode",
          "Tap the icons at the end of a task to choose both."),
-        ("pencil", "Edit Mode",
-         "Tap the pencil to add, remove or rearrange categories. A card's own edit button lets you rename it and delete tasks."),
+        ("square.grid.2x2", "Edit Mode",
+         "Tap the grid button to add, remove or rearrange categories. A card's own edit button lets you rename it and delete tasks."),
         ("hand.tap", "Double-Tap and Long-Press",
-         "Double-tap a task to rename it. Long-press a task or card for more options."),
+         "Double-tap a task to rename it. Long-press a task for more options."),
     ]
 
     var body: some View {

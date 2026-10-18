@@ -121,18 +121,8 @@ struct CategoryGridCard: View {
                 .accessibilityLabel("Remove \(category.name)")
             }
         }
-        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: cornerRadius))
-        .contextMenu {
-            if !isPastWeek {
-                Button("Save for Future Use", systemImage: "square.and.arrow.down") {
-                    store.saveCategoryAsTemplate(category.id)
-                }
-                Divider()
-                Button("Delete Category", systemImage: "trash", role: .destructive) {
-                    showDeleteConfirmation = true
-                }
-            }
-        }
+        // No long-press menu: in edit mode holding a card starts a drag, and deleting
+        // goes through the remove badge.
         .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
         .onChange(of: isRenaming, initial: true) {
             editedName = category.name
