@@ -208,7 +208,9 @@ struct ContentView: View {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
                 if weekSwipeAxis == nil {
-                    weekSwipeAxis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                    // A lifted card owns the touch: treating it as a week swipe would disable
+                    // the page (below), cancelling the card's drag.
+                    weekSwipeAxis = cardDrag == nil && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
                     // Track from here so the grid doesn't jump by the recognition distance.
                     weekDragOrigin = value.translation.width
                 }

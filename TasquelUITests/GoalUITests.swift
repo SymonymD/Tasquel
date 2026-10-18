@@ -182,6 +182,18 @@ final class GoalUITests: XCTestCase {
         let moved = NSPredicate { _, _ in study.frame.minY < work.frame.minY }
         wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
 
+        // Dragging sideways onto the neighbor moves the card instead of changing week.
+        let week = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label
+        let fitness = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Fitness,")).firstMatch
+        let before = fitness.frame.minX
+        // After the first move the second row is Work | Fitness.
+        XCTAssertEqual(work.frame.minY, fitness.frame.minY, "Work and Fitness share a row")
+        fitness.press(forDuration: 1.0, thenDragTo: work)
+        sleep(1)
+        XCTAssertNotEqual(fitness.frame.minX, before, "Fitness moved across")
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label, week,
+                       "a sideways card drag doesn't change week")
+
         study.tap()
         XCTAssertTrue(app.buttons["Collapse Study"].waitForExistence(timeout: 3), "the moved card still opens")
     }
