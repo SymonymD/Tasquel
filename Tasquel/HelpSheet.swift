@@ -14,7 +14,7 @@ struct HelpSheet: View {
         ("Weekly Checklist", [
             ("calendar", "Navigate Weeks", "Swipe left or right, use the arrows, or tap the calendar icon to jump to any week. Future weeks can be filled in ahead of time. Past weeks are read-only. Tasquel opens on the current week."),
             ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings, then tap the calendar button next to Settings to see the week's events. Tap an event to open it in Calendar. Choose which calendars to include in Settings; events stay on your device."),
-            ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. The ring shows how much of the card is done."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
         ]),
         ("Tasks", [
             ("slider.horizontal.3", "Type and Mode", "Every task has a type and a mode. Tap the icons at the end of a task to change either, or long-press the task."),
@@ -33,7 +33,7 @@ struct HelpSheet: View {
             ("checkmark.circle", "Completing Sub-Tasks", "Tap a sub-task's circle to check it off. When every sub-task is checked, the task checks itself off."),
         ]),
         ("Managing Categories", [
-            ("square.grid.2x2", "Edit Mode", "Tap the grid button in the bottom bar to add or delete categories, or hold and drag a card to move it. Cards stay closed while editing."),
+            ("square.grid.2x2", "Edit Mode", "Tap the grid button in the bottom bar to add or delete categories. Cards stay closed while editing."),
             ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and future weeks."),
             ("trash", "Deleting Categories", "Deleting a category removes it from this week on. Past weeks keep their history, and you can add it back from Add Category."),
             ("square.stack", "Saved Categories", "Add Category offers your saved categories. Edit, reorder or delete them in Settings ▸ Saved Categories. A category you add for every week is saved automatically."),

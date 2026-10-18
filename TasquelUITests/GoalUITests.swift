@@ -167,4 +167,22 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Type and Mode"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.state, .runningForeground)
     }
+
+    /// A closed card can be dragged onto another card's place without edit mode, and still
+    /// opens afterwards.
+    @MainActor
+    func testDragCardToReorder() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        let study = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Study,")).firstMatch
+        XCTAssertTrue(study.waitForExistence(timeout: 5))
+        XCTAssertLessThan(work.frame.minY, study.frame.minY, "Work starts above Study")
+
+        study.press(forDuration: 1.0, thenDragTo: work)
+        let moved = NSPredicate { _, _ in study.frame.minY < work.frame.minY }
+        wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
+
+        study.tap()
+        XCTAssertTrue(app.buttons["Collapse Study"].waitForExistence(timeout: 3), "the moved card still opens")
+    }
 }

@@ -47,7 +47,7 @@ struct OnboardingSheet: View {
         ("slider.horizontal.3", "Type and Mode",
          "Tap the icons at the end of a task to choose both."),
         ("square.grid.2x2", "Edit Mode",
-         "Tap the grid button to add, remove or rearrange categories. A card's own edit button lets you rename it and delete tasks."),
+         "Tap the grid button to add or remove categories. Hold and drag a closed card to move it. A card's own edit button lets you rename it and delete tasks."),
         ("hand.tap", "Double-Tap and Long-Press",
          "Double-tap a task to rename it. Long-press a task for more options."),
     ]

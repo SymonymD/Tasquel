@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var categoryDisplayOrder: [CategoryLayoutKey] = []
     @State private var lastToggledCategory: CategoryLayoutKey?
     @State private var isEditing = false
-    /// The card being dragged to a new place in edit mode, by name.
+    /// The card being dragged to a new place, by name.
     @State private var draggedCategoryName: String?
     /// Cards whose own edit button is on (only their tasks become editable).
     @State private var editingCategoryKeys: Set<CategoryLayoutKey> = []
@@ -604,12 +604,6 @@ struct ContentView: View {
 
         ScrollView {
             VStack(spacing: 8) {
-                if showAdd && categories.count > 1 {
-                    Text(Theme.isRetro(theme) ? "> hold and drag a card to move it" : "Hold and drag a card to move it.")
-                        .font(Theme.captionFont(theme))
-                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 // Expanded cards take a full row; other open cards remain open.
                 CategoryGridLayout(spacing: 8) {
                     ForEach(gridEntries(for: week)) { entry in
@@ -636,9 +630,12 @@ struct ContentView: View {
                             }
                         )
                         .categoryGridFullWidth(isExpanded)
+                        // Closed cards can be held and dragged to a new place. (Holding inside an
+                        // open card is for its tasks.)
                         .modifier(ReorderableCard(
-                            isEnabled: showAdd, name: entry.category.name,
-                            draggedName: $draggedCategoryName, store: store
+                            isEnabled: !week.isPastWeek && !isExpanded, name: entry.category.name,
+                            draggedName: $draggedCategoryName, store: store,
+                            move: { moveCard(named: $0, to: $1, in: week) }
                         ))
                         // The card being opened or closed stays above neighbors sliding past it.
                         .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
@@ -724,6 +721,18 @@ struct ContentView: View {
         }
         expandedCategoryKeys.insert(key)
         lastToggledCategory = key
+    }
+
+    /// Moves a card to another card's place. While cards are open the grid may show its
+    /// own order (see `expandCategory`), so that order is updated too.
+    private func moveCard(named name: String, to targetName: String, in week: Week) {
+        withAnimation(.snappy(duration: 0.25)) {
+            store.moveCategory(named: name, to: targetName)
+            guard !categoryDisplayOrder.isEmpty,
+                  let from = categoryDisplayOrder.firstIndex(where: { $0.name == name }),
+                  let to = categoryDisplayOrder.firstIndex(where: { $0.name == targetName }) else { return }
+            categoryDisplayOrder.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+        }
     }
 
     private func collapseCategory(_ key: CategoryLayoutKey) {
@@ -864,34 +873,35 @@ private struct PagerTrack<Content: View>: View {
 
 // MARK: - Card Reordering
 
-/// In edit mode, a card can be held and dragged onto another card's place. Cards move
-/// out of the way as the dragged card passes over them, and the new order carries into
-/// future weeks.
+/// A closed card can be held and dragged onto another card's place. Cards move out of
+/// the way as the dragged card passes over them, and the new order carries into future
+/// weeks. (iOS lifts a preview of the card; the card itself isn't dimmed, since a drag
+/// that ends outside any card never reports back.)
 private struct ReorderableCard: ViewModifier {
     let isEnabled: Bool
     let name: String
     @Binding var draggedName: String?
     let store: ChecklistStore
+    let move: (_ name: String, _ targetName: String) -> Void
 
     func body(content: Content) -> some View {
         if isEnabled {
             content
-                .opacity(draggedName == name ? 0.4 : 1)
                 .onDrag {
                     draggedName = name
                     return NSItemProvider(object: name as NSString)
                 }
                 .onDrop(of: [.plainText], delegate: CardDropDelegate(
-                    targetName: name, draggedName: $draggedName, store: store
+                    targetName: name, draggedName: $draggedName, move: move
                 ))
                 .accessibilityActions {
-                    if let index = store.selectedWeek?.categories.firstIndex(where: { $0.name == name }),
-                       let categories = store.selectedWeek?.categories {
+                    if let categories = store.selectedWeek?.categories,
+                       let index = categories.firstIndex(where: { $0.name == name }) {
                         if index > 0 {
-                            Button("Move Earlier") { store.moveCategory(named: name, to: categories[index - 1].name) }
+                            Button("Move Earlier") { move(name, categories[index - 1].name) }
                         }
                         if index < categories.count - 1 {
-                            Button("Move Later") { store.moveCategory(named: name, to: categories[index + 1].name) }
+                            Button("Move Later") { move(name, categories[index + 1].name) }
                         }
                     }
                 }
@@ -904,13 +914,11 @@ private struct ReorderableCard: ViewModifier {
 private struct CardDropDelegate: DropDelegate {
     let targetName: String
     @Binding var draggedName: String?
-    let store: ChecklistStore
+    let move: (_ name: String, _ targetName: String) -> Void
 
     func dropEntered(info: DropInfo) {
         guard let draggedName, draggedName != targetName else { return }
-        withAnimation(.snappy(duration: 0.25)) {
-            store.moveCategory(named: draggedName, to: targetName)
-        }
+        move(draggedName, targetName)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
