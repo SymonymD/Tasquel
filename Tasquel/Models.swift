@@ -5,14 +5,8 @@ import Foundation
 enum TaskMode: String, Codable, CaseIterable {
     case carryOver
     case repeating
-    /// No longer offered (Carry Over covers it); kept so saved one-time tasks still load.
+    /// This week only. Shown in menus as "Checkbox" (see `TaskKind`).
     case oneTime
-
-    /// The modes offered in menus. A task that's still one-time also lists it, so its
-    /// current mode stays selectable.
-    static func choices(including current: TaskMode? = nil) -> [TaskMode] {
-        current == .oneTime ? [.carryOver, .repeating, .oneTime] : [.carryOver, .repeating]
-    }
 
     var label: String {
         switch self {
@@ -56,6 +50,54 @@ enum TaskType: String, Codable, CaseIterable {
         switch self {
         case .checkbox: "checkmark.circle"
         case .goal: "target"
+        }
+    }
+}
+
+// MARK: - Task Kind
+
+/// The one choice offered in task menus, covering both mode and type: a checkbox for
+/// this week only, a carry-over or repeating checkbox, or a goal. A goal keeps its mode.
+enum TaskKind: CaseIterable {
+    case checkbox
+    case carryOver
+    case repeating
+    case goal
+
+    init(_ task: ChecklistTask) {
+        if task.taskType == .goal { self = .goal; return }
+        switch task.mode {
+        case .oneTime: self = .checkbox
+        case .carryOver: self = .carryOver
+        case .repeating: self = .repeating
+        }
+    }
+
+    /// The mode this choice sets, or `nil` for a goal.
+    var mode: TaskMode? {
+        switch self {
+        case .checkbox: .oneTime
+        case .carryOver: .carryOver
+        case .repeating: .repeating
+        case .goal: nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .checkbox: "Checkbox"
+        case .carryOver: "Carry Over"
+        case .repeating: "Repeating"
+        case .goal: "Goal"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .checkbox: TaskType.checkbox.symbol
+        case .carryOver: TaskMode.carryOver.symbol
+        case .repeating: TaskMode.repeating.symbol
+        case .goal: TaskType.goal.symbol
         }
     }
 }

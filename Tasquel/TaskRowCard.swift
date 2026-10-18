@@ -44,6 +44,8 @@ struct TaskRowCard: View {
     @FocusState private var focusedGoalField: GoalFocus?
     @State private var showDeleteConfirmation = false
     @State private var showTypeChangeConfirmation = false
+    /// The choice waiting on the "Change type?" confirmation.
+    @State private var pendingKind: TaskKind = .checkbox
 
     /// The goal text fields, for moving the keyboard between them.
     nonisolated private enum GoalField: Hashable { case target, editProgress, addProgress, unitName }
@@ -110,11 +112,10 @@ struct TaskRowCard: View {
 
                 Spacer()
 
-                // Inline icons: mode (also the checkbox type), goal, and delete in edit mode
+                // Inline icons: task type, and delete in edit mode
                 if !isPastWeek {
                     HStack(spacing: 0) {
-                        taskModeMenu
-                        goalTypeButton
+                        taskKindMenu
                         if isEditing { deleteButton }
                     }
                 }
@@ -149,23 +150,13 @@ struct TaskRowCard: View {
         }
         .contextMenu {
             if !isPastWeek {
-            Section("Task Mode") {
-                ForEach(TaskMode.choices(including: task.mode), id: \.self) { mode in
-                    Button {
-                        store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
-                    } label: {
-                        Label(mode.label, systemImage: mode.symbol)
-                        if task.mode == mode { Image(systemName: "checkmark") }
-                    }
-                }
-            }
             Section("Task Type") {
-                ForEach(TaskType.allCases, id: \.self) { type in
+                ForEach(TaskKind.allCases, id: \.self) { kind in
                     Button {
-                        selectTaskType(type)
+                        selectTaskKind(kind)
                     } label: {
-                        Label(type.label, systemImage: type.symbol)
-                        if task.taskType == type { Image(systemName: "checkmark") }
+                        Label(kind.label, systemImage: kind.symbol)
+                        if TaskKind(task) == kind { Image(systemName: "checkmark") }
                     }
                 }
             }
@@ -192,9 +183,9 @@ struct TaskRowCard: View {
         } message: {
             Text("This removes the task and its sub-tasks from this week.")
         }
-        .confirmationDialog("Change to checkbox?", isPresented: $showTypeChangeConfirmation) {
+        .confirmationDialog("Change to \(pendingKind.label)?", isPresented: $showTypeChangeConfirmation) {
             Button("Change Type", role: .destructive) {
-                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: .checkbox)
+                store.updateTaskKind(categoryID: categoryID, taskID: task.id, kind: pendingKind)
             }
         } message: {
             Text("This clears the goal target and progress.")
@@ -204,34 +195,22 @@ struct TaskRowCard: View {
     /// Row icons are 10% larger than the other expanded-card elements.
     private let rowIconSize: CGFloat = 16 * 1.1
 
-    // Mode (and checkbox type): shows the task's mode; tap to change it. Highlighted
-    // when the task is a checkbox task.
-    private var taskModeMenu: some View {
+    // Task type: shows Checkbox, Carry Over, Repeating or Goal; tap to change it.
+    private var taskKindMenu: some View {
         Menu {
-            Picker("Task Mode", selection: Binding(
-                get: { task.mode },
-                set: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) }
+            Picker("Task Type", selection: Binding(
+                get: { TaskKind(task) },
+                set: { selectTaskKind($0) }
             )) {
-                ForEach(TaskMode.choices(including: task.mode), id: \.self) { mode in
-                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+                ForEach(TaskKind.allCases, id: \.self) { kind in
+                    Label(kind.label, systemImage: kind.symbol).tag(kind)
                 }
             }
         } label: {
-            rowIcon(task.mode.symbol, color: task.taskType == .checkbox ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+            rowIcon(TaskKind(task).symbol, color: Theme.accent(theme, rc: rc))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Task mode: \(task.mode.label)")
-    }
-
-    /// Toggles between goal and checkbox.
-    private var goalTypeButton: some View {
-        Button {
-            selectTaskType(task.taskType == .goal ? .checkbox : .goal)
-        } label: {
-            rowIcon(TaskType.goal.symbol, color: task.taskType == .goal ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(task.taskType == .goal ? "Switch to checkbox task" : "Make goal task")
+        .accessibilityLabel("Task type: \(TaskKind(task).label)")
     }
 
     private var deleteButton: some View {
@@ -571,13 +550,15 @@ struct TaskRowCard: View {
         focusedGoalField = nil
     }
 
-    private func selectTaskType(_ type: TaskType) {
-        guard !isPastWeek, task.taskType != type else { return }
-        if task.taskType == .goal && type == .checkbox &&
+    /// Leaving a goal that has a target or progress asks first, since it clears them.
+    private func selectTaskKind(_ kind: TaskKind) {
+        guard !isPastWeek, TaskKind(task) != kind else { return }
+        if task.taskType == .goal && kind != .goal &&
             (task.goalTarget != nil || task.goalProgress != nil) {
+            pendingKind = kind
             showTypeChangeConfirmation = true
         } else {
-            store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+            store.updateTaskKind(categoryID: categoryID, taskID: task.id, kind: kind)
         }
     }
 
@@ -745,8 +726,7 @@ struct AddTaskRowCard: View {
     private var rc: RetroColor { store.retroColor }
 
     @State private var newTitle = ""
-    @State private var newMode: TaskMode = .carryOver
-    @State private var newType: TaskType = .checkbox
+    @State private var newKind: TaskKind = .checkbox
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -758,38 +738,23 @@ struct AddTaskRowCard: View {
             if isFocused {
                 Menu {
                     Section("Task Type") {
-                        ForEach(TaskType.allCases, id: \.self) { type in
+                        // Picking a type adds the task; Return uses the last one picked.
+                        ForEach(TaskKind.allCases, id: \.self) { kind in
                             Button {
-                                newType = type
-                                // Checkbox adds the task right away; a goal waits for Return
-                                // so its mode can be picked too.
-                                if type != .goal { addTask() }
-                            } label: {
-                                Label(type.label, systemImage: type.symbol)
-                                if newType == type { Image(systemName: "checkmark") }
-                            }
-                        }
-                    }
-                    Section("Task Mode") {
-                        ForEach(TaskMode.choices(), id: \.self) { mode in
-                            Button {
-                                newMode = mode
+                                newKind = kind
                                 addTask()
                             } label: {
-                                Label(mode.label, systemImage: mode.symbol)
-                                if newMode == mode { Image(systemName: "checkmark") }
+                                Label(kind.label, systemImage: kind.symbol)
+                                if newKind == kind { Image(systemName: "checkmark") }
                             }
                         }
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: newType.symbol)
-                        Image(systemName: newMode.symbol)
-                    }
-                    .font(.expandedCard(.caption2)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    .padding(4).background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
+                    Image(systemName: newKind.symbol)
+                        .font(.expandedCard(.caption2)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                        .padding(4).background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
                 }
-                .accessibilityLabel("New task type and mode: \(newType.label), \(newMode.label)")
+                .accessibilityLabel("New task type: \(newKind.label)")
             }
         }
     }
@@ -798,8 +763,8 @@ struct AddTaskRowCard: View {
         let title = newTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
         withAnimation(.snappy(duration: 0.2)) {
-            store.addTask(categoryID: categoryID, title: title, mode: newMode)
-            if newType == .goal, let week = store.selectedWeek,
+            store.addTask(categoryID: categoryID, title: title, mode: newKind.mode ?? .carryOver)
+            if newKind == .goal, let week = store.selectedWeek,
                let cat = week.categories.first(where: { $0.id == categoryID }),
                let task = cat.tasks.last {
                 store.updateTaskType(categoryID: categoryID, taskID: task.id, type: .goal)

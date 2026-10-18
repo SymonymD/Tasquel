@@ -682,3 +682,35 @@ struct GoalUnitTests {
         #expect(rolled?.goalTarget == 120)
     }
 }
+
+// MARK: - Task Kind
+
+struct TaskKindTests {
+    @Test("Each task maps to one menu choice")
+    func kindFromTask() {
+        #expect(TaskKind(ChecklistTask(title: "A", mode: .oneTime)) == .checkbox)
+        #expect(TaskKind(ChecklistTask(title: "B", mode: .carryOver)) == .carryOver)
+        #expect(TaskKind(ChecklistTask(title: "C", mode: .repeating)) == .repeating)
+        #expect(TaskKind(ChecklistTask(title: "D", mode: .repeating, taskType: .goal)) == .goal)
+    }
+
+    @Test("Choosing a kind sets mode and type; leaving a goal clears it")
+    func updateKind() {
+        let store = makeIsolatedStore()
+        let task = ChecklistTask(title: "Run", mode: .repeating)
+        let category = Category(name: "Fitness", symbol: "figure.run", tasks: [task])
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        func saved() -> ChecklistTask? { store.selectedWeek?.categories.first?.tasks.first }
+
+        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .goal)
+        #expect(saved()?.taskType == .goal)
+        #expect(saved()?.mode == .repeating, "A goal keeps its mode")
+
+        store.setGoalTarget(categoryID: category.id, taskID: task.id, target: 5)
+        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .checkbox)
+        #expect(saved()?.taskType == .checkbox)
+        #expect(saved()?.mode == .oneTime)
+        #expect(saved()?.goalTarget == nil)
+    }
+}

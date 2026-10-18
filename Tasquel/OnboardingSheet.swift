@@ -69,15 +69,13 @@ struct OnboardingSheet: View {
     }
 
     private let featurePages: [(title: String, icon: String, items: [(symbol: String, title: String, detail: String)])] = [
-        ("Task Modes", "arrow.triangle.2.circlepath", [
-            ("arrow.uturn.forward", "Carry Over",
-             "Default mode. If not completed by end of the week, it rolls forward to the next — so nothing falls through the cracks."),
-            ("repeat", "Repeating",
-             "Appears every week automatically regardless of completion. Great for recurring habits. Resets each new week."),
-        ]),
         ("Task Types", "checklist.checked", [
             ("checkmark.circle", "Checkbox",
-             "Standard task — tap the circle to mark complete. Add sub-tasks to break it down further."),
+             "Standard task for this week — tap the circle to mark complete. Add sub-tasks to break it down further."),
+            ("arrow.uturn.forward", "Carry Over",
+             "If not completed by end of the week, it rolls forward to the next — so nothing falls through the cracks."),
+            ("repeat", "Repeating",
+             "Appears every week automatically regardless of completion. Great for recurring habits. Resets each new week."),
             ("target", "Goal",
              "Track numeric progress toward a target (e.g. 30/50 push-ups). Auto-completes when the target is reached."),
         ]),

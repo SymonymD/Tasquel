@@ -12,7 +12,6 @@ final class GoalUITests: XCTestCase {
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Next"].tap()
             app.buttons["Continue"].tap()
             app.buttons["Skip"].tap()
             app.buttons["Let's Go!"].tap()
@@ -27,9 +26,11 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Practice\n")
-        let makeGoal = app.buttons["Make goal task"].firstMatch
-        XCTAssertTrue(makeGoal.waitForExistence(timeout: 3))
-        makeGoal.tap()
+        // Return adds a plain checkbox; the type menu turns it into a goal.
+        let typeMenu = app.buttons["Task type: Checkbox"].firstMatch
+        XCTAssertTrue(typeMenu.waitForExistence(timeout: 3), "Return adds a Checkbox task")
+        typeMenu.tap()
+        app.buttons["Goal"].firstMatch.tap()
 
         // Unit menu: Time shows hours and minutes fields.
         let unitMenu = app.buttons["Goal unit: Quantity"]
@@ -73,12 +74,12 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
 
         // Adding a task below the goal: its options stay clear of the Done button, scrolling
-        // up keeps the keyboard open, and choosing a mode adds the task.
+        // up keeps the keyboard open, and choosing a type adds the task.
         let addTask2 = app.textFields["Add task"]
         addTask2.tap()
         addTask2.typeText("Stretch")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type and mode")).firstMatch
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type")).firstMatch
         XCTAssertTrue(options.waitForExistence(timeout: 2))
         let done = app.buttons["Done"]
         XCTAssertLessThan(options.frame.maxY, done.frame.minY, "Done must not cover the new task's options")
@@ -89,7 +90,7 @@ final class GoalUITests: XCTestCase {
 
         options.tap()
         app.buttons["Repeating"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "choosing a mode adds the task")
-        XCTAssertFalse(app.buttons["One-Time"].exists)
+        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "choosing a type adds the task")
+        XCTAssertTrue(app.buttons["Task type: Repeating"].exists)
     }
 }

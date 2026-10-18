@@ -12,7 +12,6 @@ final class CalendarUITests: XCTestCase {
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Next"].tap()
             app.buttons["Continue"].tap()
             app.buttons["Skip"].tap()
             app.buttons["Let's Go!"].tap()
@@ -91,7 +90,6 @@ final class CalendarUITests: XCTestCase {
         app.launchArguments = ["-fakeCalendar", "-isolatedDataID", dataID]
         app.launch()
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
-            app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Continue"].tap()

@@ -17,15 +17,12 @@ struct HelpSheet: View {
             ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. Long-press a card to save it for future use or delete it."),
             ("pencil", "Edit Mode", "Tap the pencil in the bottom bar to add or delete categories; cards stay closed while editing. Deleting a category removes it from this week on, and you can add it back from Add Category. To edit one card's tasks, tap the edit icon inside that open card."),
         ]),
-        ("Task Modes", [
-            ("arrow.uturn.forward", "Carry Over", "Default mode. If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
-            ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
-            ("hand.draw", "Changing Modes", "Tap a task's mode icon to choose Carry Over or Repeating. In edit mode, a trash can deletes the task. Double-tap a task title to rename it, or long-press a task for all options."),
-        ]),
         ("Task Types", [
-            ("checkmark.circle", "Checkbox", "Standard task — tap the circle to mark complete. This is the default type for all new tasks."),
-            ("target", "Goal", "Track progress toward a numeric target (e.g. 50 push-ups). Tap the target icon to make a task a goal, and tap it again to switch back to a checkbox. Auto-completes when the target is reached."),
-            ("arrow.left.arrow.right", "Switching Types", "Long-press a task and choose a type from the context menu."),
+            ("checkmark.circle", "Checkbox", "Default for new tasks. Tap the circle to mark it complete. It stays in this week only."),
+            ("arrow.uturn.forward", "Carry Over", "If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
+            ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
+            ("target", "Goal", "Track progress toward a target, like 50 push-ups or 2 hours. Auto-completes when the target is reached."),
+            ("hand.draw", "Changing Types", "Tap a task's type icon, or long-press the task, to choose Checkbox, Carry Over, Repeating or Goal. In edit mode, a trash can deletes the task. Double-tap a task title to rename it."),
         ]),
         ("Sub-Tasks", [
             ("list.bullet.indent", "Adding Sub-Tasks", "Tasks with sub-tasks show them inline when expanded. Type in the field below to add more. Long-press a task to add the first sub-task."),

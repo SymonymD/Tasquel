@@ -530,6 +530,17 @@ final class ChecklistStore {
         save()
     }
 
+    /// Applies a task menu choice. Checkbox, Carry Over and Repeating set the mode and
+    /// make the task a checkbox (clearing any goal); Goal keeps the mode.
+    func updateTaskKind(categoryID: UUID, taskID: UUID, kind: TaskKind) {
+        if let mode = kind.mode {
+            updateTaskMode(categoryID: categoryID, taskID: taskID, mode: mode)
+            updateTaskType(categoryID: categoryID, taskID: taskID, type: .checkbox)
+        } else {
+            updateTaskType(categoryID: categoryID, taskID: taskID, type: .goal)
+        }
+    }
+
     // MARK: - Goal Task CRUD
 
     func updateTaskType(categoryID: UUID, taskID: UUID, type: TaskType) {
