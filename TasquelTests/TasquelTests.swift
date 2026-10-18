@@ -692,6 +692,7 @@ struct TaskKindTests {
         #expect(TaskKind(ChecklistTask(title: "B", mode: .carryOver)) == .carryOver)
         #expect(TaskKind(ChecklistTask(title: "C", mode: .repeating)) == .repeating)
         #expect(TaskKind(ChecklistTask(title: "D", mode: .repeating, taskType: .goal)) == .goal)
+        #expect(TaskKind(ChecklistTask(title: "E", taskType: .list)) == .list)
     }
 
     @Test("Choosing a kind sets mode and type; leaving a goal clears it")
@@ -712,5 +713,60 @@ struct TaskKindTests {
         #expect(saved()?.taskType == .checkbox)
         #expect(saved()?.mode == .oneTime)
         #expect(saved()?.goalTarget == nil)
+    }
+}
+
+// MARK: - List Tasks
+
+struct ListTaskTests {
+    private func makeStore(_ task: ChecklistTask) -> (ChecklistStore, Tasquel.Category) {
+        let store = makeIsolatedStore()
+        let category = Category(name: "Errands", symbol: "cart", tasks: [task])
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        return (store, category)
+    }
+
+    @Test("Choosing List makes a carry-over list")
+    func chooseList() {
+        let task = ChecklistTask(title: "Groceries", mode: .oneTime)
+        let (store, category) = makeStore(task)
+        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .list)
+        let saved = store.selectedWeek?.categories.first?.tasks.first
+        #expect(saved?.taskType == .list)
+        #expect(saved?.mode == .carryOver)
+    }
+
+    @Test("A list checks itself off when every item is checked, and unchecks for a new item")
+    func autoComplete() {
+        let task = ChecklistTask(title: "Groceries", mode: .carryOver, taskType: .list)
+        let (store, category) = makeStore(task)
+        store.addSubtask(categoryID: category.id, taskID: task.id, title: "Eggs")
+        store.addSubtask(categoryID: category.id, taskID: task.id, title: "Milk")
+        func saved() -> ChecklistTask { store.selectedWeek!.categories[0].tasks[0] }
+
+        for item in saved().subtasks {
+            store.toggleSubtask(categoryID: category.id, taskID: task.id, subtaskID: item.id)
+        }
+        #expect(saved().isCompleted)
+
+        store.addSubtask(categoryID: category.id, taskID: task.id, title: "Bread")
+        #expect(!saved().isCompleted, "A new unchecked item reopens the list")
+
+        store.deleteSubtask(categoryID: category.id, taskID: task.id, subtaskID: saved().subtasks[2].id)
+        #expect(saved().isCompleted, "Deleting the only unchecked item completes the list")
+    }
+
+    @Test("An unfinished list carries over with only its unchecked items")
+    func rollover() {
+        let task = ChecklistTask(title: "Groceries", mode: .carryOver,
+                                 subtasks: [SubTask(title: "Eggs", isCompleted: true), SubTask(title: "Milk")],
+                                 taskType: .list)
+        let (store, _) = makeStore(task)
+        let nextStart = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: store.weeks[0].startDate)!
+        let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks.first
+        #expect(rolled?.taskType == .list)
+        #expect(rolled?.subtasks.map(\.title) == ["Milk"])
+        #expect(rolled?.isCompleted == false)
     }
 }

@@ -90,6 +90,7 @@ enum Theme {
         case .carryOver: return .orange
         case .repeating: return .teal
         case .goal: return .purple
+        case .list: return .pink
         }
     }
     static func destructive(_ m: AppearanceMode) -> Color { isRetro(m) ? .red.opacity(0.8) : .red }

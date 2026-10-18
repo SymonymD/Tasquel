@@ -22,7 +22,8 @@ struct HelpSheet: View {
             ("arrow.uturn.forward", "Carry Over", "If not completed by end of the week, it rolls forward to the next week. Completed tasks do not carry over."),
             ("repeat", "Repeating", "Appears every week automatically regardless of completion. Great for recurring habits. Resets to unchecked each new week."),
             ("target", "Goal", "Track progress toward a target, like 50 push-ups or 2 hours. Auto-completes when the target is reached."),
-            ("hand.draw", "Changing Types", "Tap a task's type icon, or long-press the task, to choose Checkbox, Carry Over, Repeating or Goal. In edit mode, a trash can deletes the task. Double-tap a task title to rename it."),
+            ("list.bullet", "List", "A checklist like Groceries. Type an item and press Return to start the next one. The list checks itself off when every item is checked; otherwise it carries over with only the unchecked items."),
+            ("hand.draw", "Changing Types", "Tap a task's type icon, or long-press the task, to choose Checkbox, Carry Over, Repeating, Goal or List. In edit mode, a trash can deletes the task. Double-tap a task title to rename it."),
         ]),
         ("Sub-Tasks", [
             ("list.bullet.indent", "Adding Sub-Tasks", "Tasks with sub-tasks show them inline when expanded. Type in the field below to add more. Long-press a task to add the first sub-task."),

@@ -7,6 +7,9 @@ final class ChecklistStore {
 
     var weeks: [Week] = [] { didSet { previewCache.removeAll() } }
     var selectedDate: Date = Date()
+    /// A list task just created from the add-task row, whose item field should take the
+    /// keyboard when it appears. Not saved.
+    var listAwaitingFirstItem: UUID?
     var savedCategories: [CategoryTemplate] = [] { didSet { previewCache.removeAll() } }
     /// Previewed weeks, so repeated previews (every render while paging) return identical
     /// values instead of new IDs. Cleared whenever the data they're built from changes.
@@ -530,15 +533,13 @@ final class ChecklistStore {
         save()
     }
 
-    /// Applies a task menu choice. Checkbox, Carry Over and Repeating set the mode and
-    /// make the task a checkbox (clearing any goal); Goal keeps the mode.
+    /// Applies a task menu choice: sets the type (leaving a goal clears it) and the mode.
+    /// Goal keeps the task's mode; List always carries over.
     func updateTaskKind(categoryID: UUID, taskID: UUID, kind: TaskKind) {
         if let mode = kind.mode {
             updateTaskMode(categoryID: categoryID, taskID: taskID, mode: mode)
-            updateTaskType(categoryID: categoryID, taskID: taskID, type: .checkbox)
-        } else {
-            updateTaskType(categoryID: categoryID, taskID: taskID, type: .goal)
         }
+        updateTaskType(categoryID: categoryID, taskID: taskID, type: kind.type)
     }
 
     // MARK: - Goal Task CRUD
@@ -550,7 +551,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].taskType = type
-        if type == .checkbox {
+        if type != .goal {
             weeks[wi].categories[ci].tasks[ti].goalTarget = nil
             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
             weeks[wi].categories[ci].tasks[ti].goalUnit = nil
@@ -601,6 +602,8 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
+        // A new unchecked item means the task isn't done yet.
+        weeks[wi].categories[ci].tasks[ti].isCompleted = false
         save()
     }
 
@@ -627,6 +630,11 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
+        // Deleting the last unchecked item completes the task, as checking it would.
+        let task = weeks[wi].categories[ci].tasks[ti]
+        if !task.subtasks.isEmpty {
+            weeks[wi].categories[ci].tasks[ti].isCompleted = task.subtasks.allSatisfy(\.isCompleted)
+        }
         save()
     }
 

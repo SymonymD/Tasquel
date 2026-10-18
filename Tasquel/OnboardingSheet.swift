@@ -68,6 +68,24 @@ struct OnboardingSheet: View {
         }
     }
 
+    private func featurePageContent(_ page: (title: String, icon: String, items: [(symbol: String, title: String, detail: String)])) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: page.icon)
+                .font(.system(size: 40))
+                .foregroundStyle(.blue)
+            Text(page.title)
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(page.items, id: \.title) { item in
+                    OnboardingFeatureRow(symbol: item.symbol, title: item.title, detail: item.detail)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.bottom, 40)
+    }
+
     private let featurePages: [(title: String, icon: String, items: [(symbol: String, title: String, detail: String)])] = [
         ("Task Types", "checklist.checked", [
             ("checkmark.circle", "Checkbox",
@@ -78,6 +96,8 @@ struct OnboardingSheet: View {
              "Appears every week automatically regardless of completion. Great for recurring habits. Resets each new week."),
             ("target", "Goal",
              "Track numeric progress toward a target (e.g. 30/50 push-ups). Auto-completes when the target is reached."),
+            ("list.bullet", "List",
+             "A checklist like Groceries. Checks itself off when every item is done; unchecked items carry over."),
         ]),
         ("Quick Tips", "lightbulb", [
             ("pencil", "Edit Mode",
@@ -95,21 +115,11 @@ struct OnboardingSheet: View {
 
             TabView(selection: $featurePage) {
                 ForEach(Array(featurePages.enumerated()), id: \.offset) { index, page in
-                    VStack(spacing: 20) {
-                        Image(systemName: page.icon)
-                            .font(.system(size: 40))
-                            .foregroundStyle(.blue)
-                        Text(page.title)
-                            .font(.headline)
-
-                        VStack(alignment: .leading, spacing: 14) {
-                            ForEach(page.items, id: \.title) { item in
-                                OnboardingFeatureRow(symbol: item.symbol, title: item.title, detail: item.detail)
-                            }
-                        }
-                        .padding(.horizontal, 24)
+                    // Scrolls only when a page is taller than the screen (large text sizes).
+                    ViewThatFits(in: .vertical) {
+                        featurePageContent(page)
+                        ScrollView { featurePageContent(page) }
                     }
-                    .padding(.bottom, 40)
                     .tag(index)
                 }
             }

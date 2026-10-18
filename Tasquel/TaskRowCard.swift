@@ -34,6 +34,7 @@ struct TaskRowCard: View {
     @State private var editedTitle = ""
     @FocusState private var isTitleFocused: Bool
     @State private var newSubtaskTitle = ""
+    @FocusState private var isSubtaskFieldFocused: Bool
     @State private var goalKindSelection: GoalUnitKind = .quantity
     @State private var goalTargetInput = GoalAmountInput()
     @State private var goalUnitText = ""
@@ -81,6 +82,8 @@ struct TaskRowCard: View {
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle().size(width: 36 * expandedCardScale, height: 36 * expandedCardScale))
+                    .accessibilityLabel("Check \(task.title)")
+                    .accessibilityValue(task.isCompleted ? "Checked" : "Unchecked")
                 }
 
                 // Title
@@ -124,7 +127,7 @@ struct TaskRowCard: View {
             if task.taskType == .goal {
                 goalProgressSection
             } else {
-                // Checkbox: subtasks
+                // Checkbox: sub-tasks. List: its items.
                 ForEach(task.subtasks) { subtask in
                     SubTaskRowCard(
                         subtask: subtask,
@@ -139,14 +142,21 @@ struct TaskRowCard: View {
                     HStack(spacing: 8) {
                         Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                             .font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                        TextField(Theme.isRetro(theme) ? "sub_task>" : "Add sub-task", text: $newSubtaskTitle)
+                        TextField(subtaskPlaceholder, text: $newSubtaskTitle)
                             .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                            .focused($isSubtaskFieldFocused)
+                            .submitLabel(task.taskType == .list ? .next : .done)
                             .onSubmit(addSubtask)
                     }
                     .padding(.leading, 24 * expandedCardScale)
                     .padding(.vertical, 2)
                 }
             }
+        }
+        .task(id: store.listAwaitingFirstItem) {
+            guard store.listAwaitingFirstItem == task.id else { return }
+            store.listAwaitingFirstItem = nil
+            isSubtaskFieldFocused = true
         }
         .contextMenu {
             if !isPastWeek {
@@ -481,6 +491,17 @@ struct TaskRowCard: View {
         Theme.isRetro(theme) ? .expandedCard(.subheadline, design: .monospaced) : .expandedCard(.subheadline)
     }
 
+    private var subtaskPlaceholder: String {
+        switch (task.taskType == .list, Theme.isRetro(theme)) {
+        case (true, true): "add_item>"
+        case (true, false): "Add item"
+        case (false, true): "sub_task>"
+        case (false, false): "Add sub-task"
+        }
+    }
+
+    /// In a list, Return keeps the keyboard up for the next item; Return on an empty
+    /// field closes it.
     private func addSubtask() {
         let title = newSubtaskTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
@@ -488,6 +509,7 @@ struct TaskRowCard: View {
             store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
         newSubtaskTitle = ""
+        if task.taskType == .list { isSubtaskFieldFocused = true }
     }
 
     private func commitTitle() {
@@ -671,6 +693,8 @@ struct SubTaskRowCard: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Check \(subtask.title)")
+            .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
 
             if isEditing && !isPastWeek && isEditingTitle {
                 TextField("Sub-task", text: $editedTitle)
@@ -764,10 +788,12 @@ struct AddTaskRowCard: View {
         guard !title.isEmpty else { return }
         withAnimation(.snappy(duration: 0.2)) {
             store.addTask(categoryID: categoryID, title: title, mode: newKind.mode ?? .carryOver)
-            if newKind == .goal, let week = store.selectedWeek,
+            if newKind.type != .checkbox, let week = store.selectedWeek,
                let cat = week.categories.first(where: { $0.id == categoryID }),
                let task = cat.tasks.last {
-                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: .goal)
+                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: newKind.type)
+                // A new list goes straight to typing its first item.
+                if newKind == .list { store.listAwaitingFirstItem = task.id }
             }
         }
         newTitle = ""

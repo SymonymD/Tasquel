@@ -1,10 +1,11 @@
 import XCTest
 
-/// Goal setup with a unit, Add Progress, and closing the keyboard, using throwaway
-/// app data (`-isolatedData`).
+/// Goal setup with a unit, Add Progress, closing the keyboard, and list tasks, using
+/// throwaway app data (`-isolatedData`).
 final class GoalUITests: XCTestCase {
+    /// Launches with throwaway data and skips onboarding.
     @MainActor
-    func testTimeGoalAddProgressAndKeyboardDone() throws {
+    private func launchFresh() -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-isolatedData"]
@@ -16,6 +17,12 @@ final class GoalUITests: XCTestCase {
             app.buttons["Skip"].tap()
             app.buttons["Let's Go!"].tap()
         }
+        return app
+    }
+
+    @MainActor
+    func testTimeGoalAddProgressAndKeyboardDone() throws {
+        let app = launchFresh()
 
         let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
@@ -92,5 +99,41 @@ final class GoalUITests: XCTestCase {
         app.buttons["Repeating"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "choosing a type adds the task")
         XCTAssertTrue(app.buttons["Task type: Repeating"].exists)
+    }
+
+    /// A list: picking List from the add-task menu goes straight to its first item, Return
+    /// adds each item and keeps the keyboard up, and checking every item checks the list.
+    @MainActor
+    func testListAddsItemsAndChecksItself() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Groceries")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type")).firstMatch.tap()
+        app.buttons["List"].firstMatch.tap()
+
+        let item = app.textFields["Add item"]
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 3), "a new list takes the keyboard for its first item")
+        item.typeText("Eggs\n")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2), "Return keeps the keyboard up")
+        item.typeText("Milk\n")
+        XCTAssertTrue(app.staticTexts["Eggs"].exists)
+        XCTAssertTrue(app.staticTexts["Milk"].exists)
+        XCTAssertTrue(app.buttons["Task type: List"].exists)
+
+        app.buttons["Done"].tap()
+        let list = app.buttons["Check Groceries"]
+        XCTAssertEqual(list.value as? String, "Unchecked")
+        app.buttons["Check Eggs"].tap()
+        XCTAssertEqual(list.value as? String, "Unchecked", "one item left")
+        app.buttons["Check Milk"].tap()
+        XCTAssertEqual(list.value as? String, "Checked", "checking every item checks the list")
     }
 }

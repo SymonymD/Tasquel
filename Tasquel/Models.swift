@@ -38,11 +38,14 @@ enum TaskMode: String, Codable, CaseIterable {
 enum TaskType: String, Codable, CaseIterable {
     case checkbox
     case goal
+    /// A checklist of items (stored as sub-tasks) that checks itself off when every item is checked.
+    case list
 
     var label: String {
         switch self {
         case .checkbox: "Checkbox"
         case .goal: "Goal"
+        case .list: "List"
         }
     }
 
@@ -50,6 +53,7 @@ enum TaskType: String, Codable, CaseIterable {
         switch self {
         case .checkbox: "checkmark.circle"
         case .goal: "target"
+        case .list: "list.bullet"
         }
     }
 }
@@ -57,15 +61,21 @@ enum TaskType: String, Codable, CaseIterable {
 // MARK: - Task Kind
 
 /// The one choice offered in task menus, covering both mode and type: a checkbox for
-/// this week only, a carry-over or repeating checkbox, or a goal. A goal keeps its mode.
+/// this week only, a carry-over or repeating checkbox, a goal, or a list. A goal keeps
+/// its mode; a list always carries over, with only its unchecked items.
 enum TaskKind: CaseIterable {
     case checkbox
     case carryOver
     case repeating
     case goal
+    case list
 
     init(_ task: ChecklistTask) {
-        if task.taskType == .goal { self = .goal; return }
+        switch task.taskType {
+        case .goal: self = .goal; return
+        case .list: self = .list; return
+        case .checkbox: break
+        }
         switch task.mode {
         case .oneTime: self = .checkbox
         case .carryOver: self = .carryOver
@@ -80,6 +90,15 @@ enum TaskKind: CaseIterable {
         case .carryOver: .carryOver
         case .repeating: .repeating
         case .goal: nil
+        case .list: .carryOver
+        }
+    }
+
+    var type: TaskType {
+        switch self {
+        case .checkbox, .carryOver, .repeating: .checkbox
+        case .goal: .goal
+        case .list: .list
         }
     }
 
@@ -89,6 +108,7 @@ enum TaskKind: CaseIterable {
         case .carryOver: "Carry Over"
         case .repeating: "Repeating"
         case .goal: "Goal"
+        case .list: "List"
         }
     }
 
@@ -98,6 +118,7 @@ enum TaskKind: CaseIterable {
         case .carryOver: TaskMode.carryOver.symbol
         case .repeating: TaskMode.repeating.symbol
         case .goal: TaskType.goal.symbol
+        case .list: TaskType.list.symbol
         }
     }
 }
