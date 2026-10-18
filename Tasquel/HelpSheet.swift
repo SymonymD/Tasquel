@@ -73,12 +73,7 @@ struct HelpSheet: View {
 
     private var standardHelp: some View {
         List {
-            helpSection(0)
-            helpSection(1)
-            helpSection(2)
-            helpSection(3)
-            helpSection(4)
-            helpSection(5)
+            ForEach(helpSections.indices, id: \.self) { helpSection($0) }
         }
     }
 

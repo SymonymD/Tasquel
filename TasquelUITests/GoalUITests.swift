@@ -136,4 +136,18 @@ final class GoalUITests: XCTestCase {
         app.buttons["Check Milk"].tap()
         XCTAssertEqual(list.value as? String, "Checked", "checking every item checks the list")
     }
+
+    /// Help opens and shows every section (it once indexed past its last section and crashed).
+    @MainActor
+    func testHelpOpens() throws {
+        let app = launchFresh()
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let help = app.buttons["How to Use Tasquel"]
+        XCTAssertTrue(help.waitForExistence(timeout: 3))
+        help.tap()
+        XCTAssertTrue(app.staticTexts["Task Types"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.state, .runningForeground)
+    }
 }
