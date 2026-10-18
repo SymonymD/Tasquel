@@ -19,6 +19,7 @@ struct ContentView: View {
     /// Each card's place in the grid of the week being viewed, for finding the card
     /// under the finger.
     @State private var cardFrames: [CategoryLayoutKey: CGRect] = [:]
+    @State private var lastCardDrop = Date.distantPast
     /// Cards whose own edit button is on (only their tasks become editable).
     @State private var editingCategoryKeys: Set<CategoryLayoutKey> = []
     @State private var showOnboarding = false
@@ -647,7 +648,11 @@ struct ContentView: View {
                         .modifier(CardDragGesture(
                             isCollapsed: !isExpanded,
                             canDrag: !week.isPastWeek,
-                            onTap: { expandCard(entry.id, in: week) },
+                            onTap: {
+                                // A hold that's released without moving isn't a tap.
+                                guard cardDrag == nil, Date().timeIntervalSince(lastCardDrop) > 0.5 else { return }
+                                expandCard(entry.id, in: week)
+                            },
                             onLift: { liftCard(entry.id, in: week) },
                             onMove: { start, location in moveDraggedCard(start: start, to: location) },
                             onDrop: { dropCard(in: week) }
@@ -793,6 +798,7 @@ struct ContentView: View {
     /// into its place.
     private func dropCard(in week: Week) {
         guard let drag = cardDrag else { return }
+        lastCardDrop = Date()
         if let order = liveCardOrder {
             store.setCategoryOrder(order.map(\.name))
             if !categoryDisplayOrder.isEmpty { categoryDisplayOrder = order }
@@ -992,6 +998,10 @@ private struct PagerTrack<Content: View>: View {
 
 /// A closed card's touches: tap to open it, or hold and then drag to move it. A swipe
 /// that starts before the hold completes still scrolls or changes week.
+///
+/// The hold-and-drag runs alongside the scroll view's own gesture, so the scroll view
+/// can't take the finger away once the card is lifted. It may still be cancelled (a
+/// call, a system gesture); `isHolding` resets then too, which drops the card.
 private struct CardDragGesture: ViewModifier {
     let isCollapsed: Bool
     let canDrag: Bool
@@ -999,6 +1009,8 @@ private struct CardDragGesture: ViewModifier {
     let onLift: () -> Void
     let onMove: (_ start: CGPoint, _ location: CGPoint) -> Void
     let onDrop: () -> Void
+
+    @GestureState private var isHolding = false
 
     func body(content: Content) -> some View {
         if !isCollapsed {
@@ -1009,19 +1021,22 @@ private struct CardDragGesture: ViewModifier {
             content
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onTap)
-                // A release before the hold completes is the tap above.
-                .gesture(
+                .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.35)
                         .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(ContentView.cardGridSpace)))
+                        .updating($isHolding) { value, state, _ in
+                            if case .second(true, _) = value { state = true }
+                        }
                         .onChanged { value in
                             guard case .second(true, let drag) = value else { return }
                             onLift()
                             if let drag { onMove(drag.startLocation, drag.location) }
                         }
-                        .onEnded { value in
-                            if case .second(true, _) = value { onDrop() }
-                        }
                 )
+                // Ends, or is cancelled: either way the card drops.
+                .onChange(of: isHolding) { _, holding in
+                    if !holding { onDrop() }
+                }
         }
     }
 }
