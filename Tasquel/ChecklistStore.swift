@@ -401,6 +401,19 @@ final class ChecklistStore {
             let sources = Dictionary(sourceCategory.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
             if week.isFutureWeek {
+                // Copies made before copies remembered their source (same title, never
+                // touched) are adopted, so they follow too instead of going stale.
+                for task in sourceCategory.tasks where task.mode == .carryOver && !task.isCompleted {
+                    let tasks = week.categories[ci].tasks
+                    guard !tasks.contains(where: { $0.carriedFrom == task.id }),
+                          let ti = tasks.firstIndex(where: {
+                              $0.carriedFrom == nil && $0.title == task.title && $0.mode == .carryOver &&
+                                  !$0.isCompleted && !$0.subtasks.contains(where: \.isCompleted)
+                          }) else { continue }
+                    week.categories[ci].tasks[ti].carriedFrom = task.id
+                    changed = true
+                }
+
                 for ti in week.categories[ci].tasks.indices.reversed() {
                     let copy = week.categories[ci].tasks[ti]
                     guard let sourceID = copy.carriedFrom,

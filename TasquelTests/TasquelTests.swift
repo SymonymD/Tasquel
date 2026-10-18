@@ -816,6 +816,25 @@ struct CarryOverSyncTests {
         #expect(tasks(store, nextMonday).isEmpty)
     }
 
+    @Test("An older copy without a source link is adopted and follows its source")
+    func adoptsUnlinkedCopy() {
+        let store = makeIsolatedStore()
+        let list = ChecklistTask(title: "Grocery", mode: .carryOver,
+                                 subtasks: [SubTask(title: "Eggs", isCompleted: true), SubTask(title: "Milk")],
+                                 taskType: .list)
+        let stale = ChecklistTask(title: "Grocery", mode: .carryOver, subtasks: [SubTask(title: "Eggs")])
+        store.weeks = [
+            Week(startDate: thisMonday, categories: [Category(name: "Errands", symbol: "cart", tasks: [list])]),
+            Week(startDate: nextMonday, categories: [Category(name: "Errands", symbol: "cart", tasks: [stale])]),
+        ]
+        store.navigateToDate(nextMonday)
+        let copy = tasks(store, nextMonday)
+        #expect(copy.count == 1)
+        #expect(copy.first?.carriedFrom == list.id)
+        #expect(copy.first?.taskType == .list)
+        #expect(copy.first?.subtasks.map(\.title) == ["Milk"])
+    }
+
     @Test("A deleted carry-over stays deleted")
     func deletedCopyStaysDeleted() {
         let store = makeIsolatedStore()
