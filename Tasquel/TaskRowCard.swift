@@ -6,15 +6,47 @@ import UIKit
 /// Everything inside an expanded card is drawn 15% larger than its base size.
 let expandedCardScale: CGFloat = 1.15
 
+/// The user's text size (Settings ▸ Display & Brightness ▸ Text Size), for the
+/// expanded-card sizes below. The root view keeps it current; views that read it while
+/// drawing redraw when it changes.
+@Observable
+final class TextSizeSetting {
+    static let shared = TextSizeSetting()
+    var size: DynamicTypeSize = .large
+
+    fileprivate var traits: UITraitCollection {
+        UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+    }
+}
+
 extension Font {
-    /// A text style enlarged for expanded cards; follows the user's Dynamic Type size.
+    /// A text style enlarged for expanded cards; follows the user's text size.
     static func expandedCard(_ style: UIFont.TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
-        .system(size: UIFont.preferredFont(forTextStyle: style).pointSize * expandedCardScale, weight: weight, design: design)
+        let size = UIFont.preferredFont(forTextStyle: style, compatibleWith: TextSizeSetting.shared.traits).pointSize
+        return .system(size: size * expandedCardScale, weight: weight, design: design)
     }
 
-    /// A fixed point size enlarged for expanded cards.
+    /// A point size (at the default text size) enlarged for expanded cards; grows and
+    /// shrinks with the user's text size like body text.
     static func expandedCard(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
-        .system(size: size * expandedCardScale, weight: weight, design: design)
+        .system(size: expandedCardScaled(size), weight: weight, design: design)
+    }
+}
+
+/// A length enlarged for expanded cards that follows the user's text size, like body text.
+func expandedCardScaled(_ length: CGFloat) -> CGFloat {
+    UIFontMetrics(forTextStyle: .body).scaledValue(for: length * expandedCardScale, compatibleWith: TextSizeSetting.shared.traits)
+}
+
+/// Like `expandedCardScaled`, but stops growing at 1.6× so controls (checkboxes, icon
+/// buttons) don't crowd out the text at the largest sizes.
+func expandedCardControl(_ length: CGFloat) -> CGFloat {
+    min(expandedCardScaled(length), length * expandedCardScale * 1.6)
+}
+
+extension View {
+    func expandedCardFont(_ style: UIFont.TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default) -> some View {
+        font(.expandedCard(style, weight: weight, design: design))
     }
 }
 
@@ -45,8 +77,11 @@ struct TaskRowCard: View {
     @FocusState private var focusedGoalField: GoalFocus?
     @State private var showDeleteConfirmation = false
     @State private var showTypeChangeConfirmation = false
-    /// The choice waiting on the "Change type?" confirmation.
-    @State private var pendingKind: TaskKind = .checkbox
+    /// The type waiting on the "Change type?" confirmation (long-press menu).
+    @State private var pendingType: TaskType = .checkbox
+    @State private var showOptions = false
+    /// The add-sub-task field is open (a list's add-item field is always shown).
+    @State private var isAddingSubtask = false
 
     /// The goal text fields, for moving the keyboard between them.
     nonisolated private enum GoalField: Hashable { case target, editProgress, addProgress, unitName }
@@ -77,11 +112,11 @@ struct TaskRowCard: View {
                             Circle()
                                 .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
                                 .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                                .frame(width: 18 * expandedCardScale, height: 18 * expandedCardScale)
+                                .frame(width: expandedCardControl(18), height: expandedCardControl(18))
                         }
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle().size(width: 36 * expandedCardScale, height: 36 * expandedCardScale))
+                    .contentShape(Rectangle().size(width: expandedCardControl(36), height: expandedCardControl(36)))
                     .accessibilityLabel("Check \(task.title)")
                     .accessibilityValue(task.isCompleted ? "Checked" : "Unchecked")
                 }
@@ -115,10 +150,11 @@ struct TaskRowCard: View {
 
                 Spacer()
 
-                // Inline icons: task type, and delete in edit mode
+                // Inline icons: add sub-task (checkbox tasks), type and mode, and delete in edit mode
                 if !isPastWeek {
                     HStack(spacing: 0) {
-                        taskKindMenu
+                        if task.taskType == .checkbox { addSubtaskButton }
+                        taskOptionsButton
                         if isEditing { deleteButton }
                     }
                 }
@@ -139,15 +175,19 @@ struct TaskRowCard: View {
                         isListItem: task.taskType == .list
                     )
                 }
-                if !isPastWeek {
+                if !isPastWeek && (task.taskType == .list || isAddingSubtask) {
                     HStack(spacing: 8) {
                         Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                             .font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                         TextField(subtaskPlaceholder, text: $newSubtaskTitle)
                             .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                             .focused($isSubtaskFieldFocused)
-                            .submitLabel(task.taskType == .list ? .next : .done)
+                            .submitLabel(.next)
                             .onSubmit(addSubtask)
+                            // An empty sub-task field closes when the keyboard does.
+                            .onChange(of: isSubtaskFieldFocused) { _, focused in
+                                if !focused && newSubtaskTitle.isEmpty { isAddingSubtask = false }
+                            }
                     }
                     .padding(.leading, 24 * expandedCardScale)
                     .padding(.vertical, 2)
@@ -161,13 +201,23 @@ struct TaskRowCard: View {
         }
         .contextMenu {
             if !isPastWeek {
-            Section("Task Type") {
-                ForEach(TaskKind.allCases, id: \.self) { kind in
+            Section("Type") {
+                ForEach(TaskType.allCases, id: \.self) { type in
                     Button {
-                        selectTaskKind(kind)
+                        selectTaskType(type)
                     } label: {
-                        Label(kind.label, systemImage: kind.symbol)
-                        if TaskKind(task) == kind { Image(systemName: "checkmark") }
+                        Label(type.label, systemImage: type.symbol)
+                        if task.taskType == type { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+            Section("After This Week") {
+                ForEach(TaskMode.ordered, id: \.self) { mode in
+                    Button {
+                        store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
+                    } label: {
+                        Label(mode.label, systemImage: mode.symbol)
+                        if task.mode == mode { Image(systemName: "checkmark") }
                     }
                 }
             }
@@ -180,10 +230,8 @@ struct TaskRowCard: View {
                     Button("Add Item", systemImage: "plus") {
                         isSubtaskFieldFocused = true
                     }
-                } else if task.subtasks.isEmpty && !isPastWeek {
-                    Button("Add Sub-Task", systemImage: "list.bullet.indent") {
-                        store.addSubtask(categoryID: categoryID, taskID: task.id, title: "New sub-task")
-                    }
+                } else if task.taskType == .checkbox && !isPastWeek {
+                    Button("Add Sub-Task", systemImage: "list.bullet.indent") { startAddingSubtask() }
                 }
                 Button("Delete", systemImage: "trash", role: .destructive) {
                     showDeleteConfirmation = true
@@ -200,9 +248,9 @@ struct TaskRowCard: View {
                  ? "This removes the list and its items from this week."
                  : "This removes the task and its sub-tasks from this week.")
         }
-        .confirmationDialog("Change to \(pendingKind.label)?", isPresented: $showTypeChangeConfirmation) {
+        .confirmationDialog("Change to \(pendingType.label)?", isPresented: $showTypeChangeConfirmation, titleVisibility: .visible) {
             Button("Change Type", role: .destructive) {
-                store.updateTaskKind(categoryID: categoryID, taskID: task.id, kind: pendingKind)
+                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: pendingType)
             }
         } message: {
             Text("This clears the goal target and progress.")
@@ -212,22 +260,40 @@ struct TaskRowCard: View {
     /// Row icons are 10% larger than the other expanded-card elements.
     private let rowIconSize: CGFloat = 16 * 1.1
 
-    // Task type: shows Checkbox, Carry Over, Repeating or Goal; tap to change it.
-    private var taskKindMenu: some View {
-        Menu {
-            Picker("Task Type", selection: Binding(
-                get: { TaskKind(task) },
-                set: { selectTaskKind($0) }
-            )) {
-                ForEach(TaskKind.allCases, id: \.self) { kind in
-                    Label(kind.label, systemImage: kind.symbol).tag(kind)
-                }
-            }
-        } label: {
-            rowIcon(TaskKind(task).symbol, color: Theme.taskKind(TaskKind(task), theme, rc: rc))
+    /// The task's type and mode icons; tap to change either.
+    private var taskOptionsButton: some View {
+        Button { showOptions = true } label: {
+            TaskOptionsLabel(type: task.taskType, mode: task.mode, theme: theme, rc: rc)
+                .frame(minHeight: expandedCardControl(36))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Task type: \(TaskKind(task).label)")
+        .accessibilityLabel("Task options: \(task.taskType.label), \(task.mode.label)")
+        .popover(isPresented: $showOptions) {
+            TaskOptionsPicker(
+                type: task.taskType, mode: task.mode, theme: theme, rc: rc,
+                confirmsLeavingGoal: task.goalTarget != nil || task.goalProgress != nil,
+                onSelectType: { type in
+                    withAnimation(.snappy(duration: 0.2)) {
+                        store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
+                    }
+                },
+                onSelectMode: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) }
+            )
+        }
+    }
+
+    private var addSubtaskButton: some View {
+        Button(action: startAddingSubtask) {
+            rowIcon("plus", color: Theme.textSecondary(theme, rc: rc))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add sub-task to \(task.title)")
+    }
+
+    private func startAddingSubtask() {
+        isAddingSubtask = true
+        isSubtaskFieldFocused = true
     }
 
     private var deleteButton: some View {
@@ -244,7 +310,7 @@ struct TaskRowCard: View {
         Image(systemName: systemName)
             .font(.expandedCard(size: rowIconSize))
             .foregroundStyle(color)
-            .frame(width: 36 * expandedCardScale, height: 36 * expandedCardScale)
+            .frame(width: expandedCardControl(36), height: expandedCardControl(36))
             .contentShape(Rectangle())
     }
 
@@ -273,7 +339,7 @@ struct TaskRowCard: View {
                             .font(.expandedCard(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                     )
-                    .frame(width: 18 * expandedCardScale, height: 18 * expandedCardScale)
+                    .frame(width: expandedCardControl(18), height: expandedCardControl(18))
             } else if let target = task.goalTarget, target > 0 {
                 ZStack {
                     Circle().stroke(Theme.textTertiary(theme, rc: rc), lineWidth: 2.5)
@@ -282,7 +348,7 @@ struct TaskRowCard: View {
                         .stroke(Theme.accent(theme, rc: rc), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
-                .frame(width: 18 * expandedCardScale, height: 18 * expandedCardScale)
+                .frame(width: expandedCardControl(18), height: expandedCardControl(18))
             } else {
                 Image(systemName: "target")
                     .font(.expandedCard(size: 12)).foregroundStyle(Theme.completionPartial(theme))
@@ -507,8 +573,7 @@ struct TaskRowCard: View {
         }
     }
 
-    /// In a list, Return keeps the keyboard up for the next item; Return on an empty
-    /// field closes it.
+    /// Return keeps the keyboard up for the next item; Return on an empty field closes it.
     private func addSubtask() {
         let title = newSubtaskTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
@@ -516,7 +581,7 @@ struct TaskRowCard: View {
             store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
         newSubtaskTitle = ""
-        if task.taskType == .list { isSubtaskFieldFocused = true }
+        isSubtaskFieldFocused = true
     }
 
     private func commitTitle() {
@@ -580,14 +645,13 @@ struct TaskRowCard: View {
     }
 
     /// Leaving a goal that has a target or progress asks first, since it clears them.
-    private func selectTaskKind(_ kind: TaskKind) {
-        guard !isPastWeek, TaskKind(task) != kind else { return }
-        if task.taskType == .goal && kind != .goal &&
-            (task.goalTarget != nil || task.goalProgress != nil) {
-            pendingKind = kind
+    private func selectTaskType(_ type: TaskType) {
+        guard !isPastWeek, task.taskType != type else { return }
+        if task.taskType == .goal && (task.goalTarget != nil || task.goalProgress != nil) {
+            pendingType = type
             showTypeChangeConfirmation = true
         } else {
-            store.updateTaskKind(categoryID: categoryID, taskID: task.id, kind: kind)
+            store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
         }
     }
 
@@ -698,10 +762,14 @@ struct SubTaskRowCard: View {
                     Circle()
                         .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
                         .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                        .frame(width: 14 * expandedCardScale, height: 14 * expandedCardScale)
+                        .frame(width: expandedCardControl(14), height: expandedCardControl(14))
                 }
             }
             .buttonStyle(.plain)
+            // A bigger touch target than the small circle, without changing the layout.
+            .padding(8)
+            .contentShape(Rectangle())
+            .padding(-8)
             .accessibilityLabel("Check \(subtask.title)")
             .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
 
@@ -759,7 +827,9 @@ struct AddTaskRowCard: View {
     private var rc: RetroColor { store.retroColor }
 
     @State private var newTitle = ""
-    @State private var newKind: TaskKind = .checkbox
+    @State private var newType: TaskType = .checkbox
+    @State private var newMode: TaskMode = .oneTime
+    @State private var showOptions = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -768,42 +838,36 @@ struct AddTaskRowCard: View {
                 .font(.expandedCard(.subheadline)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
             TextField(Theme.isRetro(theme) ? "new_task>" : "Add task", text: $newTitle)
                 .font(.expandedCard(.subheadline, design: Theme.isRetro(theme) ? .monospaced : .default)).focused($isFocused).onSubmit(addTask)
-            if isFocused {
-                Menu {
-                    Section("Task Type") {
-                        // Picking a type adds the task; Return uses the last one picked.
-                        ForEach(TaskKind.allCases, id: \.self) { kind in
-                            Button {
-                                newKind = kind
-                                addTask()
-                            } label: {
-                                Label(kind.label, systemImage: kind.symbol)
-                                if newKind == kind { Image(systemName: "checkmark") }
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: newKind.symbol)
-                        .font(.expandedCard(.caption2)).foregroundStyle(Theme.taskKind(newKind, theme, rc: rc))
-                        .padding(4).background(Theme.taskKind(newKind, theme, rc: rc).opacity(0.18), in: Capsule())
+            // Kept while the picker is open, which can take the keyboard away.
+            if isFocused || showOptions || !newTitle.isEmpty {
+                Button { showOptions = true } label: {
+                    TaskOptionsLabel(type: newType, mode: newMode, theme: theme, rc: rc)
                 }
-                .accessibilityLabel("New task type: \(newKind.label)")
+                .buttonStyle(.plain)
+                .accessibilityLabel("New task options: \(newType.label), \(newMode.label)")
+                .popover(isPresented: $showOptions) {
+                    TaskOptionsPicker(
+                        type: newType, mode: newMode, theme: theme, rc: rc,
+                        onSelectType: { newType = $0 },
+                        onSelectMode: { newMode = $0 },
+                        onAdd: newTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : {
+                            showOptions = false
+                            addTask()
+                        }
+                    )
+                }
             }
         }
     }
 
+    /// Return uses the type and mode last picked.
     private func addTask() {
         let title = newTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
         withAnimation(.snappy(duration: 0.2)) {
-            store.addTask(categoryID: categoryID, title: title, mode: newKind.mode ?? .carryOver)
-            if newKind.type != .checkbox, let week = store.selectedWeek,
-               let cat = week.categories.first(where: { $0.id == categoryID }),
-               let task = cat.tasks.last {
-                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: newKind.type)
-                // A new list goes straight to typing its first item.
-                if newKind == .list { store.listAwaitingFirstItem = task.id }
-            }
+            let id = store.addTask(categoryID: categoryID, title: title, mode: newMode, type: newType)
+            // A new list goes straight to typing its first item.
+            if newType == .list { store.listAwaitingFirstItem = id }
         }
         newTitle = ""
     }

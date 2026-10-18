@@ -20,14 +20,6 @@ struct AddCategorySheet: View {
         let isNew: Bool  // created here, rather than picked from Saved Categories
     }
 
-    private let symbolOptions = [
-        "folder", "star", "heart", "house", "cart",
-        "briefcase", "figure.run", "book", "paintbrush",
-        "music.note", "fork.knife", "airplane", "gift",
-        "wrench.and.screwdriver", "leaf", "pawprint",
-        "calendar.badge.clock", "lightbulb", "sparkles",
-    ]
-
     var body: some View {
         NavigationStack {
             List {
@@ -35,11 +27,11 @@ struct AddCategorySheet: View {
                     if isCreatingNew {
                         HStack {
                             Menu {
-                                ForEach(symbolOptions, id: \.self) { symbol in
+                                ForEach(CategorySymbols.options.map(\.symbol), id: \.self) { symbol in
                                     Button {
                                         newSymbol = symbol
                                     } label: {
-                                        Label(symbol, systemImage: symbol)
+                                        Label(CategorySymbols.name(for: symbol), systemImage: symbol)
                                     }
                                 }
                             } label: {
@@ -50,6 +42,11 @@ struct AddCategorySheet: View {
                             }
                             TextField("Category name", text: $newName)
                                 .onSubmit(createNew)
+                        }
+                        if isNewNameTaken {
+                            Text("A category named \(ChecklistStore.cleanName(newName)) already exists. Pick it from Saved Categories, or choose another name.")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
                         }
                         HStack {
                             Button("Cancel") {
@@ -62,7 +59,7 @@ struct AddCategorySheet: View {
                                 createNew()
                             }
                             .buttonStyle(.borderless)
-                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .disabled(ChecklistStore.cleanName(newName).isEmpty || isNewNameTaken)
                         }
                         .font(.subheadline)
                     } else {
@@ -151,9 +148,11 @@ struct AddCategorySheet: View {
         pendingAdd = PendingCategory(name: template.name, symbol: template.symbol, isNew: false)
     }
 
+    private var isNewNameTaken: Bool { store.isCategoryNameTaken(newName) }
+
     private func createNew() {
-        let name = newName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        let name = ChecklistStore.cleanName(newName)
+        guard !name.isEmpty, !isNewNameTaken else { return }
         pendingAdd = PendingCategory(name: name, symbol: newSymbol, isNew: true)
     }
 

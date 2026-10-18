@@ -82,17 +82,25 @@ enum Theme {
 
     // Accent
     static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).0 : .blue }
-    /// Each task type has its own color; retro keeps its single phosphor color.
-    static func taskKind(_ kind: TaskKind, _ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+    /// Each task type and mode has its own color; retro keeps its single phosphor color.
+    static func taskType(_ type: TaskType, _ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         if isRetro(m) { return retroPalette(rc).0 }
-        switch kind {
+        switch type {
         case .checkbox: return .blue
-        case .carryOver: return .orange
-        case .repeating: return .teal
         case .goal: return .purple
         case .list: return .pink
         }
     }
+
+    static func taskMode(_ mode: TaskMode, _ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        if isRetro(m) { return retroPalette(rc).0 }
+        switch mode {
+        case .oneTime: return .gray
+        case .carryOver: return .orange
+        case .repeating: return .teal
+        }
+    }
+
     static func destructive(_ m: AppearanceMode) -> Color { isRetro(m) ? .red.opacity(0.8) : .red }
 
     // Text

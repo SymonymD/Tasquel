@@ -13,11 +13,23 @@ final class GoalUITests: XCTestCase {
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Continue"].tap()
             app.buttons["Skip"].tap()
             app.buttons["Let's Go!"].tap()
         }
         return app
+    }
+
+    /// Closes a popover by tapping outside it.
+    @MainActor
+    private func dismissPopover(_ app: XCUIApplication) {
+        let region = app.otherElements["PopoverDismissRegion"]
+        if region.exists {
+            region.tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03)).tap()
+        }
     }
 
     @MainActor
@@ -33,11 +45,12 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Practice\n")
-        // Return adds a plain checkbox; the type menu turns it into a goal.
-        let typeMenu = app.buttons["Task type: Checkbox"].firstMatch
-        XCTAssertTrue(typeMenu.waitForExistence(timeout: 3), "Return adds a Checkbox task")
-        typeMenu.tap()
+        // Return adds a one-time checkbox; the options picker turns it into a goal.
+        let optionsButton = app.buttons["Task options: Checkbox, One-Time"].firstMatch
+        XCTAssertTrue(optionsButton.waitForExistence(timeout: 3), "Return adds a one-time checkbox")
+        optionsButton.tap()
         app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
 
         // Unit menu: Time shows hours and minutes fields.
         let unitMenu = app.buttons["Goal unit: Quantity"]
@@ -86,7 +99,7 @@ final class GoalUITests: XCTestCase {
         addTask2.tap()
         addTask2.typeText("Stretch")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type")).firstMatch
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch
         XCTAssertTrue(options.waitForExistence(timeout: 2))
         let done = app.buttons["Done"]
         XCTAssertLessThan(options.frame.maxY, done.frame.minY, "Done must not cover the new task's options")
@@ -97,11 +110,12 @@ final class GoalUITests: XCTestCase {
 
         options.tap()
         app.buttons["Repeating"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "choosing a type adds the task")
-        XCTAssertTrue(app.buttons["Task type: Repeating"].exists)
+        app.buttons["Add Task"].tap()
+        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "Add Task adds it")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, Repeating"].exists)
     }
 
-    /// A list: picking List from the add-task menu goes straight to its first item, Return
+    /// A repeating list: picking List in the new-task options goes straight to its first item, Return
     /// adds each item and keeps the keyboard up, and checking every item checks the list.
     @MainActor
     func testListAddsItemsAndChecksItself() throws {
@@ -114,8 +128,10 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Groceries")
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task type")).firstMatch.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
         app.buttons["List"].firstMatch.tap()
+        app.buttons["Repeating"].firstMatch.tap()
+        app.buttons["Add Task"].tap()
 
         let item = app.textFields["Add item"]
         XCTAssertTrue(item.waitForExistence(timeout: 3))
@@ -126,7 +142,7 @@ final class GoalUITests: XCTestCase {
         item.typeText("Milk\n")
         XCTAssertTrue(app.staticTexts["Eggs"].exists)
         XCTAssertTrue(app.staticTexts["Milk"].exists)
-        XCTAssertTrue(app.buttons["Task type: List"].exists)
+        XCTAssertTrue(app.buttons["Task options: List, Repeating"].exists)
 
         app.buttons["Done"].tap()
         let list = app.buttons["Check Groceries"]
@@ -145,9 +161,10 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         let help = app.buttons["How to Use Tasquel"]
-        XCTAssertTrue(help.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Saved Categories"].waitForExistence(timeout: 3))
+        while !help.isHittable { app.swipeUp() }
         help.tap()
-        XCTAssertTrue(app.staticTexts["Task Types"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Type and Mode"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.state, .runningForeground)
     }
 }

@@ -22,7 +22,7 @@ private extension View {
 
 /// One card for a category, collapsed or expanded.
 ///
-/// The header (icon, name, pie chart) and completion line are shared by both
+/// The header (icon, name, progress ring) and completion line are shared by both
 /// states, so they move and resize with the card instead of being swapped out.
 /// Only the content below them changes, and it cross-fades.
 struct CategoryGridCard: View {
@@ -39,6 +39,9 @@ struct CategoryGridCard: View {
     let onCollapse: () -> Void
 
     @State private var showDeleteConfirmation = false
+    @State private var editedName = ""
+    @State private var nameError: String?
+    @FocusState private var isNameFocused: Bool
 
     // Collapsed → expanded sizes; scaled with Dynamic Type. Expanded sizes include
     // the 15% enlargement applied to everything inside an expanded card.
@@ -57,6 +60,11 @@ struct CategoryGridCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 6) {
             header
+            if isRenaming, let nameError {
+                Text(nameError)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.destructive(theme))
+            }
 
             Text(Theme.isRetro(theme)
                  ? "done: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " [1WK]" : "")"
@@ -126,22 +134,55 @@ struct CategoryGridCard: View {
             }
         }
         .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
+        .onChange(of: isRenaming, initial: true) {
+            editedName = category.name
+            nameError = nil
+        }
     }
 
     // MARK: Header
 
+    /// A card in its own edit mode (or global edit mode, while open) can be renamed and
+    /// given another icon.
+    private var isRenaming: Bool { isExpanded && isEditingTasks && !isPastWeek }
+
     private var header: some View {
         HStack(alignment: .center) {
-            if !Theme.isRetro(theme) {
+            if isRenaming {
+                CategorySymbolMenu(symbol: Binding(
+                    get: { category.symbol },
+                    set: { store.setCategorySymbol(category.id, symbol: $0) }
+                )) {
+                    Image(systemName: category.symbol)
+                        .modifier(AnimatableFont(size: expandedTitleSize * 0.95))
+                        .padding(6)
+                        .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            } else if !Theme.isRetro(theme) {
                 Image(systemName: category.symbol)
                     .modifier(AnimatableFont(size: isExpanded ? expandedTitleSize * 0.95 : collapsedTitleSize))
             }
-            Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
-                .modifier(AnimatableFont(
-                    size: isExpanded ? expandedTitleSize : collapsedTitleSize,
-                    weight: .semibold, design: design
-                ))
-                .lineLimit(1)
+            if isRenaming {
+                TextField("Category name", text: $editedName)
+                    .modifier(AnimatableFont(size: expandedTitleSize, weight: .semibold, design: design))
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
+                    .onSubmit(commitName)
+                    .onChange(of: isNameFocused) { _, focused in
+                        if !focused { commitName() }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Category name")
+            } else {
+                Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
+                    .modifier(AnimatableFont(
+                        size: isExpanded ? expandedTitleSize : collapsedTitleSize,
+                        weight: .semibold, design: design
+                    ))
+                    .lineLimit(1)
+            }
             Spacer(minLength: 4)
             // The edit button lives beside the pie chart in space that opens up as
             // the card expands, so it travels with the pie instead of being inserted.
@@ -158,7 +199,7 @@ struct CategoryGridCard: View {
                         .opacity(showsEditButton ? 1 : 0)
                         .scaleEffect(showsEditButton ? 1 : 0.5)
                         .allowsHitTesting(showsEditButton)
-                        .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit tasks in \(category.name)")
+                        .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit \(category.name)")
                     }
                 }
         }
@@ -166,6 +207,22 @@ struct CategoryGridCard: View {
 
     /// Hidden during global edit mode, which already covers every card.
     private var showsEditButton: Bool { isExpanded && !isPastWeek && !isEditing }
+
+    /// Saves the typed name; a name that's empty or already used is rejected and the
+    /// field goes back to the current name.
+    private func commitName() {
+        let name = ChecklistStore.cleanName(editedName)
+        guard name != category.name else { nameError = nil; return }
+        if name.isEmpty {
+            nameError = "A category needs a name."
+        } else if store.renameCategory(category.id, newName: name) {
+            nameError = nil
+            return
+        } else {
+            nameError = "Another category is already named \(name)."
+        }
+        editedName = category.name
+    }
 
     private var completionIcon: some View {
         let total = category.totalCount
@@ -179,11 +236,36 @@ struct CategoryGridCard: View {
                 Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
                     .font(.system(.caption, design: .monospaced).bold())
             } else {
-                Image(systemName: "chart.pie.fill")
-                    .modifier(AnimatableFont(size: isExpanded ? expandedPieSize : collapsedPieSize))
+                CompletionRing(fraction: total == 0 ? 0 : Double(completed) / Double(total), color: color)
+                    .frame(width: isExpanded ? expandedPieSize : collapsedPieSize,
+                           height: isExpanded ? expandedPieSize : collapsedPieSize)
+                    .accessibilityHidden(true)  // the card's label and completion line give the count
             }
         }
         .foregroundStyle(color)
+    }
+}
+
+// MARK: - Completion Ring
+
+/// A circular progress bar: a faint track with the completed share drawn over it.
+struct CompletionRing: View {
+    var fraction: Double
+    let color: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            let lineWidth = max(2, proxy.size.width * 0.17)
+            ZStack {
+                Circle().stroke(color.opacity(0.25), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: min(max(fraction, 0), 1))
+                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .padding(lineWidth / 2)
+        }
+        .animation(.snappy(duration: 0.3), value: fraction)
     }
 }
 

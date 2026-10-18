@@ -683,20 +683,11 @@ struct GoalUnitTests {
     }
 }
 
-// MARK: - Task Kind
+// MARK: - Task Type and Mode
 
-struct TaskKindTests {
-    @Test("Each task maps to one menu choice")
-    func kindFromTask() {
-        #expect(TaskKind(ChecklistTask(title: "A", mode: .oneTime)) == .checkbox)
-        #expect(TaskKind(ChecklistTask(title: "B", mode: .carryOver)) == .carryOver)
-        #expect(TaskKind(ChecklistTask(title: "C", mode: .repeating)) == .repeating)
-        #expect(TaskKind(ChecklistTask(title: "D", mode: .repeating, taskType: .goal)) == .goal)
-        #expect(TaskKind(ChecklistTask(title: "E", taskType: .list)) == .list)
-    }
-
-    @Test("Choosing a kind sets mode and type; leaving a goal clears it")
-    func updateKind() {
+struct TaskTypeAndModeTests {
+    @Test("Type and mode change separately; leaving a goal clears it")
+    func typeAndMode() {
         let store = makeIsolatedStore()
         let task = ChecklistTask(title: "Run", mode: .repeating)
         let category = Category(name: "Fitness", symbol: "figure.run", tasks: [task])
@@ -704,15 +695,136 @@ struct TaskKindTests {
         store.selectedDate = Date()
         func saved() -> ChecklistTask? { store.selectedWeek?.categories.first?.tasks.first }
 
-        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .goal)
+        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .goal)
         #expect(saved()?.taskType == .goal)
-        #expect(saved()?.mode == .repeating, "A goal keeps its mode")
+        #expect(saved()?.mode == .repeating, "changing the type keeps the mode")
 
         store.setGoalTarget(categoryID: category.id, taskID: task.id, target: 5)
-        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .checkbox)
-        #expect(saved()?.taskType == .checkbox)
-        #expect(saved()?.mode == .oneTime)
+        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .list)
         #expect(saved()?.goalTarget == nil)
+        store.updateTaskMode(categoryID: category.id, taskID: task.id, mode: .oneTime)
+        #expect(saved()?.taskType == .list, "changing the mode keeps the type")
+        #expect(saved()?.mode == .oneTime)
+    }
+
+    @Test("A new task gets the type and mode it's added with")
+    func addWithTypeAndMode() {
+        let store = makeIsolatedStore()
+        let category = Category(name: "Errands", symbol: "cart")
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        let id = store.addTask(categoryID: category.id, title: "Groceries", mode: .repeating, type: .list)
+        let saved = store.selectedWeek?.categories.first?.tasks.first
+        #expect(saved?.id == id)
+        #expect(saved?.taskType == .list)
+        #expect(saved?.mode == .repeating)
+    }
+
+    @Test("A repeating list comes back next week with every item unchecked")
+    func repeatingList() {
+        let store = makeIsolatedStore()
+        let list = ChecklistTask(title: "Groceries", mode: .repeating,
+                                 subtasks: [SubTask(title: "Eggs", isCompleted: true), SubTask(title: "Milk")],
+                                 taskType: .list)
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()),
+                            categories: [Category(name: "Errands", symbol: "cart", tasks: [list])])]
+        let nextStart = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: store.weeks[0].startDate)!
+        let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks.first
+        #expect(rolled?.taskType == .list)
+        #expect(rolled?.subtasks.map(\.title) == ["Eggs", "Milk"])
+        #expect(rolled?.subtasks.allSatisfy { !$0.isCompleted } == true)
+    }
+}
+
+// MARK: - Categories
+
+struct CategoryNameTests {
+    private let thisMonday = Week.startOfWeek(containing: Date())
+    private var nextMonday: Date { Calendar.current.date(byAdding: .weekOfYear, value: 1, to: thisMonday)! }
+    private var lastMonday: Date { Calendar.current.date(byAdding: .weekOfYear, value: -1, to: thisMonday)! }
+
+    private func makeStore() -> ChecklistStore {
+        let store = makeIsolatedStore()
+        store.weeks = [lastMonday, thisMonday, nextMonday].map {
+            Week(startDate: $0, categories: [Category(name: "Work", symbol: "briefcase"), Category(name: "Home", symbol: "house")])
+        }
+        store.savedCategories = [CategoryTemplate(name: "Work", symbol: "briefcase"), CategoryTemplate(name: "Errands", symbol: "cart")]
+        store.selectedDate = thisMonday
+        return store
+    }
+
+    private func names(_ store: ChecklistStore, _ monday: Date) -> [String] {
+        store.weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }!.categories.map(\.name)
+    }
+
+    @Test("Names are unique, ignoring case and spaces")
+    func uniqueNames() {
+        let store = makeStore()
+        #expect(store.isCategoryNameTaken(" work "))
+        #expect(store.isCategoryNameTaken("ERRANDS"), "a saved category counts")
+        #expect(!store.isCategoryNameTaken("Garden"))
+        store.addCategory(name: "home", symbol: "house")
+        #expect(names(store, thisMonday) == ["Work", "Home"], "a duplicate isn't added")
+    }
+
+    @Test("Renaming applies to this and future weeks and the saved category, not past weeks")
+    func rename() {
+        let store = makeStore()
+        let work = store.selectedWeek!.categories[0]
+        #expect(store.renameCategory(work.id, newName: "Office"))
+        #expect(names(store, thisMonday) == ["Office", "Home"])
+        #expect(names(store, nextMonday) == ["Office", "Home"])
+        #expect(names(store, lastMonday) == ["Work", "Home"])
+        #expect(store.savedCategories.map(\.name) == ["Office", "Errands"])
+
+        #expect(!store.renameCategory(work.id, newName: "home"), "taken by another category")
+        #expect(!store.renameCategory(work.id, newName: "Errands"), "taken by a saved category")
+        #expect(!store.renameCategory(work.id, newName: "  "))
+        #expect(names(store, thisMonday) == ["Office", "Home"])
+    }
+
+    @Test("Moving a card reorders this and future weeks, not past weeks")
+    func move() {
+        let store = makeStore()
+        store.moveCategory(named: "Home", to: "Work")
+        #expect(names(store, thisMonday) == ["Home", "Work"])
+        #expect(names(store, nextMonday) == ["Home", "Work"])
+        #expect(names(store, lastMonday) == ["Work", "Home"])
+        store.moveCategory(named: "Home", to: "Work")
+        #expect(names(store, thisMonday) == ["Work", "Home"])
+    }
+
+    @Test("Saved categories can be edited and reordered, with unique names")
+    func editTemplates() {
+        let store = makeStore()
+        let errands = store.savedCategories[1]
+        #expect(!store.updateSavedCategory(errands.id, name: "work", symbol: "cart"))
+        #expect(store.updateSavedCategory(errands.id, name: "Shopping", symbol: "bag"))
+        #expect(store.savedCategories[1].name == "Shopping")
+        #expect(store.savedCategories[1].symbol == "bag")
+        #expect(names(store, thisMonday) == ["Work", "Home"], "weeks aren't changed")
+        store.moveSavedCategories(fromOffsets: [1], toOffset: 0)
+        #expect(store.savedCategories.map(\.name) == ["Shopping", "Work"])
+        store.addSavedCategory(name: "SHOPPING", symbol: "cart")
+        #expect(store.savedCategories.count == 2, "a duplicate isn't added")
+    }
+
+    @Test("A removed starter category isn't added back on the next launch")
+    func removedStarterStaysRemoved() {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "starters-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let defaults = UserDefaults(suiteName: "starters-\(UUID().uuidString)")!
+        let first = ChecklistStore(directory: directory, defaults: defaults)
+        #expect(first.savedCategories.contains { $0.name == "Fitness" })
+        let fitness = first.savedCategories.first { $0.name == "Fitness" }!
+        first.removeSavedCategory(fitness.id)
+        let work = first.savedCategories.first { $0.name == "Work" }!
+        first.updateSavedCategory(work.id, name: "Office", symbol: work.symbol)
+
+        let relaunched = ChecklistStore(directory: directory, defaults: defaults)
+        #expect(!relaunched.savedCategories.contains { $0.name == "Fitness" })
+        #expect(!relaunched.savedCategories.contains { $0.name == "Work" })
+        #expect(relaunched.savedCategories.contains { $0.name == "Office" })
     }
 }
 
@@ -727,14 +839,14 @@ struct ListTaskTests {
         return (store, category)
     }
 
-    @Test("Choosing List makes a carry-over list")
+    @Test("Choosing List keeps the task's mode")
     func chooseList() {
         let task = ChecklistTask(title: "Groceries", mode: .oneTime)
         let (store, category) = makeStore(task)
-        store.updateTaskKind(categoryID: category.id, taskID: task.id, kind: .list)
+        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .list)
         let saved = store.selectedWeek?.categories.first?.tasks.first
         #expect(saved?.taskType == .list)
-        #expect(saved?.mode == .carryOver)
+        #expect(saved?.mode == .oneTime, "the mode is chosen separately")
     }
 
     @Test("A list checks itself off when every item is checked, and unchecks for a new item")
@@ -790,7 +902,7 @@ struct CarryOverSyncTests {
         let categoryID = store.selectedWeek!.categories[0].id
         store.addTask(categoryID: categoryID, title: "Groceries")
         let list = tasks(store, thisMonday)[0]
-        store.updateTaskKind(categoryID: categoryID, taskID: list.id, kind: .list)
+        store.updateTaskType(categoryID: categoryID, taskID: list.id, type: .list)
         store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Eggs")
         store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Milk")
 

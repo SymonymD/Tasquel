@@ -5,8 +5,11 @@ import Foundation
 enum TaskMode: String, Codable, CaseIterable {
     case carryOver
     case repeating
-    /// This week only. Shown in menus as "Checkbox" (see `TaskKind`).
+    /// This week only.
     case oneTime
+
+    /// Menu order: this week only, then the two that reach into later weeks.
+    static let ordered: [TaskMode] = [.oneTime, .carryOver, .repeating]
 
     var label: String {
         switch self {
@@ -28,7 +31,7 @@ enum TaskMode: String, Codable, CaseIterable {
         switch self {
         case .carryOver: "Rolls to next week if incomplete"
         case .repeating: "Appears every week automatically"
-        case .oneTime: "This week only, does not carry forward"
+        case .oneTime: "This week only, doesn't come back"
         }
     }
 }
@@ -54,71 +57,6 @@ enum TaskType: String, Codable, CaseIterable {
         case .checkbox: "checkmark.circle"
         case .goal: "target"
         case .list: "list.bullet"
-        }
-    }
-}
-
-// MARK: - Task Kind
-
-/// The one choice offered in task menus, covering both mode and type: a checkbox for
-/// this week only, a carry-over or repeating checkbox, a goal, or a list. A goal keeps
-/// its mode; a list always carries over, with only its unchecked items.
-enum TaskKind: CaseIterable {
-    case checkbox
-    case carryOver
-    case repeating
-    case goal
-    case list
-
-    init(_ task: ChecklistTask) {
-        switch task.taskType {
-        case .goal: self = .goal; return
-        case .list: self = .list; return
-        case .checkbox: break
-        }
-        switch task.mode {
-        case .oneTime: self = .checkbox
-        case .carryOver: self = .carryOver
-        case .repeating: self = .repeating
-        }
-    }
-
-    /// The mode this choice sets, or `nil` for a goal.
-    var mode: TaskMode? {
-        switch self {
-        case .checkbox: .oneTime
-        case .carryOver: .carryOver
-        case .repeating: .repeating
-        case .goal: nil
-        case .list: .carryOver
-        }
-    }
-
-    var type: TaskType {
-        switch self {
-        case .checkbox, .carryOver, .repeating: .checkbox
-        case .goal: .goal
-        case .list: .list
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .checkbox: "Checkbox"
-        case .carryOver: "Carry Over"
-        case .repeating: "Repeating"
-        case .goal: "Goal"
-        case .list: "List"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .checkbox: TaskType.checkbox.symbol
-        case .carryOver: TaskMode.carryOver.symbol
-        case .repeating: TaskMode.repeating.symbol
-        case .goal: TaskType.goal.symbol
-        case .list: TaskType.list.symbol
         }
     }
 }

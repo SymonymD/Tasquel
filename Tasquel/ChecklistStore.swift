@@ -7,6 +7,8 @@ final class ChecklistStore {
 
     var weeks: [Week] = [] { didSet { previewCache.removeAll() } }
     var selectedDate: Date = Date()
+    /// Starter categories already added to Saved Categories, so removed ones stay removed.
+    private var offeredStarterNames: [String]?
     /// A list task just created from the add-task row, whose item field should take the
     /// keyboard when it appears. Not saved.
     var listAwaitingFirstItem: UUID?
@@ -86,21 +88,24 @@ final class ChecklistStore {
         syncWithPreviousWeek(for: Date())
     }
 
+    /// Adds each starter category to Saved Categories once. A starter the user later
+    /// removes or renames isn't added back; one added in an app update is offered once.
     private func seedStarterTemplates() {
-        if savedCategories.isEmpty {
-            savedCategories = CategoryTemplate.starters
+        guard let offered = offeredStarterNames else {
+            // First launch, or settings from before this was tracked (every starter was
+            // added then, so any that are missing were removed by the user).
+            if savedCategories.isEmpty { savedCategories = CategoryTemplate.starters }
+            offeredStarterNames = CategoryTemplate.starters.map(\.name)
             saveSettings()
-        } else {
-            // Ensure any new starters added in updates are present
-            var addedStarters: [CategoryTemplate] = []
-            for starter in CategoryTemplate.starters {
-                if !savedCategories.contains(where: { $0.name == starter.name }) {
-                    savedCategories.append(CategoryTemplate(name: starter.name, symbol: starter.symbol))
-                    addedStarters.append(starter)
-                }
-            }
-            if !addedStarters.isEmpty { saveSettings() }
+            return
         }
+        let newStarters = CategoryTemplate.starters.filter { !offered.contains($0.name) }
+        guard !newStarters.isEmpty else { return }
+        for starter in newStarters where !Self.containsName(starter.name, in: savedCategories.map(\.name)) {
+            savedCategories.append(CategoryTemplate(name: starter.name, symbol: starter.symbol))
+        }
+        offeredStarterNames = offered + newStarters.map(\.name)
+        saveSettings()
     }
 
     /// One-time migration: add missing starters to current week
@@ -168,6 +173,7 @@ final class ChecklistStore {
         var calendarEventsEnabled: Bool?
         var selectedCalendarIDs: [String]?
         var weekStartsOnSunday: Bool?
+        var offeredStarterNames: [String]?
     }
 
     func loadSettings() {
@@ -185,6 +191,7 @@ final class ChecklistStore {
             calendarEventsEnabled = settings.calendarEventsEnabled ?? false
             selectedCalendarIDs = settings.selectedCalendarIDs
             weekStartsOnSunday = settings.weekStartsOnSunday ?? false
+            offeredStarterNames = settings.offeredStarterNames
             settingsLoadError = nil
         } catch {
             settingsLoadError = "Your settings could not be opened. The file has not been changed."
@@ -202,7 +209,8 @@ final class ChecklistStore {
                 hasSeenWelcome: hasSeenWelcome,
                 calendarEventsEnabled: calendarEventsEnabled,
                 selectedCalendarIDs: selectedCalendarIDs,
-                weekStartsOnSunday: weekStartsOnSunday
+                weekStartsOnSunday: weekStartsOnSunday,
+                offeredStarterNames: offeredStarterNames
             )
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsURL, options: .atomic)
@@ -271,6 +279,8 @@ final class ChecklistStore {
     // MARK: - Saved Category Templates
 
     func addSavedCategory(name: String, symbol: String) {
+        let name = Self.cleanName(name)
+        guard !name.isEmpty, !Self.containsName(name, in: savedCategories.map(\.name)) else { return }
         let template = CategoryTemplate(name: name, symbol: symbol)
         savedCategories.append(template)
         saveSettings()
@@ -279,6 +289,49 @@ final class ChecklistStore {
     func removeSavedCategory(_ templateID: UUID) {
         savedCategories.removeAll { $0.id == templateID }
         saveSettings()
+    }
+
+    /// Renames a saved category and changes its icon. Only the template changes, not
+    /// categories already in weeks. Fails if another saved category has the name.
+    @discardableResult
+    func updateSavedCategory(_ templateID: UUID, name: String, symbol: String) -> Bool {
+        let name = Self.cleanName(name)
+        guard !name.isEmpty,
+              let index = savedCategories.firstIndex(where: { $0.id == templateID }),
+              !Self.containsName(name, in: savedCategories.filter { $0.id != templateID }.map(\.name)) else { return false }
+        savedCategories[index].name = name
+        savedCategories[index].symbol = symbol
+        saveSettings()
+        return true
+    }
+
+    func moveSavedCategories(fromOffsets source: IndexSet, toOffset destination: Int) {
+        savedCategories.move(fromOffsets: source, toOffset: destination)
+        saveSettings()
+    }
+
+    // MARK: - Category Names
+
+    /// Category names are unique, ignoring case and surrounding spaces: weeks and saved
+    /// categories match categories by name.
+    static func cleanName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func containsName(_ name: String, in names: [String]) -> Bool {
+        let name = cleanName(name)
+        return names.contains { cleanName($0).caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Whether a new category can't use `name`: a category in the viewed week or a saved
+    /// category already has it.
+    func isCategoryNameTaken(_ name: String) -> Bool {
+        Self.containsName(name, in: (selectedWeek?.categories.map(\.name) ?? []) + savedCategories.map(\.name))
+    }
+
+    /// Whether a saved category other than `templateID` has `name`.
+    func isSavedCategoryNameTaken(_ name: String, excluding templateID: UUID?) -> Bool {
+        Self.containsName(name, in: savedCategories.filter { $0.id != templateID }.map(\.name))
     }
 
     // MARK: - Week Management
@@ -530,8 +583,11 @@ final class ChecklistStore {
     /// Adds a category to the selected week. Unless `thisWeekOnly`, it rolls forward
     /// into later weeks like every other category.
     func addCategory(name: String, symbol: String, thisWeekOnly: Bool = false) {
+        let name = Self.cleanName(name)
         guard let week = selectedWeek,
               !week.isPastWeek,
+              !name.isEmpty,
+              !Self.containsName(name, in: week.categories.map(\.name)),
               let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
         var category = Category(name: name, symbol: symbol)
         category.isThisWeekOnly = thisWeekOnly
@@ -565,24 +621,78 @@ final class ChecklistStore {
         }
     }
 
-    func renameCategory(_ categoryID: UUID, newName: String) {
+    /// Renames a category in this week and every future week, and its saved category,
+    /// so they stay linked (weeks match categories by name). Past weeks keep the old
+    /// name. Fails if another category in this week, or another saved category, has it.
+    @discardableResult
+    func renameCategory(_ categoryID: UUID, newName: String) -> Bool {
+        let newName = Self.cleanName(newName)
         guard let week = selectedWeek,
               !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
-              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
-        weeks[wi].categories[ci].name = newName
+              !newName.isEmpty,
+              let oldName = week.categories.first(where: { $0.id == categoryID })?.name else { return false }
+        guard newName != oldName else { return true }
+        let otherNames = week.categories.filter { $0.id != categoryID }.map(\.name)
+            + savedCategories.filter { $0.name != oldName }.map(\.name)
+        guard !Self.containsName(newName, in: otherNames) else { return false }
+        updateCategories(named: oldName) { $0.name = newName }
+        if let ti = savedCategories.firstIndex(where: { $0.name == oldName }) {
+            savedCategories[ti].name = newName
+            saveSettings()
+        }
+        return true
+    }
+
+    /// Changes a category's icon in this week, every future week, and its saved category.
+    func setCategorySymbol(_ categoryID: UUID, symbol: String) {
+        guard let week = selectedWeek,
+              !week.isPastWeek,
+              let name = week.categories.first(where: { $0.id == categoryID })?.name else { return }
+        updateCategories(named: name) { $0.symbol = symbol }
+        if let ti = savedCategories.firstIndex(where: { $0.name == name }) {
+            savedCategories[ti].symbol = symbol
+            saveSettings()
+        }
+    }
+
+    /// Moves a category to where `targetName` is, in this week and every future week
+    /// that has both, so the order carries forward.
+    func moveCategory(named name: String, to targetName: String) {
+        guard name != targetName, selectedWeek?.isPastWeek == false else { return }
+        var changed = false
+        for wi in weeks.indices where !weeks[wi].isPastWeek {
+            let categories = weeks[wi].categories
+            guard let from = categories.firstIndex(where: { $0.name == name }),
+                  let to = categories.firstIndex(where: { $0.name == targetName }) else { continue }
+            weeks[wi].categories.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+            changed = true
+        }
+        if changed { save() }
+    }
+
+    /// Applies `change` to the category named `name` in the current and future weeks.
+    private func updateCategories(named name: String, _ change: (inout Category) -> Void) {
+        for wi in weeks.indices where !weeks[wi].isPastWeek {
+            for ci in weeks[wi].categories.indices where weeks[wi].categories[ci].name == name {
+                change(&weeks[wi].categories[ci])
+            }
+        }
         save()
     }
 
     // MARK: - Task CRUD
 
-    func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver) {
+    /// Returns the new task's ID.
+    @discardableResult
+    func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver, type: TaskType = .checkbox) -> UUID? {
         guard let week = selectedWeek,
               !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
-              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
-        weeks[wi].categories[ci].tasks.append(ChecklistTask(title: title, mode: mode))
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return nil }
+        let task = ChecklistTask(title: title, mode: mode, taskType: type)
+        weeks[wi].categories[ci].tasks.append(task)
         save()
+        return task.id
     }
 
     func toggleTask(categoryID: UUID, taskID: UUID) {
@@ -625,15 +735,6 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
         save()
-    }
-
-    /// Applies a task menu choice: sets the type (leaving a goal clears it) and the mode.
-    /// Goal keeps the task's mode; List always carries over.
-    func updateTaskKind(categoryID: UUID, taskID: UUID, kind: TaskKind) {
-        if let mode = kind.mode {
-            updateTaskMode(categoryID: categoryID, taskID: taskID, mode: mode)
-        }
-        updateTaskType(categoryID: categoryID, taskID: taskID, type: kind.type)
     }
 
     // MARK: - Goal Task CRUD

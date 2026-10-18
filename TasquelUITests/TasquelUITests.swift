@@ -47,6 +47,7 @@ final class TasquelUITests: XCTestCase {
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Continue"].tap()
             app.buttons["Skip"].tap()
             app.buttons["Let's Go!"].tap()
@@ -77,6 +78,7 @@ final class TasquelUITests: XCTestCase {
         app.launch()
 
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
+            app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Continue"].tap()
@@ -120,6 +122,7 @@ final class TasquelUITests: XCTestCase {
         app.launch()
 
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
+            app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Continue"].tap()

@@ -36,6 +36,9 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/ContentView.swift` | Root view: title, week nav capsule, category grid layout, bottom bar, load-error screen |
 | `Tasquel/CategoryCard.swift` | `CategoryCard` (collapsed) + `ExpandedCategoryCard`, deletion confirmations |
 | `Tasquel/TaskRowCard.swift` | `TaskRowCard`, `SubTaskRowCard`, `AddTaskRowCard`, goal editing |
+| `Tasquel/TaskOptionsPicker.swift` | Two-column type/mode picker (popover) and the task row's type+mode icon capsule |
+| `Tasquel/CategorySymbols.swift` | Category icon list with readable names, `CategorySymbolMenu` |
+| `Tasquel/SavedCategoriesView.swift` | Settings ▸ Saved Categories: rename, re-icon, reorder, add, delete templates |
 | `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new) + `DatePickerSheet` |
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts) |
 | `Tasquel/HelpSheet.swift` | Help guide |
@@ -50,7 +53,7 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 ### Data Models (`Models.swift`)
 
 - **`TaskMode`** — `.carryOver` (rolls if incomplete), `.repeating` (every week), `.oneTime` (never carries)
-- **`TaskType`** — `.checkbox` or `.goal` (numeric target/progress/unit)
+- **`TaskType`** — `.checkbox`, `.goal` (target/progress/unit) or `.list` (items stored as sub-tasks; checks itself off). Type and mode are independent.
 - **`SubTask`**, **`ChecklistTask`**, **`Category`** (name + SF Symbol + tasks)
 - **`Week`** — date-anchored container of categories (Monday-based)
 - **`CategoryTemplate`** — saved category name+symbol for reuse

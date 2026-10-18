@@ -59,13 +59,21 @@ struct SettingsSheet: View {
                 weekStartRow
             }
             .listRowBackground(darkCardBg)
+            Section("Categories") {
+                NavigationLink {
+                    SavedCategoriesView(store: store)
+                } label: {
+                    Label("Saved Categories", systemImage: "square.stack")
+                }
+            }
+            .listRowBackground(darkCardBg)
             Section {
                 calendarSection
             } header: {
                 Text("Calendar")
             } footer: {
                 if FeatureAccess.isCalendarUnlocked {
-                    Text("Shows the week's events in an Events card. Events stay on your device and are never changed.")
+                    Text("Shows the week's events from the calendar button in the bottom bar. Events stay on your device and are never changed.")
                 }
             }
             .listRowBackground(darkCardBg)
@@ -103,6 +111,16 @@ struct SettingsSheet: View {
                 }
                 retroSection("WEEK") {
                     weekStartRow
+                }
+                retroSection("CATEGORIES") {
+                    NavigationLink {
+                        SavedCategoriesView(store: store)
+                    } label: {
+                        Text("> Saved Categories")
+                            .font(Theme.bodyFont(theme))
+                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                    }
+                    .buttonStyle(.plain)
                 }
                 retroSection("CALENDAR") {
                     calendarSection
@@ -240,8 +258,12 @@ struct SettingsSheet: View {
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(store.retroColor == color ? Theme.retroBright(color) : Theme.textTertiary(theme, rc: rc))
                     }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(color.label)
+                .accessibilityAddTraits(store.retroColor == color ? .isSelected : [])
             }
         }
     }
