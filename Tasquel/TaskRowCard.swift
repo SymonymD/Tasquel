@@ -207,7 +207,7 @@ struct TaskRowCard: View {
                 }
             }
         } label: {
-            rowIcon(TaskKind(task).symbol, color: Theme.accent(theme, rc: rc))
+            rowIcon(TaskKind(task).symbol, color: Theme.taskKind(TaskKind(task), theme, rc: rc))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Task type: \(TaskKind(task).label)")
@@ -751,8 +751,8 @@ struct AddTaskRowCard: View {
                     }
                 } label: {
                     Image(systemName: newKind.symbol)
-                        .font(.expandedCard(.caption2)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                        .padding(4).background(Theme.textTertiary(theme, rc: rc).opacity(0.3), in: Capsule())
+                        .font(.expandedCard(.caption2)).foregroundStyle(Theme.taskKind(newKind, theme, rc: rc))
+                        .padding(4).background(Theme.taskKind(newKind, theme, rc: rc).opacity(0.18), in: Capsule())
                 }
                 .accessibilityLabel("New task type: \(newKind.label)")
             }
