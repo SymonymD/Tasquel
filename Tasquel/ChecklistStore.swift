@@ -668,6 +668,24 @@ final class ChecklistStore {
         if changed { save() }
     }
 
+    /// Puts categories in the order of `names` in this week and every future week.
+    /// Categories not named keep their relative order, after the named ones.
+    func setCategoryOrder(_ names: [String]) {
+        guard selectedWeek?.isPastWeek == false else { return }
+        let rank = Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        var changed = false
+        for wi in weeks.indices where !weeks[wi].isPastWeek {
+            let sorted = weeks[wi].categories.enumerated()
+                .sorted { (rank[$0.element.name] ?? names.count, $0.offset) < (rank[$1.element.name] ?? names.count, $1.offset) }
+                .map(\.element)
+            if sorted.map(\.id) != weeks[wi].categories.map(\.id) {
+                weeks[wi].categories = sorted
+                changed = true
+            }
+        }
+        if changed { save() }
+    }
+
     /// Applies `change` to the category named `name` in the current and future weeks.
     private func updateCategories(named name: String, _ change: (inout Category) -> Void) {
         for wi in weeks.indices where !weeks[wi].isPastWeek {

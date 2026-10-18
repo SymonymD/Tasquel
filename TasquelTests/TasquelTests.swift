@@ -795,6 +795,16 @@ struct CategoryNameTests {
         #expect(names(store, thisMonday) == ["Work", "Home"])
     }
 
+    @Test("Setting the card order applies to this and future weeks, not past weeks")
+    func setOrder() {
+        let store = makeStore()
+        store.weeks[2].categories.append(Category(name: "Garden", symbol: "leaf"))
+        store.setCategoryOrder(["Home", "Work"])
+        #expect(names(store, thisMonday) == ["Home", "Work"])
+        #expect(names(store, nextMonday) == ["Home", "Work", "Garden"], "unlisted categories stay, after")
+        #expect(names(store, lastMonday) == ["Work", "Home"])
+    }
+
     @Test("Saved categories can be edited and reordered, with unique names")
     func editTemplates() {
         let store = makeStore()

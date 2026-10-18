@@ -99,10 +99,13 @@ struct CategoryGridCard: View {
         .background { GridCardBackground(theme: theme, rc: rc, isExpanded: isExpanded) }
         .overlay {
             if !isExpanded {
+                // Touches go to the grid's tap-or-hold gesture (tap opens, hold drags);
+                // this button opens the card for VoiceOver.
                 Button(action: onExpand) {
                     Color.clear.contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .allowsHitTesting(false)
                 .accessibilityLabel("Open \(category.name), \(category.isThisWeekOnly ? "this week only, " : "")\(category.completedCount) of \(category.totalCount) tasks complete")
             }
         }

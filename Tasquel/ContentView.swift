@@ -12,8 +12,13 @@ struct ContentView: View {
     @State private var categoryDisplayOrder: [CategoryLayoutKey] = []
     @State private var lastToggledCategory: CategoryLayoutKey?
     @State private var isEditing = false
-    /// The card being dragged to a new place, by name.
-    @State private var draggedCategoryName: String?
+    /// The card being held and dragged to a new place (see Card Dragging).
+    @State private var cardDrag: CardDrag?
+    /// The order shown while a card is dragged; saved when it's dropped.
+    @State private var liveCardOrder: [CategoryLayoutKey]?
+    /// Each card's place in the grid of the week being viewed, for finding the card
+    /// under the finger.
+    @State private var cardFrames: [CategoryLayoutKey: CGRect] = [:]
     /// Cards whose own edit button is on (only their tasks become editable).
     @State private var editingCategoryKeys: Set<CategoryLayoutKey> = []
     @State private var showOnboarding = false
@@ -167,7 +172,6 @@ struct ContentView: View {
             Task { await calendarService.loadCalendars() }
         }
         .onChange(of: isEditing) {
-            draggedCategoryName = nil  // a drag dropped outside any card never ends itself
             // Edit mode is for managing categories: collapse everything.
             guard isEditing else { return }
             withAnimation(Self.cardSpring) {
@@ -207,12 +211,15 @@ struct ContentView: View {
                     // Track from here so the grid doesn't jump by the recognition distance.
                     weekDragOrigin = value.translation.width
                 }
-                guard weekSwipeAxis == .horizontal, !isChangingWeek else { return }
+                guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else { return }
                 pager.offset = value.translation.width - weekDragOrigin
             }
             .onEnded { value in
                 defer { weekSwipeAxis = nil }
-                guard weekSwipeAxis == .horizontal, !isChangingWeek else { return }
+                guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else {
+                    if cardDrag == nil { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
+                    return
+                }
                 let distance = value.translation.width - weekDragOrigin
                 let predicted = value.predictedEndTranslation.width - weekDragOrigin
                 let velocity = value.velocity.width
@@ -629,14 +636,27 @@ struct ContentView: View {
                                 withAnimation(Self.cardSpring) { collapseCategory(entry.id) }
                             }
                         )
-                        .categoryGridFullWidth(isExpanded)
+                        // The dragged card leaves a gap where it will land; a lifted copy
+                        // follows the finger (see the overlay below).
+                        .opacity(cardDrag?.key == entry.id ? 0 : 1)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
+                            if week.id == store.selectedWeek?.id { cardFrames[entry.id] = frame }
+                        }
                         // Closed cards can be held and dragged to a new place. (Holding inside an
                         // open card is for its tasks.)
-                        .modifier(ReorderableCard(
-                            isEnabled: !week.isPastWeek && !isExpanded, name: entry.category.name,
-                            draggedName: $draggedCategoryName, store: store,
-                            move: { moveCard(named: $0, to: $1, in: week) }
+                        .modifier(CardDragGesture(
+                            isCollapsed: !isExpanded,
+                            canDrag: !week.isPastWeek,
+                            onTap: { expandCard(entry.id, in: week) },
+                            onLift: { liftCard(entry.id, in: week) },
+                            onMove: { start, location in moveDraggedCard(start: start, to: location) },
+                            onDrop: { dropCard(in: week) }
                         ))
+                        .accessibilityActions {
+                            if !week.isPastWeek && !isExpanded { cardMoveActions(entry.id, in: week) }
+                        }
+                        // Outside the modifiers above, where the grid layout can read it.
+                        .categoryGridFullWidth(isExpanded)
                         // The card being opened or closed stays above neighbors sliding past it.
                         .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                     }
@@ -645,6 +665,8 @@ struct ContentView: View {
                             .transition(.opacity)
                     }
                 }
+                .coordinateSpace(.named(Self.cardGridSpace))
+                .overlay(alignment: .topLeading) { liftedCard(in: week) }
 
                 if categories.isEmpty && !isEditing {
                     ContentUnavailableView(
@@ -661,6 +683,9 @@ struct ContentView: View {
         }
         // Dragging down into the keyboard closes it; scrolling up keeps it open.
         .scrollDismissesKeyboard(.interactively)
+        .scrollDisabled(cardDrag != nil)
+        .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
+        .sensoryFeedback(.selection, trigger: liveCardOrder)
         // Keeps the field being edited (and its options) clear of the Done button.
         .safeAreaPadding(.bottom, isKeyboardVisible ? Self.keyboardDoneClearance : 0)
     }
@@ -699,7 +724,8 @@ struct ContentView: View {
             keysByID[category.id].map { CategoryGridEntry(id: $0, category: category) }
         }
         let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
-        let ordered = categoryDisplayOrder.compactMap { entriesByKey[$0] }
+        let order = week.id == store.selectedWeek?.id ? (liveCardOrder ?? categoryDisplayOrder) : categoryDisplayOrder
+        let ordered = order.compactMap { entriesByKey[$0] }
         let orderedKeys = Set(ordered.map(\.id))
         return ordered + entries.filter { !orderedKeys.contains($0.id) }
     }
@@ -723,15 +749,106 @@ struct ContentView: View {
         lastToggledCategory = key
     }
 
-    /// Moves a card to another card's place. While cards are open the grid may show its
-    /// own order (see `expandCategory`), so that order is updated too.
-    private func moveCard(named name: String, to targetName: String, in week: Week) {
+    // MARK: - Card Dragging
+
+    static let cardGridSpace = "cardGrid"
+
+    /// A card lifted for dragging: where it was grabbed (relative to its top-left
+    /// corner) and where the finger is now, in the grid's coordinates.
+    private struct CardDrag {
+        let key: CategoryLayoutKey
+        var grab: CGSize?
+        var location: CGPoint
+        /// The card last swapped with, so hovering over it doesn't swap back and forth.
+        var lastTarget: CategoryLayoutKey?
+    }
+
+    private func liftCard(_ key: CategoryLayoutKey, in week: Week) {
+        guard cardDrag == nil, let frame = cardFrames[key] else { return }
+        liveCardOrder = gridEntries(for: week).map(\.id)
+        withAnimation(.snappy(duration: 0.2)) {
+            cardDrag = CardDrag(key: key, grab: nil, location: frame.origin)
+        }
+    }
+
+    /// The lifted card follows the finger; when the finger is over another card, the
+    /// dragged card takes its place and the cards in between slide along.
+    private func moveDraggedCard(start: CGPoint, to location: CGPoint) {
+        guard var drag = cardDrag, let frame = cardFrames[drag.key] else { return }
+        if drag.grab == nil {
+            drag.grab = CGSize(width: start.x - frame.minX, height: start.y - frame.minY)
+        }
+        drag.location = location
+        let target = cardFrames.first { $0.key != drag.key && $0.value.contains(location) }?.key
+        if let target, target != drag.lastTarget, var order = liveCardOrder,
+           let from = order.firstIndex(of: drag.key), let to = order.firstIndex(of: target) {
+            order.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+            withAnimation(.snappy(duration: 0.25)) { liveCardOrder = order }
+        }
+        drag.lastTarget = target
+        cardDrag = drag
+    }
+
+    /// Saves the new order (this week and future weeks), then settles the lifted card
+    /// into its place.
+    private func dropCard(in week: Week) {
+        guard let drag = cardDrag else { return }
+        if let order = liveCardOrder {
+            store.setCategoryOrder(order.map(\.name))
+            if !categoryDisplayOrder.isEmpty { categoryDisplayOrder = order }
+        }
+        let grab = drag.grab ?? .zero
+        let slot = cardFrames[drag.key]?.origin ?? drag.location
         withAnimation(.snappy(duration: 0.25)) {
-            store.moveCategory(named: name, to: targetName)
-            guard !categoryDisplayOrder.isEmpty,
-                  let from = categoryDisplayOrder.firstIndex(where: { $0.name == name }),
-                  let to = categoryDisplayOrder.firstIndex(where: { $0.name == targetName }) else { return }
-            categoryDisplayOrder.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+            cardDrag?.location = CGPoint(x: slot.x + grab.width, y: slot.y + grab.height)
+        } completion: {
+            cardDrag = nil
+            liveCardOrder = nil
+        }
+    }
+
+    /// A copy of the dragged card, lifted above the grid under the finger.
+    @ViewBuilder
+    private func liftedCard(in week: Week) -> some View {
+        if let drag = cardDrag, week.id == store.selectedWeek?.id,
+           let entry = gridEntries(for: week).first(where: { $0.id == drag.key }),
+           let frame = cardFrames[drag.key] {
+            let grab = drag.grab ?? .zero
+            CategoryGridCard(
+                category: entry.category, store: store, isExpanded: false,
+                isEditing: isEditing, isEditingTasks: false, isPastWeek: false,
+                onToggleEdit: {}, onExpand: {}, onCollapse: {}
+            )
+            .frame(width: frame.width, height: frame.height)
+            .scaleEffect(1.05)
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+            .offset(x: drag.location.x - grab.width, y: drag.location.y - grab.height)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// VoiceOver: move a closed card one place earlier or later.
+    @ViewBuilder
+    private func cardMoveActions(_ key: CategoryLayoutKey, in week: Week) -> some View {
+        let order = gridEntries(for: week).map(\.id)
+        if let index = order.firstIndex(of: key) {
+            if index > 0 {
+                Button("Move Earlier") { moveCard(key, by: -1, in: order) }
+            }
+            if index < order.count - 1 {
+                Button("Move Later") { moveCard(key, by: 1, in: order) }
+            }
+        }
+    }
+
+    private func moveCard(_ key: CategoryLayoutKey, by offset: Int, in order: [CategoryLayoutKey]) {
+        guard let from = order.firstIndex(of: key), order.indices.contains(from + offset) else { return }
+        var order = order
+        order.swapAt(from, from + offset)
+        withAnimation(.snappy(duration: 0.25)) {
+            store.setCategoryOrder(order.map(\.name))
+            if !categoryDisplayOrder.isEmpty { categoryDisplayOrder = order }
         }
     }
 
@@ -871,62 +988,40 @@ private struct PagerTrack<Content: View>: View {
     ContentView()
 }
 
-// MARK: - Card Reordering
+// MARK: - Card Drag Gesture
 
-/// A closed card can be held and dragged onto another card's place. Cards move out of
-/// the way as the dragged card passes over them, and the new order carries into future
-/// weeks. (iOS lifts a preview of the card; the card itself isn't dimmed, since a drag
-/// that ends outside any card never reports back.)
-private struct ReorderableCard: ViewModifier {
-    let isEnabled: Bool
-    let name: String
-    @Binding var draggedName: String?
-    let store: ChecklistStore
-    let move: (_ name: String, _ targetName: String) -> Void
+/// A closed card's touches: tap to open it, or hold and then drag to move it. A swipe
+/// that starts before the hold completes still scrolls or changes week.
+private struct CardDragGesture: ViewModifier {
+    let isCollapsed: Bool
+    let canDrag: Bool
+    let onTap: () -> Void
+    let onLift: () -> Void
+    let onMove: (_ start: CGPoint, _ location: CGPoint) -> Void
+    let onDrop: () -> Void
 
     func body(content: Content) -> some View {
-        if isEnabled {
+        if !isCollapsed {
             content
-                .onDrag {
-                    draggedName = name
-                    return NSItemProvider(object: name as NSString)
-                }
-                .onDrop(of: [.plainText], delegate: CardDropDelegate(
-                    targetName: name, draggedName: $draggedName, move: move
-                ))
-                .accessibilityActions {
-                    if let categories = store.selectedWeek?.categories,
-                       let index = categories.firstIndex(where: { $0.name == name }) {
-                        if index > 0 {
-                            Button("Move Earlier") { move(name, categories[index - 1].name) }
-                        }
-                        if index < categories.count - 1 {
-                            Button("Move Later") { move(name, categories[index + 1].name) }
-                        }
-                    }
-                }
+        } else if !canDrag {
+            content.contentShape(Rectangle()).onTapGesture(perform: onTap)
         } else {
             content
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onTap)
+                // A release before the hold completes is the tap above.
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.35)
+                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(ContentView.cardGridSpace)))
+                        .onChanged { value in
+                            guard case .second(true, let drag) = value else { return }
+                            onLift()
+                            if let drag { onMove(drag.startLocation, drag.location) }
+                        }
+                        .onEnded { value in
+                            if case .second(true, _) = value { onDrop() }
+                        }
+                )
         }
-    }
-}
-
-private struct CardDropDelegate: DropDelegate {
-    let targetName: String
-    @Binding var draggedName: String?
-    let move: (_ name: String, _ targetName: String) -> Void
-
-    func dropEntered(info: DropInfo) {
-        guard let draggedName, draggedName != targetName else { return }
-        move(draggedName, targetName)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedName = nil
-        return true
     }
 }
