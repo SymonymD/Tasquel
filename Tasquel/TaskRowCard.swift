@@ -135,7 +135,8 @@ struct TaskRowCard: View {
                         taskID: task.id,
                         store: store,
                         isEditing: isEditing,
-                        isPastWeek: isPastWeek
+                        isPastWeek: isPastWeek,
+                        isListItem: task.taskType == .list
                     )
                 }
                 if !isPastWeek {
@@ -175,7 +176,11 @@ struct TaskRowCard: View {
                     editedTitle = task.title
                     isEditingTitle = true
                 }
-                if task.subtasks.isEmpty && !isPastWeek {
+                if task.taskType == .list && !isPastWeek {
+                    Button("Add Item", systemImage: "plus") {
+                        isSubtaskFieldFocused = true
+                    }
+                } else if task.subtasks.isEmpty && !isPastWeek {
                     Button("Add Sub-Task", systemImage: "list.bullet.indent") {
                         store.addSubtask(categoryID: categoryID, taskID: task.id, title: "New sub-task")
                     }
@@ -191,7 +196,9 @@ struct TaskRowCard: View {
                 store.deleteTask(categoryID: categoryID, taskID: task.id)
             }
         } message: {
-            Text("This removes the task and its sub-tasks from this week.")
+            Text(task.taskType == .list
+                 ? "This removes the list and its items from this week."
+                 : "This removes the task and its sub-tasks from this week.")
         }
         .confirmationDialog("Change to \(pendingKind.label)?", isPresented: $showTypeChangeConfirmation) {
             Button("Change Type", role: .destructive) {
@@ -656,6 +663,8 @@ struct SubTaskRowCard: View {
     let store: ChecklistStore
     let isEditing: Bool
     let isPastWeek: Bool
+    /// An item in a list task rather than a sub-task; only changes the wording.
+    var isListItem = false
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -697,7 +706,7 @@ struct SubTaskRowCard: View {
             .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
 
             if isEditing && !isPastWeek && isEditingTitle {
-                TextField("Sub-task", text: $editedTitle)
+                TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle)
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
                     .focused($isTitleFocused)
                     .onSubmit(commitTitle)
@@ -733,7 +742,7 @@ struct SubTaskRowCard: View {
         .padding(.leading, 24 * expandedCardScale)
         .padding(.vertical, 2)
         .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation) {
-            Button("Delete Sub-Task", role: .destructive) {
+            Button(isListItem ? "Delete Item" : "Delete Sub-Task", role: .destructive) {
                 store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
             }
         }
