@@ -83,6 +83,7 @@ final class ChecklistStore {
         guard weekLoadError == nil else { return }
         let currentWeek = ensureWeekExists(for: Date())
         migrateStartersIfNeeded(into: currentWeek)
+        syncWithPreviousWeek(for: Date())
     }
 
     private func seedStarterTemplates() {
@@ -318,8 +319,9 @@ final class ChecklistStore {
         if let cached = previewCache[monday] { return cached }
         var week = weeks.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) })
             ?? makeWeek(startingOn: monday)
-        if week.isFutureWeek, let source = mostRecentWeekBefore(monday) {
-            _ = Self.syncRecurringTasks(into: &week, from: source)
+        if !week.isPastWeek, let source = mostRecentWeekBefore(monday) {
+            if week.isFutureWeek { _ = Self.syncRecurringTasks(into: &week, from: source) }
+            _ = Self.syncCarryOverTasks(into: &week, from: source)
         }
         previewCache[monday] = week
         return week
@@ -352,15 +354,7 @@ final class ChecklistStore {
             // Carry-over tasks only if incomplete
             let carryOverTasks = category.tasks
                 .filter { $0.mode == .carryOver && !$0.isCompleted }
-                .map { task in
-                    var newTask = ChecklistTask(title: task.title, mode: .carryOver, subtasks: task.subtasks.filter { !$0.isCompleted }.map { SubTask(title: $0.title) })
-                    newTask.taskType = task.taskType
-                    newTask.goalTarget = task.goalTarget
-                    newTask.goalProgress = task.goalProgress  // Carry existing progress
-                    newTask.goalUnit = task.goalUnit
-                    newTask.goalUnitKind = task.goalUnitKind
-                    return newTask
-                }
+                .map { Self.carriedCopy(of: $0) }
 
             // oneTime tasks never carry forward
             newCategory.tasks = repeatingTasks + carryOverTasks
@@ -372,18 +366,102 @@ final class ChecklistStore {
         guard persistenceError == nil else { return }
         selectedDate = date
         let week = ensureWeekExists(for: date)
-        if week.isFutureWeek {
-            syncFutureWeek(for: date)
+        if !week.isPastWeek {
+            syncWithPreviousWeek(for: date)
         }
     }
 
-    /// Sync categories and recurring tasks from the most recent prior week into a future week.
-    /// Ensures future weeks always have the same category structure plus any recurring tasks.
-    private func syncFutureWeek(for date: Date) {
+    /// Brings the current or a future week up to date with the most recent week before
+    /// it. Weeks are built from the week before only once, when first opened, so this
+    /// picks up what changed since: unfinished carry-over tasks, and for a future week
+    /// also its categories and recurring tasks.
+    private func syncWithPreviousWeek(for date: Date) {
         let monday = startOfWeek(containing: date)
         guard let wi = weeks.firstIndex(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }),
+              !weeks[wi].isPastWeek,
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
-        if Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek) { save() }
+        var changed = false
+        if weeks[wi].isFutureWeek {
+            changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek)
+        }
+        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek) { changed = true }
+        if changed { save() }
+    }
+
+    /// Adds `source`'s unfinished carry-over tasks that `week` is missing, skipping ones
+    /// the user deleted from `week`. In a future week, copies the user hasn't touched
+    /// (nothing checked) also follow their source: they pick up its new unchecked items,
+    /// and go away once it's finished or no longer carries over. Returns whether
+    /// anything changed.
+    private static func syncCarryOverTasks(into week: inout Week, from source: Week) -> Bool {
+        var changed = false
+        let dismissed = Set(week.dismissedCarryOvers ?? [])
+        for sourceCategory in source.categories where !sourceCategory.isThisWeekOnly {
+            guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else { continue }
+            let sources = Dictionary(sourceCategory.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+            if week.isFutureWeek {
+                for ti in week.categories[ci].tasks.indices.reversed() {
+                    let copy = week.categories[ci].tasks[ti]
+                    guard let sourceID = copy.carriedFrom,
+                          !copy.isCompleted, !copy.subtasks.contains(where: \.isCompleted) else { continue }
+                    if let task = sources[sourceID], task.mode == .carryOver, !task.isCompleted {
+                        let followed = following(task, copy: copy)
+                        if followed != copy {
+                            week.categories[ci].tasks[ti] = followed
+                            changed = true
+                        }
+                    } else {
+                        week.categories[ci].tasks.remove(at: ti)
+                        changed = true
+                    }
+                }
+            }
+
+            for task in sourceCategory.tasks
+            where task.mode == .carryOver && !task.isCompleted && !dismissed.contains(task.id) {
+                let present = week.categories[ci].tasks.contains {
+                    $0.carriedFrom == task.id || $0.title == task.title
+                }
+                guard !present else { continue }
+                week.categories[ci].tasks.append(carriedCopy(of: task))
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    /// A copy of a carry-over task for the next week: its unchecked sub-tasks and its
+    /// goal progress so far.
+    private static func carriedCopy(of task: ChecklistTask) -> ChecklistTask {
+        var newTask = ChecklistTask(title: task.title, mode: .carryOver, subtasks: task.subtasks.filter { !$0.isCompleted }.map { SubTask(title: $0.title) })
+        newTask.taskType = task.taskType
+        newTask.goalTarget = task.goalTarget
+        newTask.goalProgress = task.goalProgress
+        newTask.goalUnit = task.goalUnit
+        newTask.goalUnitKind = task.goalUnitKind
+        newTask.carriedFrom = task.id
+        return newTask
+    }
+
+    /// An untouched future copy updated from its source: title, type and goal from the
+    /// source; items checked off in the source drop out and new unchecked ones are added.
+    /// Items added only to the copy stay.
+    private static func following(_ task: ChecklistTask, copy: ChecklistTask) -> ChecklistTask {
+        var copy = copy
+        copy.title = task.title
+        copy.taskType = task.taskType
+        copy.goalTarget = task.goalTarget
+        copy.goalProgress = task.goalProgress
+        copy.goalUnit = task.goalUnit
+        copy.goalUnitKind = task.goalUnitKind
+        let checked = Set(task.subtasks.filter(\.isCompleted).map(\.title))
+        copy.subtasks.removeAll { checked.contains($0.title) }
+        let present = Set(copy.subtasks.map(\.title))
+        copy.subtasks += task.subtasks
+            .filter { !$0.isCompleted && !present.contains($0.title) }
+            .map { SubTask(title: $0.title) }
+        return copy
     }
 
     /// Adds the source week's categories and recurring tasks that `week` is missing.
@@ -509,6 +587,9 @@ final class ChecklistStore {
               !week.isPastWeek,
               let wi = weeks.firstIndex(where: { $0.id == week.id }),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
+        if let sourceID = weeks[wi].categories[ci].tasks.first(where: { $0.id == taskID })?.carriedFrom {
+            weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+        }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
         save()
     }

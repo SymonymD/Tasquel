@@ -173,6 +173,8 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var goalUnit: String? = nil
     /// What the goal counts. `nil` for goals saved before units had a kind; see `goalKind`.
     var goalUnitKind: GoalUnitKind? = nil
+    /// For a task carried over from the week before: the task it was copied from.
+    var carriedFrom: UUID? = nil
 
     var allSubtasksCompleted: Bool {
         subtasks.allSatisfy(\.isCompleted)
@@ -233,6 +235,9 @@ struct Week: Codable, Identifiable, Equatable {
     var id = UUID()
     var startDate: Date
     var categories: [Category] = []
+    /// Carry-over tasks (by their source's ID) the user deleted from this week, so
+    /// syncing with the week before doesn't bring them back.
+    var dismissedCarryOvers: [UUID]? = nil
 
     var displayTitle: String {
         let formatter = DateFormatter()

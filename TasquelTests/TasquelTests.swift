@@ -770,3 +770,83 @@ struct ListTaskTests {
         #expect(rolled?.isCompleted == false)
     }
 }
+
+// MARK: - Carry-Over Sync
+
+struct CarryOverSyncTests {
+    private let thisMonday = Week.startOfWeek(containing: Date())
+    private var nextMonday: Date { Calendar.current.date(byAdding: .weekOfYear, value: 1, to: thisMonday)! }
+    private var lastMonday: Date { Calendar.current.date(byAdding: .weekOfYear, value: -1, to: thisMonday)! }
+
+    private func tasks(_ store: ChecklistStore, _ monday: Date) -> [ChecklistTask] {
+        store.weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }!.categories[0].tasks
+    }
+
+    @Test("A task added after next week exists still carries into it, and follows its source")
+    func futureWeekFollows() {
+        let store = makeIsolatedStore()
+        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: [Category(name: "Errands", symbol: "cart")]) }
+        store.selectedDate = thisMonday
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Groceries")
+        let list = tasks(store, thisMonday)[0]
+        store.updateTaskKind(categoryID: categoryID, taskID: list.id, kind: .list)
+        store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Eggs")
+        store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Milk")
+
+        store.navigateToDate(nextMonday)
+        #expect(tasks(store, nextMonday).map(\.title) == ["Groceries"])
+        #expect(tasks(store, nextMonday)[0].subtasks.map(\.title) == ["Eggs", "Milk"])
+
+        // Back in this week: check off eggs, add bread. Next week follows.
+        store.navigateToDate(thisMonday)
+        let eggs = tasks(store, thisMonday)[0].subtasks[0]
+        store.toggleSubtask(categoryID: categoryID, taskID: list.id, subtaskID: eggs.id)
+        store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Bread")
+        store.navigateToDate(nextMonday)
+        #expect(tasks(store, nextMonday).count == 1, "no duplicate")
+        #expect(tasks(store, nextMonday)[0].subtasks.map(\.title) == ["Milk", "Bread"])
+
+        // Finishing the list this week removes next week's untouched copy.
+        store.navigateToDate(thisMonday)
+        for item in tasks(store, thisMonday)[0].subtasks where !item.isCompleted {
+            store.toggleSubtask(categoryID: categoryID, taskID: list.id, subtaskID: item.id)
+        }
+        store.navigateToDate(nextMonday)
+        #expect(tasks(store, nextMonday).isEmpty)
+    }
+
+    @Test("A deleted carry-over stays deleted")
+    func deletedCopyStaysDeleted() {
+        let store = makeIsolatedStore()
+        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: [Category(name: "Errands", symbol: "cart")]) }
+        store.selectedDate = thisMonday
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Return books")
+
+        store.navigateToDate(nextMonday)
+        let copy = tasks(store, nextMonday)[0]
+        store.deleteTask(categoryID: store.selectedWeek!.categories[0].id, taskID: copy.id)
+        store.navigateToDate(thisMonday)
+        store.navigateToDate(nextMonday)
+        #expect(tasks(store, nextMonday).isEmpty)
+    }
+
+    @Test("This week picks up what was left unfinished last week, even if it already existed")
+    func currentWeekCatchesUp() {
+        let store = makeIsolatedStore()
+        let leftover = ChecklistTask(title: "Call bank", mode: .carryOver)
+        let done = ChecklistTask(title: "Mail", isCompleted: true, mode: .carryOver)
+        store.weeks = [
+            Week(startDate: lastMonday, categories: [Category(name: "Errands", symbol: "cart", tasks: [leftover, done])]),
+            Week(startDate: thisMonday, categories: [Category(name: "Errands", symbol: "cart")]),
+        ]
+        store.navigateToDate(thisMonday)
+        #expect(tasks(store, thisMonday).map(\.title) == ["Call bank"])
+
+        // A checked-off copy is the user's: it stays even though its source is unfinished.
+        store.toggleTask(categoryID: store.selectedWeek!.categories[0].id, taskID: tasks(store, thisMonday)[0].id)
+        store.navigateToDate(thisMonday)
+        #expect(tasks(store, thisMonday).count == 1)
+    }
+}
