@@ -239,7 +239,7 @@ final class CalendarService {
         self.provider = provider
         authorization = provider.authorization()
         provider.observeChanges { [weak self] in
-            Task { @MainActor [self] in self?.invalidate() }
+            Task { @MainActor [weak self] in self?.invalidate() }
         }
     }
 

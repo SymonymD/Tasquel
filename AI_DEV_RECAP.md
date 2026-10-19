@@ -308,6 +308,13 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 
 - **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
 - **iCloud sync** (user: later).
+- **Future / paid upgrade ideas (2026-10-14, not to be built yet)**:
+  - Home and lock screen widgets that tick tasks off without opening the app (likely the most wanted)
+  - History and stats: streaks, goal progress over time (past weeks are already kept)
+  - Reminders: a Sunday nudge to plan the week; per-task reminders
+  - More themes and alternate app icons
+  - Apple Watch app; Siri and Shortcuts support
+  - iCloud sync between iPhone and iPad (users tend to expect it, so maybe free)
 - **In-app feedback**: `FeedbackSheet.swift` (Google Apps Script webhook) was never linked and was removed on 2026-10-19; recover it from git history (before the cleanup commit) if wanted.
 - **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
 - **Card animation follow-ups**: verify with categories that have many tasks, in light and retro themes, and in edit mode; renaming a category closes its expanded card (expansion is keyed by name); consider keeping the grid's scroll position when changing weeks; consider haptic feedback on week change.

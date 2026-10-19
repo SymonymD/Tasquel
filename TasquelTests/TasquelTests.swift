@@ -429,6 +429,7 @@ struct WeekPreviewTests {
     }
 }
 
+@MainActor
 struct ThisWeekOnlyCategoryTests {
     private func monday(weeksAfter offset: Int = 0) -> Date {
         var components = DateComponents()
@@ -476,6 +477,7 @@ struct ThisWeekOnlyCategoryTests {
 
 // MARK: - Calendar Integration
 
+@MainActor
 struct CalendarGroupingTests {
     private let calendar = Calendar.current
     private var monday: Date {
