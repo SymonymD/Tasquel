@@ -286,7 +286,7 @@ final class GoalUITests: XCTestCase {
         XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
         // Delete sits left of Save Goal and asks first.
-        let delete = app.buttons["Delete"].firstMatch
+        let delete = app.buttons["Delete goal"]
         let save = app.buttons["Save Goal"]
         XCTAssertLessThan(delete.frame.maxX, save.frame.minX)
         delete.tap()

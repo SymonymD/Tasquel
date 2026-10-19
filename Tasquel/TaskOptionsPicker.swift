@@ -115,29 +115,51 @@ struct TaskOptionsPicker: View {
     private func optionButton(_ label: String, symbol: String, color: Color, isSelected: Bool,
                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .foregroundStyle(color)
-                    .frame(width: 22)
-                Text(label)
-                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
-            }
-            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 44)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 10)
-                    .fill(isSelected ? color.opacity(0.18) : Color.clear)
-                RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 10)
-                    .stroke(isSelected ? color : Theme.textTertiary(theme, rc: rc).opacity(0.4), lineWidth: isSelected ? 1.5 : 1)
-            }
-            .contentShape(Rectangle())
+            OptionButtonLabel(title: label, symbol: symbol, color: color, isHighlighted: isSelected,
+                              theme: theme, rc: rc, alignment: .leading)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - Option Button Label
+
+/// The look of the picker's option buttons: a colored icon and label in a rounded box,
+/// tinted and outlined in the color when highlighted. Also used for the goal editor's
+/// Delete and Save Goal so they match.
+struct OptionButtonLabel: View {
+    let title: String
+    let symbol: String
+    let color: Color
+    let isHighlighted: Bool
+    let theme: AppearanceMode
+    let rc: RetroColor
+    var alignment: HorizontalAlignment = .center
+    var isEnabled = true
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if alignment == .center { Spacer(minLength: 0) }
+            Image(systemName: symbol)
+                .foregroundStyle(isEnabled ? color : Theme.textTertiary(theme, rc: rc))
+                .frame(width: 22)
+            Text(title)
+                .foregroundStyle(isEnabled ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+        }
+        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+        .padding(.horizontal, 10)
+        .frame(minHeight: 44)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 10)
+            let highlighted = isHighlighted && isEnabled
+            shape.fill(highlighted ? color.opacity(0.18) : Color.clear)
+            shape.stroke(highlighted ? color : Theme.textTertiary(theme, rc: rc).opacity(0.4), lineWidth: highlighted ? 1.5 : 1)
+        }
+        .contentShape(Rectangle())
     }
 }

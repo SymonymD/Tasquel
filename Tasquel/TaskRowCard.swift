@@ -402,19 +402,21 @@ struct TaskRowCard: View {
             labeledGoalRow("Progress") {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
-            HStack {
-                // Same width: each label fills half the row.
-                Button(role: .destructive) { showDeleteConfirmation = true } label: {
-                    Text("Delete").frame(maxWidth: .infinity)
+            HStack(spacing: 12) {
+                // Same width, in the style of the type/mode picker's buttons.
+                Button { showDeleteConfirmation = true } label: {
+                    OptionButtonLabel(title: "Delete", symbol: "trash", color: .red, isHighlighted: true,
+                                      theme: theme, rc: rc)
                 }
-                .buttonStyle(.bordered)
-                .tint(.red)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete goal")
                 Button(action: saveEditedGoal) {
-                    Text("Save Goal").frame(maxWidth: .infinity)
+                    OptionButtonLabel(title: "Save Goal", symbol: "checkmark", color: .green, isHighlighted: true,
+                                      theme: theme, rc: rc, isEnabled: canSaveEditedGoal)
                 }
-                .buttonStyle(.bordered)
-                .tint(.green)
+                .buttonStyle(.plain)
                 .disabled(!canSaveEditedGoal)
+                .accessibilityLabel("Save Goal")
             }
             .accessibilityElement(children: .contain)
         }
