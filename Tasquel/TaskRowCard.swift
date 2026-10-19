@@ -403,13 +403,18 @@ struct TaskRowCard: View {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
             HStack {
-                Button("Delete", role: .destructive) { showDeleteConfirmation = true }
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity)
-                Button("Save Goal", action: saveEditedGoal)
-                    .foregroundStyle(canSaveEditedGoal ? Color.green : Theme.textTertiary(theme, rc: rc))
-                    .disabled(!canSaveEditedGoal)
-                    .frame(maxWidth: .infinity)
+                // Same width: each label fills half the row.
+                Button(role: .destructive) { showDeleteConfirmation = true } label: {
+                    Text("Delete").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                Button(action: saveEditedGoal) {
+                    Text("Save Goal").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+                .disabled(!canSaveEditedGoal)
             }
             .accessibilityElement(children: .contain)
         }
