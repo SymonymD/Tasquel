@@ -30,7 +30,9 @@ Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
 ## Current State (as of 2026-10-19)
 
-Branch `calendar-integration-and-card-rework`, pushed through the pre-submission fixes (see Commit History). ~7,750 lines of Swift across app and tests; 71 unit tests (Swift Testing) and the UI tests in `TasquelUITests` (not re-run during the pre-submission pass, at the user's request). The user tests on their iPhone 16 Pro Max (install via `devicectl`, see memory). The file table below is from 2026-10-10; `CLAUDE.md`/`AGENTS.md` have the current file list.
+Everything is merged to `main` and pushed (through `a6286ec`); the feature branches (`calendar-integration-and-card-rework`, `final-sync-and-gregorian`, `final-sync-legacy-weeks`) are merged and can be deleted. ~8,400 lines of Swift across app and tests; 78 unit tests (Swift Testing) pass. The UI tests in `TasquelUITests` haven't been re-run since the pre-submission pass (the user asks before simulator runs). The user's iPhone 16 Pro Max runs `a6286ec` (install via `devicectl`, see memory). The file table below is from 2026-10-10; `CLAUDE.md`/`AGENTS.md` have the current file list.
+
+There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/SYMONYM/Tasquel/Tasquel`, where work happens) and `/Volumes/T7/Design/SYMONYM/Tasquel/Tasquel` (fast-forwarded to `a6286ec` on 2026-10-19; it also holds an old stash from `7b0c956`). Pull before working in the second one.
 
 ### Files
 
@@ -162,6 +164,11 @@ Branch `calendar-integration-and-card-rework`, pushed through the pre-submission
     - Future weeks are previews until edited (`previewWeek`, `editableSelectedWeekIndex()`); repeating tasks deleted from a future week are kept out via `Week.dismissedRepeating`.
     - Weeks are identified by `Week.startDay` (`DayKey`, "yyyy-MM-dd"); old files migrate on first load and are re-saved. The store takes injectable `now`/`calendar`, and past/current/future checks moved to the store.
     - Goal values capped at 999,999; `GoalNumber` parses comma decimals per locale.
+    - Repeating copies link to their source (`repeatsFrom`) and follow renames and goal setup; next week keeps this week's task order.
+    - A saved future week gets one final full sync when it becomes current (`Week.didFinalSync`; older files: current/past weeks are marked done on load, future ones not).
+    - Week dates always use `Calendar.weekDates(in:)` (Gregorian, user's time zone), whatever the device calendar.
+    - Goal editor: red Delete and green Save Goal in the picker's button style (`OptionButtonLabel`); bottom bar is flat with only a top border.
+    - Unused code removed (FeedbackSheet, dead store/model functions, Xcode's template UI tests that used real simulator data).
     - Help "Upcoming Features" removed; Settings has Support/Privacy links (`AppInfo`; pages live at jbfentner.com/tasquel, /support, /privacy), bundle version, and hides the calendar section when locked; VoiceOver labels for checkboxes and goal progress; `PrivacyInfo.xcprivacy` (UserDefaults CA92.1).
 
 ### UI Layout (Post-Redesign)
@@ -233,6 +240,21 @@ f5e3e60 Test that removing every starter in onboarding keeps them removed
 cc1c37b Help and onboarding text for App Review
 059ae61 Settings: Support and Privacy links, real version, no Coming Soon
 c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
+10f8a35 Card grid rework, week swiping, calendar events, week start setting
+c563987 Fix Swift 6 concurrency warnings
+9878d5f Declare no non-exempt encryption; note future upgrade ideas
+ebafc52 Add privacy manifest, ignore .claude/
+a84d552 Docs: week storage, future-week previews, starter seeding
+865f025 Repeating tasks follow their source; next week keeps this week's order
+cae1a44 Goal editor: red Delete, green Save Goal
+5bf3a59 Goal editor: Delete and Save Goal as equal-width tinted buttons
+9ff039c Bottom bar: flat with only a top border
+57b6464 Goal editor buttons match the type/mode picker's buttons
+ed79dda Support and Privacy URLs confirmed live
+66064f0 Remove unused code
+8e9982e Merge main into calendar-integration-and-card-rework
+031a91d Final sync when a saved week becomes current; Gregorian week dates
+a6286ec Final sync: leave weeks saved before the flag alone unless still future
 ```
 
 ## Development Workflow
@@ -295,6 +317,11 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 42. **Weeks as moments broke across time zones (fixed 2026-10-19)**: compare `startDay`, never `startDate`. `Week.startDate` uses `Calendar.current`; store code should use its injected `calendar`.
 43. **Swift Testing runs tests in parallel**: don't use a global clock or `NSTimeZone.default`; pass a `TestClock` to `makeIsolatedStore(clock:)`.
 44. **SwiftUI `DragGesture.onEnded` isn't called when iOS cancels the touch**: track gesture-driven state with `@GestureState` and react to it resetting (card drag, week swipe), or the state sticks (a frozen grid).
+45. **New stored flags must say what old data means (2026-10-19)**: `didFinalSync` was first read as "nil = needs a final sync", so the user's existing current week re-synced on launch and got back a repeating task they had renamed. Fixed by filling in the flag on load from what the week is now (current/past → done, future → pending). When adding a flag, decide the meaning of "missing" explicitly, and test with a file from the old format (`FinalSyncTests.legacyWeeks` builds one).
+46. **Back up the phone's data before installing a build that migrates or syncs it**: `devicectl device copy from … --source Documents/checklist.json` (and `settings.json`) to the scratchpad, then compare weeks/tasks after the first launch. A backup is restored with `devicectl device copy to … --destination Documents/checklist.json`, then relaunch with `--terminate-existing`.
+47. **Repeating tasks were matched by title**: renaming one added a second copy to a saved future week. They now link by `repeatsFrom`, and a copy also matches a source that repeats the same task (a week in between saved later). Carry-over copies use `carriedFrom`; each sync only handles copies of its own mode.
+48. **AppleDouble files inside `.git` on the exFAT T7**: `._pack-*.idx` files make git print "non-monotonic index" errors. They're macOS metadata, not git data: `find .git -name "._*" -type f -delete`.
+49. **Test relaunches need the same `UserDefaults`**: `makeIsolatedStore()` makes a new defaults suite each time, so the one-time starter migration runs again and re-adds deleted categories. Pass `defaults:` to reuse one across a simulated relaunch.
 
 
 ## Figma Reference
@@ -306,6 +333,7 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 
 ## Planned / Not Yet Implemented
 
+- **Not yet checked by hand**: the simulator checklist from the pre-submission pass (peek-then-edit flows, comma-decimal goals in a German region, Settings links/version, Help in dark/retro, VoiceOver on checkboxes and goals) and a full UI test run.
 - **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
 - **iCloud sync** (user: later).
 - **Future / paid upgrade ideas (2026-10-14, not to be built yet)**:
@@ -324,9 +352,12 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 ## Last Session Summary (2026-10-17 → 2026-10-19, Claude Code)
 
 **What was done**:
-- Many UX iterations tested on the user's iPhone: task type/mode picker, List type, carry-over linking, card drag reordering, card/task long-press menus removed, flush bottom bar, one-tap rename, goal editor polish.
-- Pre-submission pass (items 1, 2, 4, 5, 6, 8–12 of the user's list): future weeks as previews, day-based week identity with migration, injectable clock, goal caps and locale parsing, App Review text fixes, Support/Privacy links, VoiceOver labels, privacy manifest. Each with unit tests.
+- Many UX iterations tested on the user's iPhone: task type/mode picker, List type, carry-over linking, card drag reordering, card/task long-press menus removed, flat full-width bottom bar, one-tap rename, goal editor (Delete/Save Goal in the picker's style).
+- Pre-submission pass (items 1, 2, 4, 5, 6, 8–12): future weeks as previews, day-based week identity with migration, injectable clock, goal caps and locale parsing, App Review text fixes, Support/Privacy links (pages confirmed live), VoiceOver labels, privacy manifest.
+- Follow-up audit fixes: repeating tasks follow their source and keep order; one final sync when a saved week becomes current (plus the legacy-flag fix after it re-added a task on the user's phone; their data was restored from a backup and verified); Gregorian week dates.
+- Removed unused code, merged everything to `main` (keeping main's Swift 6 fixes, encryption key and upgrade ideas), and fast-forwarded the second T7 clone.
 
 **In progress / next**:
-- User to check by hand in the simulator: peeking at next week then editing this week, a pre-existing data file loading, comma-decimal goals (German region), Settings links and version, Help in dark mode, VoiceOver on checkboxes and goals.
-- Items 3 and 7 deferred by the user.
+- User to delete the leftover "Hands" goal from the week of 10/26 (Study), created before repeating tasks were linked.
+- Hand checks in the simulator and a UI test run before submission (ask first).
+- Items 3 and 7 still deferred; iCloud sync later.
