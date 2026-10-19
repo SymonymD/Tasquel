@@ -261,6 +261,14 @@ final class GoalUITests: XCTestCase {
         app.buttons["Set"].tap()
         if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
 
+        // One tap on the name renames it, outside edit mode too.
+        app.staticTexts["Read"].firstMatch.tap()
+        let nameField = app.textFields["Task name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 2))
+        XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
+        nameField.typeText(" more\n")
+        XCTAssertTrue(app.staticTexts["Read more"].waitForExistence(timeout: 2))
+
         app.buttons["Edit goal"].tap()
         for label in ["Target", "Progress", "Target"] {
             let field = app.textFields[label].firstMatch

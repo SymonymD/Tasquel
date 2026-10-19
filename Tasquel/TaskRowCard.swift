@@ -134,14 +134,13 @@ struct TaskRowCard: View {
                             if !focused && isEditingTitle { commitTitle() }
                         }
                 } else {
-                    // The whole width up to the icons is the target, not just the letters.
-                    // In edit mode one tap edits; otherwise a double tap does.
+                    // One tap renames. The whole width up to the icons is the target, not just the letters.
                     Text(task.title)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: isEditing ? 1 : 2) { startEditingTitle() }
+                        .onTapGesture { startEditingTitle() }
                 }
 
                 if isEditingTitle { Spacer(minLength: 0) }
