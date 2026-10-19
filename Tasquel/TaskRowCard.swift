@@ -126,29 +126,25 @@ struct TaskRowCard: View {
                     TextField("Task name", text: $editedTitle)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .focused($isTitleFocused)
+                        // The keyboard opens with the field, so one tap is enough.
+                        .onAppear { isTitleFocused = true }
                         .onSubmit(commitTitle)
                         // Closing the keyboard (Done, or scrolling) also saves the name.
                         .onChange(of: isTitleFocused) { _, focused in
                             if !focused && isEditingTitle { commitTitle() }
                         }
                 } else {
+                    // The whole width up to the icons is the target, not just the letters.
+                    // In edit mode one tap edits; otherwise a double tap does.
                     Text(task.title)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                        .onTapGesture(count: 2) {
-                            guard !isPastWeek else { return }
-                            editedTitle = task.title
-                            isEditingTitle = true
-                        }
-                        .onTapGesture {
-                            if isEditing && !isPastWeek {
-                                editedTitle = task.title
-                                isEditingTitle = true
-                            }
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: isEditing ? 1 : 2) { startEditingTitle() }
                 }
 
-                Spacer()
+                if isEditingTitle { Spacer(minLength: 0) }
 
                 // Inline icons: add sub-task (checkbox tasks), type and mode, and delete in edit mode
                 if !isPastWeek {
@@ -223,10 +219,7 @@ struct TaskRowCard: View {
                 }
             }
             Section {
-                Button("Edit Title", systemImage: "pencil") {
-                    editedTitle = task.title
-                    isEditingTitle = true
-                }
+                Button("Edit Title", systemImage: "pencil") { startEditingTitle() }
                 if task.taskType == .list && !isPastWeek && !isEditing {
                     Button("Add Item", systemImage: "plus") {
                         isSubtaskFieldFocused = true
@@ -456,6 +449,7 @@ struct TaskRowCard: View {
             }
             Button("Save Goal", action: saveEditedGoal)
                 .disabled(!canSaveEditedGoal)
+                .frame(maxWidth: .infinity)
         }
         .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -501,6 +495,8 @@ struct TaskRowCard: View {
                 Text(goalKindSelection.label)
                 Image(systemName: "chevron.up.chevron.down").font(.expandedCard(.caption2))
             }
+            .lineLimit(1)
+            .fixedSize()
             .font(goalFieldFont)
             .foregroundStyle(Theme.textPrimary(theme, rc: rc))
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -589,6 +585,12 @@ struct TaskRowCard: View {
         }
         newSubtaskTitle = ""
         isSubtaskFieldFocused = true
+    }
+
+    private func startEditingTitle() {
+        guard !isPastWeek else { return }
+        editedTitle = task.title
+        isEditingTitle = true
     }
 
     private func commitTitle() {
@@ -779,6 +781,7 @@ struct SubTaskRowCard: View {
                 TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle)
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
                     .focused($isTitleFocused)
+                    .onAppear { isTitleFocused = true }
                     .onSubmit(commitTitle)
                     // Closing the keyboard (Done, or scrolling) also saves the name.
                     .onChange(of: isTitleFocused) { _, focused in
@@ -789,6 +792,8 @@ struct SubTaskRowCard: View {
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
                     .foregroundStyle(subtask.isCompleted ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                     .onTapGesture {
                         if isEditing && !isPastWeek {
                             editedTitle = subtask.title
@@ -796,8 +801,6 @@ struct SubTaskRowCard: View {
                         }
                     }
             }
-
-            Spacer()
         }
         .padding(.leading, 24 * expandedCardScale)
         .padding(.vertical, 2)

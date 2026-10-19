@@ -42,7 +42,15 @@ final class CalendarUITests: XCTestCase {
         showEvents.tap()
         XCTAssertTrue(dentist.waitForExistence(timeout: 3), "toggle reveals the week's events")
         XCTAssertTrue(app.staticTexts["3 events"].exists)
+        let header = app.staticTexts["This Week's Events"]
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Sam's Birthday")).firstMatch.exists)
+
+        // With the events open, the grid still scrolls its last card clear of the bar.
+        let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open "))
+        let lastCard = cards.element(boundBy: cards.count - 1)
+        let grid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        for _ in 0..<3 { grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: -400))) }
+        XCTAssertLessThan(lastCard.frame.maxY, header.frame.minY, "the bottom row can be reached above the events")
 
         // The panel follows the viewed week.
         app.buttons["Next week"].tap()
@@ -55,7 +63,6 @@ final class CalendarUITests: XCTestCase {
         // Swiping down on the events minimizes them; a short drag doesn't.
         app.buttons["Show events"].tap()
         XCTAssertTrue(dentist.waitForExistence(timeout: 3))
-        let header = app.staticTexts["This Week's Events"]
         let start = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 20)))
         XCTAssertTrue(dentist.waitForExistence(timeout: 1), "a short drag springs back")

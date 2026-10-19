@@ -56,6 +56,11 @@ final class GoalUITests: XCTestCase {
         let unitMenu = app.buttons["Goal unit: Quantity"]
         XCTAssertTrue(unitMenu.waitForExistence(timeout: 3))
         unitMenu.tap()
+        app.buttons["Custom"].firstMatch.tap()
+        // "Custom" fits on one line in the menu button.
+        let customMenu = app.buttons["Goal unit: Custom"]
+        XCTAssertLessThan(customMenu.frame.height, 50, "the unit button stays one line")
+        customMenu.tap()
         app.buttons["Time"].firstMatch.tap()
         let targetHours = app.textFields["Target hours"]
         XCTAssertTrue(targetHours.waitForExistence(timeout: 3))
@@ -226,5 +231,12 @@ final class GoalUITests: XCTestCase {
         app.buttons["Delete Sub-Task"].tap()
         XCTAssertFalse(app.staticTexts["Refill"].waitForExistence(timeout: 1))
         XCTAssertTrue(app.staticTexts["Pharmacy"].exists, "the task stays")
+
+        // One tap on a task's name in edit mode opens the keyboard on it.
+        app.staticTexts["Pharmacy"].firstMatch.tap()
+        let nameField = app.textFields["Task name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2), "the keyboard opens on the first tap")
+        XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
     }
 }

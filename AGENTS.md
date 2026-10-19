@@ -76,10 +76,10 @@ Key behaviors:
 ### UI Patterns
 
 - **Card grid** (`ScrollView`, not `List`): collapsed cards in 2-column rows; an expanded card takes a full-width row. Multiple cards can be open; expansion is tracked by `CategoryLayoutKey` (name + occurrence) since UUIDs change per week, so open cards persist across week navigation (in memory only).
-- **Bottom bar**: settings (left), date / go-to-today (center), edit/done (right), on a Liquid Glass capsule (bordered box in retro).
+- **Bottom bar**: settings (left), today's date / go-to-today (center), edit/done (right), flush with the bottom of the screen on Liquid Glass (top-bordered bar in retro). The grid's bottom padding follows the bar's measured height.
 - **Edit mode (bottom bar)**: category management — add-category card and delete badges; all cards collapse and can't open. A card's own edit button edits only that card's tasks (trash cans, renaming). Deleting a category removes it from the current and all future weeks (past weeks keep history) and keeps its saved template.
 - **Week paging**: last/this/next week are laid side by side (`PagerTrack`); drag offset lives in `WeekPagerState` so dragging doesn't rebuild pages.
-- **Header / bottom bar**: the header shows today's date; the bottom bar shows Settings, the calendar toggle (when calendar events are on), the viewed week ("Week of …", with Go to Today on other weeks), and Edit.
+- **Header / bottom bar**: the header shows the viewed week ("Week of …"); the bottom bar shows Settings, the calendar toggle (when calendar events are on), today's date (with Go to Today on other weeks), and Edit.
 - **Calendar events**: the bottom bar's calendar toggle expands the bar to show the viewed week's events (`CalendarEventsPanel`), fed by `CalendarService`; tapping an event opens the Calendar app at its date. Event data is never persisted.
 - **Week start**: Sunday or Monday (Settings ▸ Week). Use `store.startOfWeek(containing:)`, never a hard-coded Monday; changing the setting moves saved weeks by one day.
 - **Destructive actions** (delete task/sub-task/category/template, goal → checkbox) go through `confirmationDialog`.

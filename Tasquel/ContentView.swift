@@ -27,6 +27,10 @@ struct ContentView: View {
     @State private var showEventsPanel = false
     /// While the keyboard is up, the bottom bar turns into a Done button.
     @State private var isKeyboardVisible = false
+    /// The bottom bar's height above the home indicator; the grid scrolls clear of it.
+    @State private var bottomBarHeight: CGFloat = 68
+    /// The screen's bottom safe area (home indicator), which the flush bar covers.
+    @State private var homeIndicatorInset: CGFloat = 34
     @Namespace private var bottomBarGlass
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -58,8 +62,8 @@ struct ContentView: View {
             Theme.background(theme).ignoresSafeArea()
 
             VStack(spacing: 12) {
-                // Today's date; the viewed week is shown in the bottom bar.
-                Text(Theme.isRetro(theme) ? "> \(todayDateString)_" : todayDateString)
+                // The viewed week; today's date is shown in the bottom bar.
+                weekTitleText
                     .font(Theme.titleFont(theme))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -110,9 +114,14 @@ struct ContentView: View {
             }
 
             if store.persistenceError == nil {
-                bottomBar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                // Pinned to the very bottom of the screen; the bar pads itself above the
+                // home indicator. (The keyboard still pushes it up.)
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    bottomBar
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
+                }
+                .ignoresSafeArea(.container, edges: .bottom)
             }
 
             // Retro scanline overlay
@@ -121,6 +130,12 @@ struct ContentView: View {
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
+        }
+        // Ignoring the keyboard, the bottom inset is the home indicator's alone.
+        .background {
+            Color.clear
+                .ignoresSafeArea(.keyboard)
+                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { homeIndicatorInset = $0 }
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .preferredColorScheme(store.colorScheme)
@@ -408,6 +423,8 @@ struct ContentView: View {
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
                     )
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                     .transition(.opacity)
             } else {
                 retroBottomBar
@@ -422,15 +439,20 @@ struct ContentView: View {
                         .glassEffect(.regular.interactive(), in: Capsule())
                         .glassEffectID("bottomBar", in: bottomBarGlass)
                         .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
                 } else {
+                    // Flush with the bottom of the screen: the glass runs down behind the
+                    // home indicator while the buttons stay above it.
                     // The content shape makes the whole bar a touch target. Without it, taps on
                     // Settings/Edit fell through to the scrolling grid behind the see-through
                     // bar and the buttons never fired.
                     bottomBarStack
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .padding(.horizontal, 28)
+                        .padding(.top, 8)
+                        .padding(.bottom, homeIndicatorInset)
+                        .contentShape(Rectangle())
+                        .glassEffect(in: Self.bottomBarShape)
                         .glassEffectID("bottomBar", in: bottomBarGlass)
                 }
             }
@@ -461,15 +483,20 @@ struct ContentView: View {
 
     private var retroBottomBar: some View {
         bottomBarStack
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.navCapsule(theme))
-                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 2))
+            .padding(.horizontal, 28)
+            .padding(.top, 8)
+            .padding(.bottom, homeIndicatorInset)
+            .contentShape(Rectangle())
+            .background {
+                Theme.navCapsule(theme)
+                    .overlay(alignment: .top) { Theme.cardBorder(theme, rc: rc).frame(height: 1) }
+            }
     }
+
+    /// Rounded on top only; the screen's own corners round the bottom.
+    private static let bottomBarShape = UnevenRoundedRectangle(
+        topLeadingRadius: 28, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 28, style: .continuous
+    )
 
     /// The bar's row, with the events panel expanding above it when toggled on.
     private var bottomBarStack: some View {
@@ -509,15 +536,15 @@ struct ContentView: View {
 
             Spacer()
 
-            // Viewed week / Go to Today
+            // Today's date / Go to Today
             if store.selectedWeek?.isCurrentWeek == true {
-                weekTitleText
+                todayText
             } else {
                 Button {
                     changeWeek(to: Date())
                 } label: {
                     VStack(spacing: 1) {
-                        weekTitleText
+                        todayText
                         Text(Theme.isRetro(theme) ? "> GO_TO_TODAY" : "Go to Today")
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.accent(theme, rc: rc))
@@ -575,7 +602,12 @@ struct ContentView: View {
     /// "Week of 10/5/26" for the viewed week (or the one arriving while paging).
     private var weekTitleText: some View {
         let title = arrivingWeekTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
-        return Text(Theme.isRetro(theme) ? "[\(title)]" : title)
+        return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
+    }
+
+    /// Today's date, in the bottom bar.
+    private var todayText: some View {
+        Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
             .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -686,7 +718,8 @@ struct ContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom, 80)
+            // Clear of the bottom bar, which grows when the events panel is open.
+            .padding(.bottom, max(80, bottomBarHeight - (isKeyboardVisible ? 0 : homeIndicatorInset) + 16))
         }
         // Dragging down into the keyboard closes it; scrolling up keeps it open.
         .scrollDismissesKeyboard(.interactively)
