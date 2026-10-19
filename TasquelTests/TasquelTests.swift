@@ -1109,3 +1109,80 @@ struct FutureWeekPreviewTests {
         #expect(titles(reloaded).isEmpty, "still deleted after relaunch")
     }
 }
+
+// MARK: - Weeks Are Calendar Dates
+
+/// A week is identified by the day it starts, not by a moment, so changing time zones
+/// finds the same week instead of creating a duplicate.
+struct WeekDayIdentityTests {
+    @Test("Flying west finds the same week and creates no duplicate")
+    func timeZoneChangeKeepsWeek() {
+        let directory = makeTempDirectory()
+        let clock = TestClock(2099, 3, 4)  // Wednesday, New York
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Pack", mode: .oneTime)
+        let next = clock.weeks(1, from: clock.now)
+        store.navigateToDate(next)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Unpack")
+        let ids = store.weeks.map(\.id)
+
+        // Same moment, now in Los Angeles: New York's Monday midnight is Sunday evening there.
+        clock.calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        store.navigateToDate(clock.now)
+        #expect(store.selectedWeek?.categories[0].tasks.map(\.title) == ["Pack"])
+        store.ensureWeekExists(for: clock.now)
+        store.navigateToDate(next)
+        #expect(store.selectedWeek?.categories[0].tasks.map(\.title) == ["Unpack"])
+        #expect(store.weeks.map(\.id) == ids, "no week was added")
+
+        // Relaunching in Los Angeles finds them too.
+        let reloaded = makeIsolatedStore(directory: directory, clock: clock)
+        #expect(reloaded.weeks.map(\.id) == ids)
+        #expect(reloaded.selectedWeek?.categories[0].tasks.map(\.title) == ["Pack"])
+    }
+
+    @Test("Monday just after midnight in New York is still that week after flying west")
+    func earlyMondayInNewYork() {
+        let clock = TestClock(2099, 3, 2, hour: 0)  // Monday 00:00, New York
+        clock.now = clock.now.addingTimeInterval(30 * 60)
+        let store = makeIsolatedStore(clock: clock)
+        let weekID = store.selectedWeek!.id
+        clock.calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        // It's Sunday evening in Los Angeles: the week before. Hours later it's Monday there.
+        clock.now = clock.now.addingTimeInterval(4 * 3600)
+        store.navigateToDate(clock.now)
+        store.ensureWeekExists(for: clock.now)
+        #expect(store.selectedWeek?.id == weekID)
+        #expect(store.weeks.count == 1)
+    }
+
+    @Test("Weeks saved as a moment get their day from it on first load")
+    func migratesLegacyStartDate() throws {
+        let directory = makeTempDirectory()
+        // Monday 2 March 2099, local midnight in New York, as older versions saved it.
+        let legacy = """
+        [{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","startDate":"2099-03-02T05:00:00Z",
+          "categories":[{"id":"B1B2C3D4-E5F6-7890-ABCD-EF1234567890","name":"Work","symbol":"briefcase",
+          "tasks":[{"id":"C1B2C3D4-E5F6-7890-ABCD-EF1234567890","title":"Report","isCompleted":false,
+          "mode":"carryOver","subtasks":[],"taskType":"checkbox"}]}]}]
+        """
+        try Data(legacy.utf8).write(to: directory.appending(path: "checklist.json"))
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        let week = try #require(store.weeks.first { $0.id.uuidString == "A1B2C3D4-E5F6-7890-ABCD-EF1234567890" })
+        #expect(week.startDay == DayKey(year: 2099, month: 3, day: 2))
+        #expect(week.categories[0].tasks.map(\.title) == ["Report"], "nothing lost")
+        let saved = try String(contentsOf: directory.appending(path: "checklist.json"), encoding: .utf8)
+        #expect(saved.contains("\"startDay\" : \"2099-03-02\""), "the day is saved right away")
+    }
+
+    @Test("Switching to Sunday starts moves each week back one calendar day")
+    func weekStartShiftByDay() {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        #expect(store.selectedWeek?.startDay == DayKey(year: 2099, month: 3, day: 2))
+        store.setWeekStartsOnSunday(true)
+        #expect(store.selectedWeek?.startDay == DayKey(year: 2099, month: 3, day: 1))
+        #expect(DayKey(year: 2099, month: 3, day: 1).adding(days: -1) == DayKey(year: 2099, month: 2, day: 28))
+    }
+}

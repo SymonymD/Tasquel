@@ -15,7 +15,7 @@ final class ChecklistStore {
     var savedCategories: [CategoryTemplate] = [] { didSet { previewCache.removeAll() } }
     /// Previewed weeks, so repeated previews (every render while paging) return identical
     /// values instead of new IDs. Cleared whenever the data they're built from changes.
-    @ObservationIgnored private var previewCache: [Date: Week] = [:]
+    @ObservationIgnored private var previewCache: [DayKey: Week] = [:]
     var appearanceMode: AppearanceMode = .system
     var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
@@ -36,7 +36,7 @@ final class ChecklistStore {
     /// The viewed week: the saved one, or, for a week that hasn't been saved (a future
     /// week nobody has edited yet), its preview. Editing a preview saves it.
     var selectedWeek: Week? {
-        if let wi = storedWeekIndex(startingOn: startOfWeek(containing: selectedDate)) { return weeks[wi] }
+        if let wi = storedWeekIndex(startingOn: weekStartDay(containing: selectedDate)) { return weeks[wi] }
         guard persistenceError == nil else { return nil }
         return previewWeek(for: selectedDate)
     }
@@ -149,9 +149,13 @@ final class ChecklistStore {
             let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
+            decoder.userInfo[.weekCalendar] = calendar
             weeks = try decoder.decode([Week].self, from: data)
             sortWeeks()
             weekLoadError = nil
+            // Weeks saved before they had a start day just got one, worked out in this
+            // time zone. Save it now so a later time-zone change can't shift them.
+            if !weeks.isEmpty, data.range(of: Data("\"startDay\"".utf8)) == nil { save() }
         } catch {
             weekLoadError = "Your saved weeks could not be opened. The file has not been changed."
             print("Failed to load: \(error)")
@@ -254,28 +258,30 @@ final class ChecklistStore {
         Week.startOfWeek(containing: date, firstWeekday: firstWeekday, calendar: calendar)
     }
 
+    /// The day the week containing `date` starts on, in the current time zone.
+    func weekStartDay(containing date: Date) -> DayKey {
+        DayKey(startOfWeek(containing: date), in: calendar)
+    }
+
     // MARK: - Week Status
 
-    /// The day after the week's last day.
-    func endDate(of week: Week) -> Date {
-        calendar.date(byAdding: .day, value: 7, to: week.startDate) ?? week.startDate
-    }
+    /// Today, in the current time zone.
+    private var today: DayKey { DayKey(now(), in: calendar) }
 
     /// Whether today falls within the week (any week start day).
     func isCurrentWeek(_ week: Week) -> Bool {
-        let today = now()
-        return week.startDate <= today && today < endDate(of: week)
+        let today = today
+        return week.startDay <= today && today < week.startDay.adding(days: 7)
     }
 
-    func isFutureWeek(_ week: Week) -> Bool { week.startDate > now() }
+    func isFutureWeek(_ week: Week) -> Bool { week.startDay > today }
 
     /// Past weeks are read-only.
     func isPastWeek(_ week: Week) -> Bool { !isCurrentWeek(week) && !isFutureWeek(week) }
 
-    /// The saved week starting on `start`'s day, if any.
-    private func storedWeekIndex(startingOn start: Date) -> Int? {
-        let calendar = calendar
-        return weeks.firstIndex { calendar.isDate($0.startDate, inSameDayAs: start) }
+    /// The saved week starting on `day`, if any.
+    private func storedWeekIndex(startingOn day: DayKey) -> Int? {
+        weeks.firstIndex { $0.startDay == day }
     }
 
     /// Where the viewed week is in `weeks`, ready to change. A week that's only a preview
@@ -294,16 +300,14 @@ final class ChecklistStore {
     func setWeekStartsOnSunday(_ sunday: Bool) {
         guard sunday != weekStartsOnSunday, persistenceError == nil else { return }
         let shift = sunday ? -1 : 1
-        let selectedStart = selectedWeek?.startDate
+        let selectedStart = selectedWeek.map { $0.startDay.adding(days: shift).date(in: calendar) }
         weeks = weeks.map { week in
             var moved = week
-            moved.startDate = calendar.date(byAdding: .day, value: shift, to: week.startDate) ?? week.startDate
+            moved.startDay = week.startDay.adding(days: shift)
             return moved
         }
         weekStartsOnSunday = sunday
-        if let selectedStart, let moved = calendar.date(byAdding: .day, value: shift, to: selectedStart) {
-            selectedDate = moved
-        }
+        if let selectedStart { selectedDate = selectedStart }
         save()
         saveSettings()
         ensureWeekExists(for: now())
@@ -386,7 +390,7 @@ final class ChecklistStore {
 
     @discardableResult
     func ensureWeekExists(for date: Date) -> Week {
-        let monday = startOfWeek(containing: date)
+        let monday = weekStartDay(containing: date)
         if let wi = storedWeekIndex(startingOn: monday) {
             return weeks[wi]
         }
@@ -400,8 +404,8 @@ final class ChecklistStore {
 
     /// Builds (but doesn't store) a new week: rolled forward from the most recent
     /// prior week, or seeded from saved templates if there is none.
-    private func makeWeek(startingOn monday: Date) -> Week {
-        var newWeek = Week(startDate: monday)
+    private func makeWeek(startingOn monday: DayKey) -> Week {
+        var newWeek = Week(startDay: monday)
         if let previousWeek = mostRecentWeekBefore(monday) {
             newWeek.categories = rollForwardCategories(from: previousWeek)
         } else {
@@ -416,7 +420,7 @@ final class ChecklistStore {
     /// The week `navigateToDate(_:)` would show for `date`, without creating or
     /// saving anything. Used to draw neighboring weeks while paging.
     func previewWeek(for date: Date) -> Week {
-        let monday = startOfWeek(containing: date)
+        let monday = weekStartDay(containing: date)
         if let cached = previewCache[monday] { return cached }
         var week = storedWeekIndex(startingOn: monday).map { weeks[$0] } ?? makeWeek(startingOn: monday)
         if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
@@ -428,11 +432,10 @@ final class ChecklistStore {
         return week
     }
 
-    private func mostRecentWeekBefore(_ date: Date) -> Week? {
+    private func mostRecentWeekBefore(_ day: DayKey) -> Week? {
         weeks
-            .filter { $0.startDate < date }
-            .sorted { $0.startDate > $1.startDate }
-            .first
+            .filter { $0.startDay < day }
+            .max { $0.startDay < $1.startDay }
     }
 
     private func rollForwardCategories(from source: Week) -> [Category] {
@@ -470,7 +473,7 @@ final class ChecklistStore {
     /// picks up what changed since: unfinished carry-over tasks, and for a future week
     /// also its categories and recurring tasks.
     private func syncWithPreviousWeek(for date: Date) {
-        let monday = startOfWeek(containing: date)
+        let monday = weekStartDay(containing: date)
         guard let wi = storedWeekIndex(startingOn: monday),
               !isPastWeek(weeks[wi]),
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
@@ -891,6 +894,6 @@ final class ChecklistStore {
     // MARK: - Helpers
 
     private func sortWeeks() {
-        weeks.sort { $0.startDate > $1.startDate }
+        weeks.sort { $0.startDay > $1.startDay }
     }
 }

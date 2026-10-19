@@ -169,9 +169,71 @@ extension Category {
     }
 }
 
+// MARK: - Day
+
+/// A calendar date with no time of day or time zone, saved as "2026-10-19". Weeks are
+/// identified by the day they start, so changing time zones can't move a week onto
+/// another day (an exact midnight in New York is still Sunday evening in California).
+struct DayKey: Hashable, Comparable, Codable, CustomStringConvertible {
+    let year: Int
+    let month: Int
+    let day: Int
+
+    init(year: Int, month: Int, day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
+    /// The day `date` falls on in `calendar`'s time zone.
+    init(_ date: Date, in calendar: Calendar) {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        self.init(year: parts.year ?? 1, month: parts.month ?? 1, day: parts.day ?? 1)
+    }
+
+    /// Midnight at the start of this day in `calendar`'s time zone.
+    func date(in calendar: Calendar) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+    }
+
+    /// The day `days` later (or earlier), by the calendar, not by 24-hour steps.
+    func adding(days: Int) -> DayKey {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let moved = calendar.date(byAdding: .day, value: days, to: date(in: calendar)) ?? date(in: calendar)
+        return DayKey(moved, in: calendar)
+    }
+
+    static func < (lhs: DayKey, rhs: DayKey) -> Bool {
+        (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+
+    var description: String { String(format: "%04d-%02d-%02d", year, month, day) }
+
+    init(from decoder: Decoder) throws {
+        let text = try decoder.singleValueContainer().decode(String.self)
+        let parts = text.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Expected yyyy-MM-dd, got \(text)"))
+        }
+        self.init(year: parts[0], month: parts[1], day: parts[2])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(description)
+    }
+}
+
+extension CodingUserInfoKey {
+    /// The calendar a decoder uses to turn a saved week's old `startDate` into its day.
+    static let weekCalendar = CodingUserInfoKey(rawValue: "weekCalendar")!
+}
+
 struct Week: Codable, Identifiable, Equatable {
     var id = UUID()
-    var startDate: Date
+    /// The day the week starts on. This, not a moment in time, identifies the week.
+    var startDay: DayKey
     var categories: [Category] = []
     /// Carry-over tasks (by their source's ID) the user deleted from this week, so
     /// syncing with the week before doesn't bring them back.
@@ -180,10 +242,53 @@ struct Week: Codable, Identifiable, Equatable {
     /// week before doesn't bring them back.
     var dismissedRepeating: [String]? = nil
 
+    init(id: UUID = UUID(), startDay: DayKey, categories: [Category] = []) {
+        self.id = id
+        self.startDay = startDay
+        self.categories = categories
+    }
+
+    /// A week starting on the day `startDate` falls on in the current time zone.
+    init(id: UUID = UUID(), startDate: Date, categories: [Category] = []) {
+        self.init(id: id, startDay: DayKey(startDate, in: .current), categories: categories)
+    }
+
+    /// Midnight at the start of the week, in the current time zone.
+    var startDate: Date { startDay.date(in: .current) }
+
     var displayTitle: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M/d/yy"
-        return "Week of \(formatter.string(from: startDate))"
+        "Week of \(startDay.month)/\(startDay.day)/\(String(format: "%02d", startDay.year % 100))"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating
+    }
+
+    /// Weeks saved before `startDay` existed only have `startDate`, a moment; their day
+    /// is worked out in the decoder's calendar (the current time zone) on first load.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        if let day = try container.decodeIfPresent(DayKey.self, forKey: .startDay) {
+            startDay = day
+        } else {
+            let calendar = decoder.userInfo[.weekCalendar] as? Calendar ?? .current
+            startDay = DayKey(try container.decode(Date.self, forKey: .startDate), in: calendar)
+        }
+        categories = try container.decode([Category].self, forKey: .categories)
+        dismissedCarryOvers = try container.decodeIfPresent([UUID].self, forKey: .dismissedCarryOvers)
+        dismissedRepeating = try container.decodeIfPresent([String].self, forKey: .dismissedRepeating)
+    }
+
+    /// Also writes `startDate`, so an older build of the app can still open the file.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(startDay, forKey: .startDay)
+        try container.encode(startDate, forKey: .startDate)
+        try container.encode(categories, forKey: .categories)
+        try container.encodeIfPresent(dismissedCarryOvers, forKey: .dismissedCarryOvers)
+        try container.encodeIfPresent(dismissedRepeating, forKey: .dismissedRepeating)
     }
 
     // Whether a week is past, current or future depends on today, so the store answers
