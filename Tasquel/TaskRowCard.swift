@@ -404,9 +404,10 @@ struct TaskRowCard: View {
             }
             HStack {
                 Button("Delete", role: .destructive) { showDeleteConfirmation = true }
-                    .tint(.red)
+                    .foregroundStyle(.red)
                     .frame(maxWidth: .infinity)
                 Button("Save Goal", action: saveEditedGoal)
+                    .foregroundStyle(canSaveEditedGoal ? Color.green : Theme.textTertiary(theme, rc: rc))
                     .disabled(!canSaveEditedGoal)
                     .frame(maxWidth: .infinity)
             }
