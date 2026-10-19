@@ -220,7 +220,7 @@ struct ContentView: View {
         .onChange(of: isEditing) {
             // Edit mode is for managing categories: collapse everything.
             guard isEditing else { return }
-            withAnimation(Self.cardSpring) {
+            withAnimation(cardAnimation) {
                 expandedCategoryKeys.removeAll()
                 editingCategoryKeys.removeAll()
                 categoryDisplayOrder.removeAll()
@@ -414,7 +414,7 @@ struct ContentView: View {
         if store.persistenceError == nil, !isEditing, let week = store.selectedWeek, !gridEntries(for: week).isEmpty {
             let anyExpanded = gridEntries(for: week).contains { expandedCategoryKeys.contains($0.id) }
             Button {
-                withAnimation(Self.cardSpring) {
+                withAnimation(cardAnimation) {
                     if anyExpanded {
                         expandedCategoryKeys.removeAll()
                         editingCategoryKeys.removeAll()
@@ -453,11 +453,13 @@ struct ContentView: View {
                 changeWeek(by: -1)
             } label: {
                 Image(systemName: "chevron.left").font(.body.bold())
+                    .touchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Previous week")
             Button { showDatePicker = true } label: {
                 Image(systemName: "calendar").font(.body)
+                    .touchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Go to week")
@@ -465,6 +467,7 @@ struct ContentView: View {
                 changeWeek(by: 1)
             } label: {
                 Image(systemName: "chevron.right").font(.body.bold())
+                    .touchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Next week")
@@ -710,6 +713,12 @@ struct ContentView: View {
     /// One spring for expand, collapse, and the reflow of neighboring cards.
     private static let cardSpring = Animation.spring(duration: 0.45, bounce: 0.12)
 
+    /// With Reduce Motion on, cards open and close without sliding or resizing.
+    private var cardAnimation: Animation? { reduceMotion ? nil : Self.cardSpring }
+
+    /// At accessibility text sizes every card takes a full row, so names and tasks fit.
+    private var usesSingleColumn: Bool { dynamicTypeSize.isAccessibilitySize }
+
     @ViewBuilder
     private func weekContent(_ week: Week) -> some View {
         let categories = week.categories
@@ -739,7 +748,7 @@ struct ContentView: View {
                             },
                             onExpand: { expandCard(entry.id, in: week) },
                             onCollapse: {
-                                withAnimation(Self.cardSpring) { collapseCategory(entry.id) }
+                                withAnimation(cardAnimation) { collapseCategory(entry.id) }
                             }
                         )
                         // The dragged card leaves a gap where it will land; a lifted copy
@@ -766,7 +775,7 @@ struct ContentView: View {
                             if !store.isPastWeek(week) && !isExpanded { cardMoveActions(entry.id, in: week) }
                         }
                         // Outside the modifiers above, where the grid layout can read it.
-                        .categoryGridFullWidth(isExpanded)
+                        .categoryGridFullWidth(isExpanded || usesSingleColumn)
                         // The card being opened or closed stays above neighbors sliding past it.
                         .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                     }
@@ -845,12 +854,12 @@ struct ContentView: View {
     /// slot, so it opens in place instead of dropping below an already-open card.
     private func expandCard(_ key: CategoryLayoutKey, in week: Week) {
         guard !isEditing else { return }  // edit mode keeps cards collapsed
-        withAnimation(Self.cardSpring) { expandCategory(key, in: week) }
+        withAnimation(cardAnimation) { expandCategory(key, in: week) }
     }
 
     private func expandCategory(_ key: CategoryLayoutKey, in week: Week) {
         var order = gridEntries(for: week).map(\.id)
-        let rows = CategoryGridLayout.rows(fullWidth: order.map { expandedCategoryKeys.contains($0) })
+        let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || expandedCategoryKeys.contains($0) })
         if let row = rows.first(where: { $0.count == 2 && order[$0[1]] == key }) {
             order.remove(at: row[1])
             order.insert(key, at: row[0])
@@ -1048,7 +1057,7 @@ struct ContentView: View {
             .task(id: EventsLoadKey(weekStart: week.startDate, calendarIDs: calendarIDs, generation: calendarService.generation)) {
                 await calendarService.load(weekStarting: week.startDate, calendarIDs: calendarIDs)
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
         }
     }
 

@@ -42,6 +42,7 @@ struct CategoryGridCard: View {
     @State private var editedName = ""
     @State private var nameError: String?
     @FocusState private var isNameFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Collapsed → expanded sizes; scaled with Dynamic Type. Expanded sizes include
     // the 15% enlargement applied to everything inside an expanded card.
@@ -117,10 +118,11 @@ struct CategoryGridCard: View {
                     Image(systemName: "minus.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.white, .red)
+                        .touchTarget()
                 }
                 .buttonStyle(.plain)
                 .offset(x: 8, y: -8)
-                .transition(.scale.combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .accessibilityLabel("Remove \(category.name)")
             }
         }
@@ -177,7 +179,8 @@ struct CategoryGridCard: View {
                         size: isExpanded ? expandedTitleSize : collapsedTitleSize,
                         weight: .semibold, design: design
                     ))
-                    .lineLimit(1)
+                    // Long names wrap rather than being cut off at large text sizes.
+                    .lineLimit(2)
             }
             Spacer(minLength: 4)
             // The edit button lives beside the pie chart in space that opens up as
@@ -190,6 +193,7 @@ struct CategoryGridCard: View {
                             Image(systemName: isEditingTasks ? "checkmark.circle.fill" : "square.and.pencil")
                                 .font(.system(size: expandedPieSize))
                                 .foregroundStyle(isEditingTasks ? .green : Theme.textSecondary(theme, rc: rc))
+                                .touchTarget()
                         }
                         .buttonStyle(.plain)
                         .opacity(showsEditButton ? 1 : 0)
@@ -309,8 +313,10 @@ private struct CollapsedCategoryContent: View {
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.dotIncomplete(theme))
                         } else {
+                            // Filled when done, an outline when not, so it doesn't rely on color alone.
                             Circle()
-                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.dotIncomplete(theme))
+                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : .clear)
+                                .strokeBorder(task.isCompleted ? .clear : Theme.dotIncomplete(theme), lineWidth: 1.5)
                                 .frame(width: 7, height: 7)
                         }
                         Text(task.title)
@@ -370,14 +376,17 @@ private struct ExpandedCategoryContent: View {
             HStack {
                 Spacer()
                 Button { onCollapse() } label: {
-                    if Theme.isRetro(theme) {
-                        Text("[CLOSE]").font(.expandedCard(.caption1, design: .monospaced))
-                            .foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                    } else {
-                        Image(systemName: "rectangle.compress.vertical")
-                            .font(.expandedCard(size: 20))
-                            .foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
+                    Group {
+                        if Theme.isRetro(theme) {
+                            Text("[CLOSE]").font(.expandedCard(.caption1, design: .monospaced))
+                                .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                        } else {
+                            Image(systemName: "rectangle.compress.vertical")
+                                .font(.expandedCard(size: 20))
+                                .foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
+                        }
                     }
+                    .touchTarget()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Collapse \(category.name)")

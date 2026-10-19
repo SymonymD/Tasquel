@@ -89,6 +89,7 @@ Key behaviors:
 - **Destructive actions** (delete task/sub-task/category/template, goal → checkbox) go through `confirmationDialog`.
 - **No swipe actions** (they require `List`); use edit-mode controls (no long-press menus on cards or tasks).
 - **Retro theme**: every view branches on `Theme.isRetro(theme)` for monospaced fonts/terminal styling.
+- **Accessibility**: small icon buttons get a 44pt hit area with `.touchTarget()` inside the label (no layout change). Retro text colors (bright/dim/faint, `retroRed`) keep 4.5:1 on a retro card; `glow` is only for the card shadow. Done/not done never relies on color alone (filled vs. outline). At accessibility text sizes every card takes a full row (`usesSingleColumn`). Reduce Motion turns off the card spring (`cardAnimation`) and sliding transitions.
 
 ## Swift Configuration
 

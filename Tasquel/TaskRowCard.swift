@@ -45,6 +45,16 @@ func expandedCardControl(_ length: CGFloat) -> CGFloat {
 }
 
 extension View {
+    /// Makes a small control tappable across at least 44×44 points (or the given size)
+    /// around its center, without changing its layout. Apply it inside a button's label.
+    func touchTarget(width: CGFloat = 44, height: CGFloat = 44) -> some View {
+        background {
+            Color.clear
+                .frame(width: width, height: height)
+                .contentShape(Rectangle())
+        }
+    }
+
     func expandedCardFont(_ style: UIFont.TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default) -> some View {
         font(.expandedCard(style, weight: weight, design: design))
     }
@@ -104,19 +114,21 @@ struct TaskRowCard: View {
                             store.toggleTask(categoryID: categoryID, taskID: task.id)
                         }
                     } label: {
-                        if Theme.isRetro(theme) {
-                            Text(task.isCompleted ? "[x]" : "[ ]")
-                                .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
-                                .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                        } else {
-                            Circle()
-                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
-                                .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                                .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                        Group {
+                            if Theme.isRetro(theme) {
+                                Text(task.isCompleted ? "[x]" : "[ ]")
+                                    .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                            } else {
+                                Circle()
+                                    .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                                    .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                                    .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                            }
                         }
+                        .touchTarget()
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle().size(width: expandedCardControl(36), height: expandedCardControl(36)))
                     .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
                     .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
                 }
@@ -221,6 +233,7 @@ struct TaskRowCard: View {
             TaskOptionsLabel(type: task.taskType, mode: task.mode, theme: theme, rc: rc)
                 .frame(minHeight: expandedCardControl(36))
                 .contentShape(Rectangle())
+                .touchTarget()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Task options: \(task.taskType.label), \(task.mode.label)")
@@ -267,6 +280,7 @@ struct TaskRowCard: View {
             .foregroundStyle(color)
             .frame(width: expandedCardControl(36), height: expandedCardControl(36))
             .contentShape(Rectangle())
+            .touchTarget()
     }
 
     @ViewBuilder
@@ -541,7 +555,8 @@ struct TaskRowCard: View {
             .font(.expandedCard(.caption1, weight: .bold))
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(Theme.accent(theme, rc: rc), in: Capsule())
-            .foregroundStyle(.white)
+            // Retro's accent is a bright phosphor color: dark text stays readable on it.
+            .foregroundStyle(Theme.isRetro(theme) ? .black : .white)
     }
 
     private var goalFieldFont: Font {
@@ -741,6 +756,9 @@ struct SubTaskRowCard: View {
     @FocusState private var isTitleFocused: Bool
     @State private var showDeleteConfirmation = false
 
+    /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
+    private static let touchHeight: CGFloat = 28
+
     private func commitTitle() {
         let title = editedTitle.trimmingCharacters(in: .whitespaces)
         if !title.isEmpty {
@@ -761,11 +779,9 @@ struct SubTaskRowCard: View {
                         .font(.expandedCard(.subheadline))
                         .foregroundStyle(.white, Theme.destructive(theme))
                         .frame(width: expandedCardControl(14), height: expandedCardControl(14))
+                        .touchTarget(height: Self.touchHeight)
                 }
                 .buttonStyle(.plain)
-                .padding(8)
-                .contentShape(Rectangle())
-                .padding(-8)
                 .accessibilityLabel(isListItem ? "Delete item \(subtask.title)" : "Delete sub-task \(subtask.title)")
             } else {
                 checkbox
@@ -816,22 +832,21 @@ struct SubTaskRowCard: View {
                 store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
             }
         } label: {
-            if Theme.isRetro(theme) {
-                Text(subtask.isCompleted ? "[x]" : "[ ]")
-                    .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
-                    .foregroundStyle(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-            } else {
-                Circle()
-                    .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
-                    .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                    .frame(width: expandedCardControl(14), height: expandedCardControl(14))
+            Group {
+                if Theme.isRetro(theme) {
+                    Text(subtask.isCompleted ? "[x]" : "[ ]")
+                        .font(.expandedCard(.caption1, weight: .bold, design: .monospaced))
+                        .foregroundStyle(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                } else {
+                    Circle()
+                        .fill(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                        .overlay(Circle().stroke(subtask.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                        .frame(width: expandedCardControl(14), height: expandedCardControl(14))
+                }
             }
+            .touchTarget(height: Self.touchHeight)
         }
         .buttonStyle(.plain)
-        // A bigger touch target than the small circle, without changing the layout.
-        .padding(8)
-        .contentShape(Rectangle())
-        .padding(-8)
         .accessibilityLabel(TaskAccessibility.checkboxLabel(subtask.title, isCompleted: subtask.isCompleted))
         .accessibilityAddTraits(subtask.isCompleted ? .isSelected : [])
     }

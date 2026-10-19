@@ -39,6 +39,7 @@ struct AddCategorySheet: View {
                                     .font(.title3)
                                     .frame(width: 32, height: 32)
                                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                                    .touchTarget()
                             }
                             TextField("Category name", text: $newName)
                                 .onSubmit(createNew)
