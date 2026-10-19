@@ -142,6 +142,9 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var goalUnitKind: GoalUnitKind? = nil
     /// For a task carried over from the week before: the task it was copied from.
     var carriedFrom: UUID? = nil
+    /// For a repeating task's copy in a later week: the task it repeats, so renames and
+    /// other changes reach the copy instead of adding a second one.
+    var repeatsFrom: UUID? = nil
 
     var allSubtasksCompleted: Bool {
         subtasks.allSatisfy(\.isCompleted)
@@ -264,8 +267,8 @@ struct Week: Codable, Identifiable, Equatable {
     /// The day the week starts on. This, not a moment in time, identifies the week.
     var startDay: DayKey
     var categories: [Category] = []
-    /// Carry-over tasks (by their source's ID) the user deleted from this week, so
-    /// syncing with the week before doesn't bring them back.
+    /// Carry-over and repeating tasks (by their source's ID) the user deleted from this
+    /// week, so syncing with the week before doesn't bring them back.
     var dismissedCarryOvers: [UUID]? = nil
     /// Repeating tasks (by title) the user deleted from this week, so syncing with the
     /// week before doesn't bring them back.

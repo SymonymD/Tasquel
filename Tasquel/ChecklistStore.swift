@@ -441,19 +441,15 @@ final class ChecklistStore {
     private func rollForwardCategories(from source: Week) -> [Category] {
         source.categories.filter { !$0.isThisWeekOnly }.map { category in
             var newCategory = Category(name: category.name, symbol: category.symbol)
-
-            // Repeating tasks always carry forward (reset to incomplete)
-            let repeatingTasks = category.tasks
-                .filter { $0.mode == .repeating }
-                .map { Self.resetRecurringTask($0) }
-
-            // Carry-over tasks only if incomplete
-            let carryOverTasks = category.tasks
-                .filter { $0.mode == .carryOver && !$0.isCompleted }
-                .map { Self.carriedCopy(of: $0) }
-
-            // oneTime tasks never carry forward
-            newCategory.tasks = repeatingTasks + carryOverTasks
+            // In the same order as this week. Repeating tasks always come back (reset);
+            // carry-over tasks only if unfinished; one-time tasks never.
+            newCategory.tasks = category.tasks.compactMap { task in
+                switch task.mode {
+                case .repeating: Self.resetRecurringTask(task)
+                case .carryOver: task.isCompleted ? nil : Self.carriedCopy(of: task)
+                case .oneTime: nil
+                }
+            }
             return newCategory
         }
     }
@@ -514,7 +510,7 @@ final class ChecklistStore {
 
                 for ti in week.categories[ci].tasks.indices.reversed() {
                     let copy = week.categories[ci].tasks[ti]
-                    guard let sourceID = copy.carriedFrom,
+                    guard let sourceID = copy.carriedFrom, copy.mode == .carryOver,
                           !copy.isCompleted, !copy.subtasks.contains(where: \.isCompleted) else { continue }
                     if let task = sources[sourceID], task.mode == .carryOver, !task.isCompleted {
                         let followed = following(task, copy: copy)
@@ -538,8 +534,22 @@ final class ChecklistStore {
                 week.categories[ci].tasks.append(carriedCopy(of: task))
                 changed = true
             }
+            if isFuture, orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
         }
         return changed
+    }
+
+    /// Puts copies of `source`'s tasks in `source`'s order, so next week lists them the
+    /// way this week does. Tasks added only to this week keep their places.
+    /// Returns whether the order changed.
+    private static func orderLikeSource(_ tasks: inout [ChecklistTask], source: [ChecklistTask]) -> Bool {
+        let rank = Dictionary(source.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let sourceRank = { (task: ChecklistTask) in (task.repeatsFrom ?? task.carriedFrom).flatMap { rank[$0] } }
+        let slots = tasks.indices.filter { sourceRank(tasks[$0]) != nil }
+        let sorted = slots.map { tasks[$0] }.sorted { sourceRank($0)! < sourceRank($1)! }
+        guard sorted.map(\.id) != slots.map({ tasks[$0].id }) else { return false }
+        for (slot, task) in zip(slots, sorted) { tasks[slot] = task }
+        return true
     }
 
     /// A copy of a carry-over task for the next week: its unchecked sub-tasks and its
@@ -575,31 +585,86 @@ final class ChecklistStore {
         return copy
     }
 
-    /// Adds the source week's categories and recurring tasks that `week` is missing,
-    /// skipping repeating tasks the user deleted from `week`. Returns whether anything changed.
+    /// Brings `week`'s repeating tasks in line with the source week's: copies follow
+    /// their source (a renamed task is renamed, not added again), untouched copies of
+    /// tasks that stopped repeating or were deleted go away, and missing ones are added,
+    /// skipping ones the user deleted from `week`. Missing categories are added too.
+    /// Returns whether anything changed.
     private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week) -> Bool {
         var changed = false
+        let dismissedTitles = Set(week.dismissedRepeating ?? [])
+        let dismissedIDs = Set(week.dismissedCarryOvers ?? [])
+        let isDismissed = { (task: ChecklistTask) in dismissedIDs.contains(task.id) || dismissedTitles.contains(task.title) }
 
-        let dismissed = Set(week.dismissedRepeating ?? [])
         for sourceCategory in sourceWeek.categories where !sourceCategory.isThisWeekOnly {
-            let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating && !dismissed.contains($0.title) }
-
-            if let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) {
-                // Category exists — add any missing recurring tasks
-                let existingTitles = Set(week.categories[ci].tasks.filter { $0.mode == .repeating }.map(\.title))
-                for task in recurringTasks where !existingTitles.contains(task.title) {
-                    week.categories[ci].tasks.append(resetRecurringTask(task))
-                    changed = true
-                }
-            } else {
+            let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating }
+            guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else {
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
-                newCat.tasks = recurringTasks.map { resetRecurringTask($0) }
+                newCat.tasks = recurringTasks.filter { !isDismissed($0) }.map { resetRecurringTask($0) }
                 week.categories.append(newCat)
                 changed = true
+                continue
             }
+            let sources = Dictionary(sourceCategory.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+            // Copies made before they remembered their source are adopted by title.
+            for task in recurringTasks {
+                let tasks = week.categories[ci].tasks
+                guard !tasks.contains(where: { $0.repeatsFrom == task.id }),
+                      let ti = tasks.firstIndex(where: { $0.repeatsFrom == nil && $0.carriedFrom == nil && $0.mode == .repeating && $0.title == task.title })
+                else { continue }
+                week.categories[ci].tasks[ti].repeatsFrom = task.id
+                changed = true
+            }
+
+            for ti in week.categories[ci].tasks.indices.reversed() {
+                let copy = week.categories[ci].tasks[ti]
+                guard let sourceID = copy.repeatsFrom, copy.mode == .repeating else { continue }
+                // Linked to the source, or to the task the source itself repeats (a week
+                // in between was saved after this one).
+                let source = sources[sourceID] ?? sourceCategory.tasks.first { $0.repeatsFrom == sourceID }
+                if let task = source, task.mode == .repeating {
+                    var followed = followingRepeating(task, copy: copy)
+                    followed.repeatsFrom = task.id
+                    if followed != copy {
+                        week.categories[ci].tasks[ti] = followed
+                        changed = true
+                    }
+                } else if !copy.isCompleted && (copy.goalProgress ?? 0) == 0 && !copy.subtasks.contains(where: \.isCompleted) {
+                    week.categories[ci].tasks.remove(at: ti)
+                    changed = true
+                }
+            }
+
+            for task in recurringTasks where !isDismissed(task) {
+                guard !week.categories[ci].tasks.contains(where: { $0.repeatsFrom == task.id }) else { continue }
+                week.categories[ci].tasks.append(resetRecurringTask(task))
+                changed = true
+            }
+            if orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
         }
         return changed
+    }
+
+    /// A later week's copy of a repeating task updated from its source: name, type and
+    /// goal setup follow; the copy's own progress and checks stay. A list gains the
+    /// source's new items and drops unchecked items the source no longer has.
+    private static func followingRepeating(_ task: ChecklistTask, copy: ChecklistTask) -> ChecklistTask {
+        var copy = copy
+        copy.title = task.title
+        copy.taskType = task.taskType
+        copy.goalTarget = task.goalTarget
+        copy.goalUnit = task.goalUnit
+        copy.goalUnitKind = task.goalUnitKind
+        if task.taskType != .goal { copy.goalProgress = nil }
+        if task.taskType == .list {
+            let sourceTitles = Set(task.subtasks.map(\.title))
+            copy.subtasks.removeAll { !$0.isCompleted && !sourceTitles.contains($0.title) }
+            let present = Set(copy.subtasks.map(\.title))
+            copy.subtasks += task.subtasks.filter { !present.contains($0.title) }.map { SubTask(title: $0.title) }
+        }
+        return copy
     }
 
     /// Next week's copy of a repeating task: unchecked, with goal progress back to zero.
@@ -615,6 +680,7 @@ final class ChecklistStore {
         newTask.goalProgress = 0
         newTask.goalUnit = task.goalUnit
         newTask.goalUnitKind = task.goalUnitKind
+        newTask.repeatsFrom = task.id
         return newTask
     }
 
@@ -776,6 +842,9 @@ final class ChecklistStore {
             // In a future week, a deleted repeating task must not be synced back in.
             if task.mode == .repeating && isFutureWeek(weeks[wi]) {
                 weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
+                if let sourceID = task.repeatsFrom {
+                    weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+                }
             }
         }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }

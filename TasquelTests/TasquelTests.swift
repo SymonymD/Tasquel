@@ -1302,3 +1302,78 @@ struct PrivacyManifestTests {
         #expect(apis.contains { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" })
     }
 }
+
+// MARK: - Repeating Tasks Follow Their Source
+
+struct RepeatingFollowTests {
+    private let clock = TestClock(2099, 3, 4)
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func titles(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories[0].tasks.map(\.title)
+    }
+
+    /// This week: Hands (repeating), Books (carry-over), Articles (repeating).
+    private func makeStore() -> (ChecklistStore, UUID) {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Hands", mode: .repeating, type: .goal)
+        store.addTask(categoryID: categoryID, title: "Books", mode: .carryOver, type: .goal)
+        store.addTask(categoryID: categoryID, title: "Articles", mode: .repeating, type: .goal)
+        return (store, categoryID)
+    }
+
+    @Test("Next week lists tasks in this week's order")
+    func keepsOrder() {
+        let (store, _) = makeStore()
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Hands", "Books", "Articles"], "preview")
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Mine", mode: .oneTime)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Hands", "Books", "Articles", "Mine"], "saved week")
+    }
+
+    @Test("Renaming a repeating task renames next week's copy instead of adding one")
+    func renameFollows() {
+        let (store, categoryID) = makeStore()
+        store.navigateToDate(nextWeek)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Mine", mode: .oneTime)  // saves next week
+
+        store.navigateToDate(clock.now)
+        let hands = store.selectedWeek!.categories[0].tasks[0]
+        store.renameTask(categoryID: categoryID, taskID: hands.id, newTitle: "Essays")
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Essays", "Books", "Articles", "Mine"])
+    }
+
+    @Test("A copy keeps its own progress while following its source's target")
+    func copyKeepsProgress() {
+        let (store, categoryID) = makeStore()
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks[0]
+        store.updateGoalProgress(categoryID: store.selectedWeek!.categories[0].id, taskID: copy.id, progress: 3)
+
+        store.navigateToDate(clock.now)
+        let hands = store.selectedWeek!.categories[0].tasks[0]
+        store.setGoalTarget(categoryID: categoryID, taskID: hands.id, target: 10)
+        store.navigateToDate(nextWeek)
+        let followed = store.selectedWeek!.categories[0].tasks[0]
+        #expect(followed.goalTarget == 10)
+        #expect(followed.goalProgress == 3)
+    }
+
+    @Test("A deleted repeating copy stays deleted even after its source is renamed")
+    func deletedStaysDeletedAfterRename() {
+        let (store, categoryID) = makeStore()
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks[0]
+        store.deleteTask(categoryID: store.selectedWeek!.categories[0].id, taskID: copy.id)
+
+        store.navigateToDate(clock.now)
+        let hands = store.selectedWeek!.categories[0].tasks[0]
+        store.renameTask(categoryID: categoryID, taskID: hands.id, newTitle: "Essays")
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Books", "Articles"])
+    }
+}
