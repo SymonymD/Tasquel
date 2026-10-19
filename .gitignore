@@ -9,3 +9,6 @@ DerivedData/
 
 # Local tool state
 .superpowers/
+
+# Claude Code local state
+.claude/

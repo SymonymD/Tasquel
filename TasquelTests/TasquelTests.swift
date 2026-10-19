@@ -1289,3 +1289,16 @@ struct TaskAccessibilityTests {
         #expect(TaskAccessibility.goalValue(task) == "Done, 5 of 5 pages")
     }
 }
+
+// MARK: - Privacy Manifest
+
+struct PrivacyManifestTests {
+    @Test("The app ships a privacy manifest declaring its UserDefaults use")
+    func manifestIsBundled() throws {
+        let url = try #require(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
+        let plist = try #require(NSDictionary(contentsOf: url))
+        #expect(plist["NSPrivacyTracking"] as? Bool == false)
+        let apis = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
+        #expect(apis.contains { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" })
+    }
+}
