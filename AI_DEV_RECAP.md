@@ -28,9 +28,9 @@ Repo: https://github.com/SymonymD/Tasquel
 Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-10-10)
+## Current State (as of 2026-10-19)
 
-Committed and pushed to `main` through `800ce9b` (audit fixes, test isolation, new welcome animation). **Uncommitted in the working tree**: the category card animation rework (`CategoryGridLayout.swift`, `CategoryCard.swift`, `ContentView.swift`), week swiping (`ContentView.swift`), grid layout unit tests, the `#Preview("Onboarding")` in `OnboardingSheet.swift`, and this recap. The user approved the card animation in the simulator; week swiping is verified by UI tests and recordings but not yet tried by the user. Last runs: 19 unit tests + the 2 expansion UI tests passing; temporary swipe tests passing (deleted after use). `CLAUDE.md`/`AGENTS.md` don't yet describe the card rework or week swiping.
+Branch `calendar-integration-and-card-rework`, pushed through the pre-submission fixes (see Commit History). ~7,750 lines of Swift across app and tests; 71 unit tests (Swift Testing) and the UI tests in `TasquelUITests` (not re-run during the pre-submission pass, at the user's request). The user tests on their iPhone 16 Pro Max (install via `devicectl`, see memory). The file table below is from 2026-10-10; `CLAUDE.md`/`AGENTS.md` have the current file list.
 
 ### Files
 
@@ -155,6 +155,15 @@ Committed and pushed to `main` through `800ce9b` (audit fixes, test isolation, n
 49. **Week start setting and header swap (2026-10-10, uncommitted)**: Settings ▸ Week Starts On (Sunday/Monday); switching moves every saved week by one day so tasks stay with their week. The header now shows today's date and the bottom bar shows "Week of …" (with Go to Today on other weeks).
 48. **Calendar integration (2026-10-10, uncommitted)**: See `docs/plans/2026-10-10-calendar-integration.md`. Settings toggle + calendar picker; a calendar toggle next to Settings expands the bottom bar to list the viewed week's events (tap opens the Calendar app at the event's date); refresh on calendar changes and foregrounding; `FeatureAccess.isCalendarUnlocked` for a future paywall. Launch arguments `-fakeCalendar` and `-isolatedData` for tests.
 
+50. **Task types and modes (2026-10-17/18)**: Type (Checkbox / Goal / List) and mode (One-Time / Carry Over / Repeating) are independent, picked in a two-column popover (`TaskOptionsPicker`). List tasks hold items as sub-tasks and check themselves off; repeating lists keep checked items. Goal units (quantity / time / custom) with Add Progress and an edit form with Delete.
+51. **Carry-over linking**: carried copies record `carriedFrom`; deleted copies are remembered in `Week.dismissedCarryOvers`; unlinked copies from older builds are adopted by title.
+52. **Cards and layout**: hold-and-drag reordering of closed cards (custom gesture, cancellation-safe), card rename/icon in card edit mode, completion ring, saved-category editor in Settings, text that follows Dynamic Type, flush bottom bar with today's date, "Week of …" in the header. No long-press menus on cards or tasks; one tap on a task name renames it.
+53. **Pre-submission fixes (2026-10-19)**:
+    - Future weeks are previews until edited (`previewWeek`, `editableSelectedWeekIndex()`); repeating tasks deleted from a future week are kept out via `Week.dismissedRepeating`.
+    - Weeks are identified by `Week.startDay` (`DayKey`, "yyyy-MM-dd"); old files migrate on first load and are re-saved. The store takes injectable `now`/`calendar`, and past/current/future checks moved to the store.
+    - Goal values capped at 999,999; `GoalNumber` parses comma decimals per locale.
+    - Help "Upcoming Features" removed; Settings has Support/Privacy links (`AppInfo`, URLs marked TODO: confirm), bundle version, and hides the calendar section when locked; VoiceOver labels for checkboxes and goal progress; `PrivacyInfo.xcprivacy` (UserDefaults CA92.1).
+
 ### UI Layout (Post-Redesign)
 
 - **Root**: `ZStack` with `Theme.background()` adaptive background
@@ -194,9 +203,37 @@ d19b04f Resolve merge conflicts: keep upstream file split, fix repo URL
 de4d5f7 Fix duplicate redeclarations, remove VIKOV.xcodeproj, add #Preview
 50ee264 Audit fixes, independent card expansion, clock welcome animation, test isolation
 800ce9b Replace clock welcome animation with week carry-over animation
+0bcc736 Calendar integration, card animation rework, week swiping, week start setting
+0ad0c5b Docs: drop resolved cleanup items (booking.lottie removed, RemoveCategorySheet deleted)
+7e8aee3 Goal units, Add Progress flow, and a keyboard Done button
+2e7e629 Inline goal unit menu; bottom bar morphs into a keyboard Done button
+c7ca019 Auto-add on task option pick, drop One-Time, keep new-task options clear of Done
+e092b2a One task type menu: Checkbox, Carry Over, Repeating, Goal
+c89b559 Give each task type its own icon color
+34c33a6 Add List task type
+b367b68 Carry over tasks into weeks that already exist
+6e25302 Say item instead of sub-task in lists
+65f86b3 Adopt carry-over copies made before they linked to their source
+9a13a32 Fix Help crash: render sections from the array
+99d1f09 Type/mode picker, text size, card rename and reorder, saved category editor
+d4016f8 Drop card long-press menu, grid icon for edit mode, repeating lists keep checks
+e72f8fa Drag closed cards to reorder without edit mode; fix stuck dimmed card
+25287f7 Smoother card dragging with a custom hold-and-drag gesture
+827c592 Keep a held card following the finger; drop it if the gesture is cancelled
+f767564 Don't change week when a lifted card is dragged sideways
+8f358a6 Edit mode: no adding, sub-task delete on the left
+54bb28f Flush bottom bar with today's date, week title in header, one-tap title editing
+53420ec Goal fields: larger tap area, amount selected on focus
+d19a09e One tap on a task name renames it, outside edit mode too
+ee1c1b0 Drop task long-press menu, Delete beside Save Goal, reset cancelled swipes and drags
+c30bc45 Future weeks stay previews until edited
+4740a81 Identify weeks by calendar date, not by moment
+f5e3e60 Test that removing every starter in onboarding keeps them removed
+5501006 Goal input: cap values, read comma decimals
+cc1c37b Help and onboarding text for App Review
+059ae61 Settings: Support and Privacy links, real version, no Coming Soon
+c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 ```
-
-Uncommitted: category card animation rework + Onboarding preview (see Current State).
 
 ## Development Workflow
 
@@ -254,6 +291,10 @@ Uncommitted: category card animation rework + Onboarding preview (see Current St
 38. **Running on the user's iPhone (2026-10-07, unresolved)**: Their iPhone 16 Pro Max (iOS 26.5.2, Developer Mode on) is paired but `devicectl` shows it `unavailable`, with no connection since 2026-03-24, so it doesn't appear as a run destination. The Mac is on the 10.0.0.x LAN via Ethernet and Wi-Fi. Fix: connect once by cable, then enable "Connect via network" in Window ▸ Devices and Simulators. Xcode is 26.2 (older than the phone's iOS 26.5) and may need updating if it can't prepare the device. Check with `xcrun devicectl list devices`.
 39. **`.disabled` cancels gestures attached inside it**: The events panel disables its event buttons while being dragged (so a drag can't open an event). With the swipe-down gesture attached inside the disabled subtree, the drag cancelled itself as soon as it started. Attach the gesture outside `.disabled`.
 40. **A vertical `ScrollView` swallows vertical drags even when its content fits**, so a parent swipe-down gesture never fires. The events panel only uses a `ScrollView` when the list is taller than its maximum height. (XCUITest's `swipeDown()` on a small element also drags only a short distance; use `press(forDuration:thenDragTo:withVelocity:)`.)
+41. **Peeking saved stale future weeks (fixed 2026-10-19)**: navigating to a future week used to save it, freezing its carry-overs. Now only an edit saves a future week. When adding a store mutation, start it with `editableSelectedWeekIndex()`, never `weeks.firstIndex(where: selectedWeek.id)`, or edits to a previewed week are lost.
+42. **Weeks as moments broke across time zones (fixed 2026-10-19)**: compare `startDay`, never `startDate`. `Week.startDate` uses `Calendar.current`; store code should use its injected `calendar`.
+43. **Swift Testing runs tests in parallel**: don't use a global clock or `NSTimeZone.default`; pass a `TestClock` to `makeIsolatedStore(clock:)`.
+44. **SwiftUI `DragGesture.onEnded` isn't called when iOS cancels the touch**: track gesture-driven state with `@GestureState` and react to it resetting (card drag, week swipe), or the state sticks (a frozen grid).
 
 
 ## Figma Reference
@@ -265,7 +306,9 @@ Uncommitted: category card animation rework + Onboarding preview (see Current St
 
 ## Planned / Not Yet Implemented
 
-- **Calendar integration (paid upgrade)**: Pull user's calendar events into Tasquel. Key design decisions still open: (1) events as tasks vs read-only reference vs user choice per-category, (2) payment model (one-time vs subscription), (3) calendar source — Apple EventKit recommended since it covers all calendars synced to device (iCloud, Google, Exchange) without extra OAuth. Existing Settings already has a "Coming Soon" toggle placeholder.
+- **Confirm the Support and Privacy URLs** (`AppInfo` in `SettingsSheet.swift`, marked TODO) and publish those pages before submission.
+- **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
+- **iCloud sync** (user: later).
 - **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
 - **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
 - **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
@@ -273,17 +316,12 @@ Uncommitted: category card animation rework + Onboarding preview (see Current St
 - iPad-specific layout optimizations
 - Data export/import
 
-## Last Session Summary (2026-10-04 → 2026-10-07, Claude Code)
+## Last Session Summary (2026-10-17 → 2026-10-19, Claude Code)
 
 **What was done**:
-- Reviewed GPT's uncommitted audit work; fixed test isolation (tests had been overwriting the simulator's real data), made retry-after-load-failure run full setup, added `.gitignore`, updated `CLAUDE.md`/`AGENTS.md`. Committed and pushed (`50ee264`).
-- Fixed the clock-to-checkmark geometry, then replaced it with a new `WeekCarryOverAnimation` (storyboarded first, built with `KeyframeAnimator`). Committed and pushed (`800ce9b`). Added an Onboarding preview.
-- Reworked category card animations: custom `CategoryGridLayout`, one card view with a shared smoothly-resizing header, cross-faded content, `.geometryGroup()`. Verified frame-by-frame from simulator recordings; fixed several issues found that way (gotchas 27–32). User approved it in the simulator.
-- Added week swiping with direction-matched slides for swipes, arrows, Go to Today, and the date picker (item 46). Recordings caught a swipe opening the card under the finger; fixed with `.disabled` (gotcha 36).
-- Diagnosed Xcode preview failures (gotcha 33, unresolved until Xcode is restarted) and why the user's iPhone doesn't appear as a run destination (gotcha 38).
+- Many UX iterations tested on the user's iPhone: task type/mode picker, List type, carry-over linking, card drag reordering, card/task long-press menus removed, flush bottom bar, one-tap rename, goal editor polish.
+- Pre-submission pass (items 1, 2, 4, 5, 6, 8–12 of the user's list): future weeks as previews, day-based week identity with migration, injectable clock, goal caps and locale parsing, App Review text fixes, Support/Privacy links, VoiceOver labels, privacy manifest. Each with unit tests.
 
 **In progress / next**:
-- User to try week swiping in the simulator; tune threshold or speed if needed.
-- User to reconnect the iPhone by cable (and possibly update Xcode) to run this build on device.
-- Commit and push everything uncommitted (card rework, week swiping, Onboarding preview, recap), and update `CLAUDE.md`/`AGENTS.md` for the new grid and paging.
-- Other open work: feedback webhook/entry point, calendar integration, iPad layout, expansion persistence across relaunch, data export/import.
+- User to check by hand in the simulator: peeking at next week then editing this week, a pre-existing data file loading, comma-decimal goals (German region), Settings links and version, Help in dark mode, VoiceOver on checkboxes and goals.
+- Items 3 and 7 deferred by the user. Confirm the two URLs.

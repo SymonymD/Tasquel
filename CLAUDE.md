@@ -40,7 +40,7 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/CategorySymbols.swift` | Category icon list with readable names, `CategorySymbolMenu` |
 | `Tasquel/SavedCategoriesView.swift` | Settings ▸ Saved Categories: rename, re-icon, reorder, add, delete templates |
 | `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new) + `DatePickerSheet` |
-| `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts) |
+| `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts); `AppInfo` holds the Support/Privacy URLs and reads the version |
 | `Tasquel/HelpSheet.swift` | Help guide |
 | `Tasquel/OnboardingSheet.swift` | Onboarding flow (welcome, how it works, name, categories) |
 | `Tasquel/CategoryGridLayout.swift` | Custom `Layout`: two-column card grid, expanded cards take a full row |
@@ -48,6 +48,7 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/CalendarSettings.swift` | Settings rows and calendar picker for calendar integration |
 | `Tasquel/CalendarEventsPanel.swift` | The week's events, shown inside the bottom bar when its calendar toggle is on |
 | `Tasquel/WeekCarryOverAnimation.swift` | Welcome illustration: `KeyframeAnimator` loop showing an unfinished task carrying into next week |
+| `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest (no tracking or collected data; UserDefaults reason CA92.1) |
 | `Tasquel/FeedbackSheet.swift` | Feedback webhook sheet — currently not linked from the UI |
 
 ### Data Models (`Models.swift`)
@@ -55,23 +56,26 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 - **`TaskMode`** — `.carryOver` (rolls if incomplete), `.repeating` (every week), `.oneTime` (never carries)
 - **`TaskType`** — `.checkbox`, `.goal` (target/progress/unit) or `.list` (items stored as sub-tasks; checks itself off). Type and mode are independent.
 - **`SubTask`**, **`ChecklistTask`**, **`Category`** (name + SF Symbol + tasks)
-- **`Week`** — date-anchored container of categories (Monday-based)
+- **`Week`** — container of categories, identified by `startDay` (a `DayKey`: year-month-day, saved as `"yyyy-MM-dd"`), not by a moment, so time-zone changes can't duplicate weeks. `startDate` is computed (midnight in the current time zone) and still written for older builds; files without `startDay` get it from `startDate` in the current time zone on first load and are re-saved. `dismissedCarryOvers` / `dismissedRepeating` record tasks the user deleted from that week.
+- **`GoalNumber`** — locale-aware goal amount parsing/formatting; goal values are capped at `GoalUnitKind.maxValue` (999,999)
 - **`CategoryTemplate`** — saved category name+symbol for reuse
 - **`AppearanceMode`** — `.system`, `.light`, `.dark`, `.retro`; **`RetroColor`** — retro phosphor palette
 
 ### Store (`ChecklistStore.swift`)
 
-Single `@Observable` store owns all app state. `init(directory:defaults:)` defaults to the Documents folder and `UserDefaults.standard`; **tests must pass a temp directory and a throwaway defaults suite** so they never touch real data.
+Single `@Observable` store owns all app state. `init(directory:defaults:now:calendar:)` defaults to the Documents folder, `UserDefaults.standard`, `Date()` and `Calendar.current`; **tests must pass a temp directory and a throwaway defaults suite** (`makeIsolatedStore()`) so they never touch real data, and a `TestClock` when they depend on today or the time zone. Past/current/future checks live on the store (`isPastWeek(_:)`, `isCurrentWeek(_:)`, `isFutureWeek(_:)`) so they use that clock.
 
 - **`checklist.json`** — array of `Week` objects (all task data)
 - **`settings.json`** — templates, appearance mode, retro color, onboarding flag
 - `UserDefaults` — `userName`, `didMigrateStarters_v1`
+- **Starter categories** are added to saved categories only on first launch; `offeredStarterNames` in settings remembers which were offered, so ones the user removes (even all of them, in onboarding) never come back.
 
 Key behaviors:
-- **Weekly rollover**: `ensureWeekExists(for:)` creates new weeks by rolling forward categories from the most recent prior week. Repeating tasks always carry (reset). Carry-over tasks carry only if incomplete. One-time tasks never carry. Category UUIDs change every week.
+- **Weekly rollover**: a week is built by rolling forward categories from the most recent saved prior week. Repeating tasks always carry (reset). Carry-over tasks carry only if incomplete. One-time tasks never carry. Category UUIDs change every week.
+- **Future weeks are previews until edited**: only the current week is created by looking at it (`ensureWeekExists` at launch / navigation). Any other unsaved week is `previewWeek(for:)` (cached so IDs stay stable) and `selectedWeek` returns it. Every mutation goes through `editableSelectedWeekIndex()`, which saves the preview first. Saved future weeks keep syncing with the week before (`syncWithPreviousWeek`): untouched carried copies (`carriedFrom`) follow or leave with their source, missing ones are added unless dismissed, and missing repeating tasks are added unless in `dismissedRepeating`.
 - **Load order** (`loadAndPrepare`, used by init and `retryLoadingData`): settings → seed starter templates → weeks → ensure current week → starter migration.
 - **Load-failure safety**: if either JSON file fails to decode, `persistenceError` is set, all saves are blocked (so defaults never overwrite the file), and `ContentView` shows a retry screen.
-- **Past weeks are read-only**: every mutation guards `!week.isPastWeek`.
+- **Past weeks are read-only**: `editableSelectedWeekIndex()` returns nil for them.
 
 ### UI Patterns
 
