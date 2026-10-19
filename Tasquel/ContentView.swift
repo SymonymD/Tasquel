@@ -272,7 +272,7 @@ struct ContentView: View {
     }
 
     private func changeWeek(by weeks: Int, velocity: CGFloat = 0) {
-        guard let date = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: store.selectedDate) else { return }
+        guard let date = store.calendar.date(byAdding: .weekOfYear, value: weeks, to: store.selectedDate) else { return }
         changeWeek(to: date, velocity: velocity)
     }
 
@@ -296,7 +296,7 @@ struct ContentView: View {
             if let pagerTarget, pagerTarget.slot == slot {
                 return PagerPage(slot: slot, week: store.previewWeek(for: pagerTarget.date))
             }
-            let date = Calendar.current.date(byAdding: .weekOfYear, value: slot, to: current.startDate) ?? current.startDate
+            let date = store.calendar.date(byAdding: .weekOfYear, value: slot, to: current.startDate) ?? current.startDate
             return PagerPage(slot: slot, week: store.previewWeek(for: date))
         }
     }
@@ -306,7 +306,7 @@ struct ContentView: View {
     private func changeWeek(to date: Date, velocity: CGFloat = 0) {
         guard !isChangingWeek, let current = store.selectedWeek else { return }
         let target = store.startOfWeek(containing: date)
-        guard !Calendar.current.isDate(target, inSameDayAs: current.startDate) else {
+        guard !store.calendar.isDate(target, inSameDayAs: current.startDate) else {
             withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 }
             return
         }
@@ -317,8 +317,8 @@ struct ContentView: View {
         }
 
         let slot = target > current.startDate ? 1 : -1
-        if let adjacent = Calendar.current.date(byAdding: .weekOfYear, value: slot, to: current.startDate),
-           !Calendar.current.isDate(store.startOfWeek(containing: adjacent), inSameDayAs: target) {
+        if let adjacent = store.calendar.date(byAdding: .weekOfYear, value: slot, to: current.startDate),
+           !store.calendar.isDate(store.startOfWeek(containing: adjacent), inSameDayAs: target) {
             pagerTarget = PagerTarget(slot: slot, date: date)  // off-screen, so no visible swap
         }
         isChangingWeek = true

@@ -59,7 +59,10 @@ final class ChecklistStore {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let calendarProvider: () -> Calendar
 
-    var calendar: Calendar { calendarProvider() }
+    /// The calendar for week dates: Gregorian, in the provided calendar's time zone, so
+    /// a device set to the Japanese, Buddhist, Hebrew or another calendar still finds
+    /// the same weeks.
+    var calendar: Calendar { .weekDates(in: calendarProvider().timeZone) }
 
     /// `directory` and `defaults` are injectable so tests never touch the app's real data.
     init(directory: URL = .documentsDirectory, defaults: UserDefaults = .standard,
@@ -393,7 +396,9 @@ final class ChecklistStore {
             return weeks[wi]
         }
 
-        let newWeek = makeWeek(startingOn: monday)
+        var newWeek = makeWeek(startingOn: monday)
+        // Built from the week before just now, so already fully synced.
+        if !isFutureWeek(newWeek) { newWeek.didFinalSync = true }
         weeks.append(newWeek)
         sortWeeks()
         save()
@@ -423,8 +428,8 @@ final class ChecklistStore {
         var week = storedWeekIndex(startingOn: monday).map { weeks[$0] } ?? makeWeek(startingOn: monday)
         if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
             let isFuture = isFutureWeek(week)
-            if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source) }
-            _ = Self.syncCarryOverTasks(into: &week, from: source, isFuture: isFuture)
+            if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source, addsCategories: true) }
+            _ = Self.syncCarryOverTasks(into: &week, from: source, followsSource: isFuture)
         }
         previewCache[monday] = week
         return week
@@ -473,26 +478,35 @@ final class ChecklistStore {
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
         var changed = false
         let isFuture = isFutureWeek(weeks[wi])
-        if isFuture {
-            changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek)
+        // A saved week that has just become current gets one last full sync, so changes
+        // made last week after it was saved (a task finished, a repeating task renamed)
+        // still reach it. Only once: after that the week is the user's own.
+        let isFinalSync = !isFuture && weeks[wi].didFinalSync != true
+        let follows = isFuture || isFinalSync
+        if follows {
+            changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek, addsCategories: isFuture)
         }
-        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek, isFuture: isFuture) { changed = true }
+        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek, followsSource: follows) { changed = true }
+        if isFinalSync {
+            weeks[wi].didFinalSync = true
+            changed = true
+        }
         if changed { save() }
     }
 
     /// Adds `source`'s unfinished carry-over tasks that `week` is missing, skipping ones
-    /// the user deleted from `week`. In a future week, copies the user hasn't touched
-    /// (nothing checked) also follow their source: they pick up its new unchecked items,
-    /// and go away once it's finished or no longer carries over. Returns whether
-    /// anything changed.
-    private static func syncCarryOverTasks(into week: inout Week, from source: Week, isFuture: Bool) -> Bool {
+    /// the user deleted from `week`. With `followsSource` (a future week, or a week's
+    /// final sync), copies the user hasn't touched (nothing checked) also follow their
+    /// source: they pick up its new unchecked items, and go away once it's finished or
+    /// no longer carries over. Returns whether anything changed.
+    private static func syncCarryOverTasks(into week: inout Week, from source: Week, followsSource: Bool) -> Bool {
         var changed = false
         let dismissed = Set(week.dismissedCarryOvers ?? [])
         for sourceCategory in source.categories where !sourceCategory.isThisWeekOnly {
             guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else { continue }
             let sources = Dictionary(sourceCategory.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-            if isFuture {
+            if followsSource {
                 // Copies made before copies remembered their source (same title, never
                 // touched) are adopted, so they follow too instead of going stale.
                 for task in sourceCategory.tasks where task.mode == .carryOver && !task.isCompleted {
@@ -532,7 +546,7 @@ final class ChecklistStore {
                 week.categories[ci].tasks.append(carriedCopy(of: task))
                 changed = true
             }
-            if isFuture, orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
+            if followsSource, orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
         }
         return changed
     }
@@ -586,9 +600,10 @@ final class ChecklistStore {
     /// Brings `week`'s repeating tasks in line with the source week's: copies follow
     /// their source (a renamed task is renamed, not added again), untouched copies of
     /// tasks that stopped repeating or were deleted go away, and missing ones are added,
-    /// skipping ones the user deleted from `week`. Missing categories are added too.
+    /// skipping ones the user deleted from `week`. With `addsCategories`, missing
+    /// categories are added too (not in a current week, whose deletions are the user's).
     /// Returns whether anything changed.
-    private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week) -> Bool {
+    private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week, addsCategories: Bool) -> Bool {
         var changed = false
         let dismissedTitles = Set(week.dismissedRepeating ?? [])
         let dismissedIDs = Set(week.dismissedCarryOvers ?? [])
@@ -597,6 +612,7 @@ final class ChecklistStore {
         for sourceCategory in sourceWeek.categories where !sourceCategory.isThisWeekOnly {
             let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating }
             guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else {
+                guard addsCategories else { continue }
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
                 newCat.tasks = recurringTasks.filter { !isDismissed($0) }.map { resetRecurringTask($0) }

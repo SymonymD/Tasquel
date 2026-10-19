@@ -193,6 +193,19 @@ extension Category {
     }
 }
 
+// MARK: - Week Calendar
+
+extension Calendar {
+    /// The calendar for week dates: always Gregorian, in `timeZone` (the user's by
+    /// default), whatever calendar the device is set to. Saved days ("2026-10-19") and
+    /// week starts are Gregorian year/month/day numbers.
+    static func weekDates(in timeZone: TimeZone = .current) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+}
+
 // MARK: - Day
 
 /// A calendar date with no time of day or time zone, saved as "2026-10-19". Weeks are
@@ -209,21 +222,21 @@ struct DayKey: Hashable, Comparable, Codable, CustomStringConvertible {
         self.day = day
     }
 
-    /// The day `date` falls on in `calendar`'s time zone.
+    /// The (Gregorian) day `date` falls on in `calendar`'s time zone. Only the time zone
+    /// is taken from `calendar`.
     init(_ date: Date, in calendar: Calendar) {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        let parts = Calendar.weekDates(in: calendar.timeZone).dateComponents([.year, .month, .day], from: date)
         self.init(year: parts.year ?? 1, month: parts.month ?? 1, day: parts.day ?? 1)
     }
 
     /// Midnight at the start of this day in `calendar`'s time zone.
     func date(in calendar: Calendar) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+        Calendar.weekDates(in: calendar.timeZone).date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 
     /// The day `days` later (or earlier), by the calendar, not by 24-hour steps.
     func adding(days: Int) -> DayKey {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let calendar = Calendar.weekDates(in: TimeZone(identifier: "UTC")!)
         let moved = calendar.date(byAdding: .day, value: days, to: date(in: calendar)) ?? date(in: calendar)
         return DayKey(moved, in: calendar)
     }
@@ -265,6 +278,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// Repeating tasks (by title) the user deleted from this week, so syncing with the
     /// week before doesn't bring them back.
     var dismissedRepeating: [String]? = nil
+    /// Set once the week, as the current week, has had its last full sync with the week
+    /// before (see `ChecklistStore.syncWithPreviousWeek`). Nil in older files.
+    var didFinalSync: Bool? = nil
 
     init(id: UUID = UUID(), startDay: DayKey, categories: [Category] = []) {
         self.id = id
@@ -274,18 +290,18 @@ struct Week: Codable, Identifiable, Equatable {
 
     /// A week starting on the day `startDate` falls on in the current time zone.
     init(id: UUID = UUID(), startDate: Date, categories: [Category] = []) {
-        self.init(id: id, startDay: DayKey(startDate, in: .current), categories: categories)
+        self.init(id: id, startDay: DayKey(startDate, in: .weekDates()), categories: categories)
     }
 
     /// Midnight at the start of the week, in the current time zone.
-    var startDate: Date { startDay.date(in: .current) }
+    var startDate: Date { startDay.date(in: .weekDates()) }
 
     var displayTitle: String {
         "Week of \(startDay.month)/\(startDay.day)/\(String(format: "%02d", startDay.year % 100))"
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating
+        case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating, didFinalSync
     }
 
     /// Weeks saved before `startDay` existed only have `startDate`, a moment; their day
@@ -296,12 +312,13 @@ struct Week: Codable, Identifiable, Equatable {
         if let day = try container.decodeIfPresent(DayKey.self, forKey: .startDay) {
             startDay = day
         } else {
-            let calendar = decoder.userInfo[.weekCalendar] as? Calendar ?? .current
+            let calendar = decoder.userInfo[.weekCalendar] as? Calendar ?? .weekDates()
             startDay = DayKey(try container.decode(Date.self, forKey: .startDate), in: calendar)
         }
         categories = try container.decode([Category].self, forKey: .categories)
         dismissedCarryOvers = try container.decodeIfPresent([UUID].self, forKey: .dismissedCarryOvers)
         dismissedRepeating = try container.decodeIfPresent([String].self, forKey: .dismissedRepeating)
+        didFinalSync = try container.decodeIfPresent(Bool.self, forKey: .didFinalSync)
     }
 
     /// Also writes `startDate`, so an older build of the app can still open the file.
@@ -313,6 +330,7 @@ struct Week: Codable, Identifiable, Equatable {
         try container.encode(categories, forKey: .categories)
         try container.encodeIfPresent(dismissedCarryOvers, forKey: .dismissedCarryOvers)
         try container.encodeIfPresent(dismissedRepeating, forKey: .dismissedRepeating)
+        try container.encodeIfPresent(didFinalSync, forKey: .didFinalSync)
     }
 
     // Whether a week is past, current or future depends on today, so the store answers
@@ -323,9 +341,10 @@ struct Week: Codable, Identifiable, Equatable {
     static let monday = 2
 
     /// Start (midnight) of the week containing `date`. `firstWeekday` is 1 for
-    /// Sunday or 2 for Monday; the store passes the user's setting.
-    static func startOfWeek(containing date: Date, firstWeekday: Int = monday, calendar: Calendar = .current) -> Date {
-        var calendar = calendar
+    /// Sunday or 2 for Monday; the store passes the user's setting. Worked out in the
+    /// Gregorian calendar, in `calendar`'s time zone.
+    static func startOfWeek(containing date: Date, firstWeekday: Int = monday, calendar: Calendar = .weekDates()) -> Date {
+        var calendar = Calendar.weekDates(in: calendar.timeZone)
         calendar.firstWeekday = firstWeekday  // must be set, or US locales default to Sunday
         var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         components.weekday = firstWeekday

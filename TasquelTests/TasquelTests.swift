@@ -12,9 +12,9 @@ import SwiftUI
 
 /// A store backed by a throwaway directory and defaults suite, so tests can run
 /// in parallel without reading or overwriting the app's real data.
-private func makeIsolatedStore(directory: URL = makeTempDirectory(), clock: TestClock? = nil) -> ChecklistStore {
-    let suite = "TasquelTests-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+private func makeIsolatedStore(directory: URL = makeTempDirectory(), clock: TestClock? = nil,
+                               defaults: UserDefaults? = nil) -> ChecklistStore {
+    let defaults = defaults ?? UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
     guard let clock else { return ChecklistStore(directory: directory, defaults: defaults) }
     return ChecklistStore(directory: directory, defaults: defaults,
                           now: { clock.now }, calendar: { clock.calendar })
@@ -1366,5 +1366,89 @@ struct RepeatingFollowTests {
         store.renameTask(categoryID: categoryID, taskID: hands.id, newTitle: "Essays")
         store.navigateToDate(nextWeek)
         #expect(titles(store) == ["Books", "Articles"])
+    }
+}
+
+// MARK: - Final Sync When a Week Becomes Current
+
+struct FinalSyncTests {
+    private func titles(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories[0].tasks.map(\.title)
+    }
+
+    /// This week has "Call bank" (carry-over) and "Hands" (repeating); next week is
+    /// saved because the user added "Dentist" to it.
+    private let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+
+    private func setUp() -> (URL, TestClock, ChecklistStore, UUID) {
+        let directory = makeTempDirectory()
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Call bank", mode: .carryOver)
+        store.addTask(categoryID: categoryID, title: "Hands", mode: .repeating)
+        store.navigateToDate(clock.weeks(1, from: clock.now))
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Dentist", mode: .oneTime)
+        store.navigateToDate(clock.now)
+        return (directory, clock, store, categoryID)
+    }
+
+    @Test("Changes made after next week was saved reach it when it becomes current")
+    func finalSyncOnLaunch() {
+        let (directory, clock, store, categoryID) = setUp()
+        let tasks = store.selectedWeek!.categories[0].tasks
+        store.toggleTask(categoryID: categoryID, taskID: tasks[0].id)  // finish Call bank
+        store.renameTask(categoryID: categoryID, taskID: tasks[1].id, newTitle: "Essays")
+
+        // A week later, without ever opening next week again.
+        clock.now = clock.weeks(1, from: clock.now)
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(relaunched) == ["Essays", "Dentist"])
+    }
+
+    @Test("The final sync happens once, so later edits to the current week stay")
+    func finalSyncOnlyOnce() {
+        let (directory, clock, _, _) = setUp()
+        clock.now = clock.weeks(1, from: clock.now)
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(store) == ["Call bank", "Hands", "Dentist"])
+
+        // The user renames the carried copy and deletes a category in the current week.
+        let category = store.selectedWeek!.categories[0]
+        store.renameTask(categoryID: category.id, taskID: category.tasks[0].id, newTitle: "Call the bank")
+        let removed = store.selectedWeek!.categories[1]
+        store.deleteCategory(removed.id)
+
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(relaunched) == ["Call the bank", "Hands", "Dentist"])
+        #expect(!relaunched.selectedWeek!.categories.contains { $0.name == removed.name })
+    }
+}
+
+// MARK: - Week Dates Are Gregorian
+
+struct GregorianWeekTests {
+    @Test("Japanese, Buddhist and Hebrew device calendars find the same weeks", arguments: [
+        Calendar.Identifier.japanese, .buddhist, .hebrew, .islamicUmmAlQura,
+    ])
+    func sameWeeks(identifier: Calendar.Identifier) {
+        let directory = makeTempDirectory()
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Pack", mode: .oneTime)
+        let weeks = store.weeks.map { ($0.id, $0.startDay) }
+        #expect(store.selectedWeek?.startDay == DayKey(year: 2099, month: 3, day: 2))
+
+        var other = Calendar(identifier: identifier)
+        other.timeZone = clock.calendar.timeZone
+        clock.calendar = other
+        let reopened = makeIsolatedStore(directory: directory, clock: clock)
+        #expect(reopened.weeks.map(\.id) == weeks.map(\.0))
+        #expect(reopened.weeks.map(\.startDay) == weeks.map(\.1))
+        #expect(reopened.selectedWeek?.categories[0].tasks.map(\.title) == ["Pack"])
+        #expect(reopened.isCurrentWeek(reopened.selectedWeek!))
+        #expect(Week.startOfWeek(containing: clock.now, calendar: other)
+                == Week.startOfWeek(containing: clock.now, calendar: .weekDates(in: other.timeZone)))
+        #expect(DayKey(clock.now, in: other) == DayKey(year: 2099, month: 3, day: 4))
     }
 }
