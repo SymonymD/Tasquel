@@ -543,6 +543,18 @@ struct TaskRowCard: View {
             .textFieldStyle(.roundedBorder)
             .frame(width: width * expandedCardScale)
             .focused($focusedGoalField, equals: focus)
+            // A tap just outside the small box still lands in it.
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture { focusedGoalField = focus }
+            .padding(.vertical, -6)
+            // The current amount is selected, so typing replaces it.
+            .onChange(of: focusedGoalField) { _, new in
+                guard new == focus else { return }
+                DispatchQueue.main.async {
+                    UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
+                }
+            }
     }
 
     private func labeledGoalRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {

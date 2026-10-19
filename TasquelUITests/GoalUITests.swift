@@ -239,4 +239,43 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2), "the keyboard opens on the first tap")
         XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
     }
+
+    /// One tap on any field in the goal editor opens the keyboard on it.
+    @MainActor
+    func testEditGoalFieldsFocusOnFirstTap() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Read\n")
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
+        let targetField = app.textFields["Target"]
+        XCTAssertTrue(targetField.waitForExistence(timeout: 3))
+        targetField.tap()
+        targetField.typeText("10")
+        app.buttons["Set"].tap()
+        if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
+
+        app.buttons["Edit goal"].tap()
+        for label in ["Target", "Progress", "Target"] {
+            let field = app.textFields[label].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 3))
+            field.tap()
+            XCTAssertEqual(field.value(forKey: "hasKeyboardFocus") as? Bool, true, "\(label) focuses on the first tap")
+        }
+        // The amount is selected on focus, so typing replaces it.
+        let progress = app.textFields["Progress"].firstMatch
+        progress.tap()
+        progress.typeText("3")
+        XCTAssertEqual(progress.value as? String, "3")
+        // A tap just below the box still focuses it.
+        let target = app.textFields["Target"].firstMatch
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
+        XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
+    }
 }
