@@ -162,7 +162,7 @@ Branch `calendar-integration-and-card-rework`, pushed through the pre-submission
     - Future weeks are previews until edited (`previewWeek`, `editableSelectedWeekIndex()`); repeating tasks deleted from a future week are kept out via `Week.dismissedRepeating`.
     - Weeks are identified by `Week.startDay` (`DayKey`, "yyyy-MM-dd"); old files migrate on first load and are re-saved. The store takes injectable `now`/`calendar`, and past/current/future checks moved to the store.
     - Goal values capped at 999,999; `GoalNumber` parses comma decimals per locale.
-    - Help "Upcoming Features" removed; Settings has Support/Privacy links (`AppInfo`, URLs marked TODO: confirm), bundle version, and hides the calendar section when locked; VoiceOver labels for checkboxes and goal progress; `PrivacyInfo.xcprivacy` (UserDefaults CA92.1).
+    - Help "Upcoming Features" removed; Settings has Support/Privacy links (`AppInfo`; pages live at jbfentner.com/tasquel, /support, /privacy), bundle version, and hides the calendar section when locked; VoiceOver labels for checkboxes and goal progress; `PrivacyInfo.xcprivacy` (UserDefaults CA92.1).
 
 ### UI Layout (Post-Redesign)
 
@@ -306,7 +306,6 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 
 ## Planned / Not Yet Implemented
 
-- **Confirm the Support and Privacy URLs** (`AppInfo` in `SettingsSheet.swift`, marked TODO) and publish those pages before submission.
 - **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
 - **iCloud sync** (user: later).
 - **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
@@ -324,4 +323,4 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 
 **In progress / next**:
 - User to check by hand in the simulator: peeking at next week then editing this week, a pre-existing data file loading, comma-decimal goals (German region), Settings links and version, Help in dark mode, VoiceOver on checkboxes and goals.
-- Items 3 and 7 deferred by the user. Confirm the two URLs.
+- Items 3 and 7 deferred by the user.

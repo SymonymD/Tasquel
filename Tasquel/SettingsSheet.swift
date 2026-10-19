@@ -4,9 +4,7 @@ import SwiftUI
 
 /// Links and version shown in Settings, kept in one place.
 enum AppInfo {
-    // TODO: confirm URL
     static let privacyPolicyURL = URL(string: "https://jbfentner.com/tasquel/privacy")!
-    // TODO: confirm URL
     static let supportURL = URL(string: "https://jbfentner.com/tasquel/support")!
 
     /// "1.0 (1)" style values from the app's Info.plist.
