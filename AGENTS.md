@@ -80,7 +80,7 @@ Key behaviors:
 ### UI Patterns
 
 - **Card grid** (`ScrollView`, not `List`): collapsed cards in 2-column rows; an expanded card takes a full-width row. Multiple cards can be open; expansion is tracked by `CategoryLayoutKey` (name + occurrence) since UUIDs change per week, so open cards persist across week navigation (in memory only).
-- **Bottom bar**: settings (left), today's date / go-to-today (center), edit/done (right), flush with the bottom of the screen on Liquid Glass (top-bordered bar in retro). The grid's bottom padding follows the bar's measured height.
+- **Bottom bar**: settings (left), today's date / go-to-today (center), edit/done (right), flush with the bottom of the screen as a flat translucent bar with only a top border (also in retro). The grid's bottom padding follows the bar's measured height.
 - **Edit mode (bottom bar)**: category management — add-category card and delete badges; all cards collapse and can't open. A card's own edit button edits only that card's tasks (trash cans, renaming). Deleting a category removes it from the current and all future weeks (past weeks keep history) and keeps its saved template.
 - **Week paging**: last/this/next week are laid side by side (`PagerTrack`); drag offset lives in `WeekPagerState` so dragging doesn't rebuild pages.
 - **Header / bottom bar**: the header shows the viewed week ("Week of …"); the bottom bar shows Settings, the calendar toggle (when calendar events are on), today's date (with Go to Today on other weeks), and Edit.

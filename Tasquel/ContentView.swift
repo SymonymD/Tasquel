@@ -452,8 +452,9 @@ struct ContentView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                 } else {
-                    // Flush with the bottom of the screen: the glass runs down behind the
-                    // home indicator while the buttons stay above it.
+                    // Flush with the bottom of the screen, like a tab bar: a flat translucent
+                    // bar with only a top border, running down behind the home indicator
+                    // while the buttons stay above it.
                     // The content shape makes the whole bar a touch target. Without it, taps on
                     // Settings/Edit fell through to the scrolling grid behind the see-through
                     // bar and the buttons never fired.
@@ -462,8 +463,10 @@ struct ContentView: View {
                         .padding(.top, 8)
                         .padding(.bottom, homeIndicatorInset)
                         .contentShape(Rectangle())
-                        .glassEffect(in: Self.bottomBarShape)
-                        .glassEffectID("bottomBar", in: bottomBarGlass)
+                        .background {
+                            Rectangle().fill(.bar)
+                                .overlay(alignment: .top) { Divider() }
+                        }
                 }
             }
         }
@@ -502,11 +505,6 @@ struct ContentView: View {
                     .overlay(alignment: .top) { Theme.cardBorder(theme, rc: rc).frame(height: 1) }
             }
     }
-
-    /// Rounded on top only; the screen's own corners round the bottom.
-    private static let bottomBarShape = UnevenRoundedRectangle(
-        topLeadingRadius: 28, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 28, style: .continuous
-    )
 
     /// The bar's row, with the events panel expanding above it when toggled on.
     private var bottomBarStack: some View {
