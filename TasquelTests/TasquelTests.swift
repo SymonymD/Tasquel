@@ -859,6 +859,22 @@ struct CategoryNameTests {
         #expect(!relaunched.savedCategories.contains { $0.name == "Work" })
         #expect(relaunched.savedCategories.contains { $0.name == "Office" })
     }
+
+    @Test("Removing every category in onboarding doesn't bring the starters back")
+    func removingAllStartersInOnboarding() {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "starters-\(UUID().uuidString)")!
+        let first = ChecklistStore(directory: directory, defaults: defaults)
+        // What onboarding's Let's Go! does with nothing selected.
+        first.savedCategories = []
+        first.saveSettings()
+        first.replaceCurrentWeekCategories(with: [])
+        first.dismissWelcome()
+
+        let relaunched = ChecklistStore(directory: directory, defaults: defaults)
+        #expect(relaunched.savedCategories.isEmpty)
+        #expect(relaunched.selectedWeek?.categories.isEmpty == true)
+    }
 }
 
 // MARK: - List Tasks
