@@ -1,5 +1,24 @@
 import SwiftUI
 
+// MARK: - App Info
+
+/// Links and version shown in Settings, kept in one place.
+enum AppInfo {
+    // TODO: confirm URL
+    static let privacyPolicyURL = URL(string: "https://jbfentner.com/tasquel/privacy")!
+    // TODO: confirm URL
+    static let supportURL = URL(string: "https://jbfentner.com/tasquel/support")!
+
+    /// "1.0 (1)" style values from the app's Info.plist.
+    static func version(from info: [String: Any]? = Bundle.main.infoDictionary) -> String {
+        info?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    static func build(from info: [String: Any]? = Bundle.main.infoDictionary) -> String {
+        info?["CFBundleVersion"] as? String ?? "—"
+    }
+}
+
 // MARK: - Settings Sheet
 
 struct SettingsSheet: View {
@@ -67,16 +86,17 @@ struct SettingsSheet: View {
                 }
             }
             .listRowBackground(darkCardBg)
-            Section {
-                calendarSection
-            } header: {
-                Text("Calendar")
-            } footer: {
-                if FeatureAccess.isCalendarUnlocked {
+            // Hidden entirely while calendar integration is turned off.
+            if FeatureAccess.isCalendarUnlocked {
+                Section {
+                    CalendarSettingsRows(store: store, calendar: calendar)
+                } header: {
+                    Text("Calendar")
+                } footer: {
                     Text("Shows the week's events from the calendar button in the bottom bar. Events stay on your device and are never changed.")
                 }
+                .listRowBackground(darkCardBg)
             }
-            .listRowBackground(darkCardBg)
             Section {
                 Button { showHelp = true } label: {
                     Label("How to Use Tasquel", systemImage: "questionmark.circle")
@@ -85,9 +105,18 @@ struct SettingsSheet: View {
                 Text("Help")
             }
             .listRowBackground(darkCardBg)
+            Section("Support") {
+                Link(destination: AppInfo.supportURL) {
+                    Label("Support", systemImage: "lifepreserver")
+                }
+                Link(destination: AppInfo.privacyPolicyURL) {
+                    Label("Privacy Policy", systemImage: "hand.raised")
+                }
+            }
+            .listRowBackground(darkCardBg)
             Section("About") {
-                LabeledContent("Version", value: "1.0")
-                LabeledContent("Build", value: "1")
+                LabeledContent("Version", value: AppInfo.version())
+                LabeledContent("Build", value: AppInfo.build())
             }
             .listRowBackground(darkCardBg)
         }
@@ -122,8 +151,10 @@ struct SettingsSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                retroSection("CALENDAR") {
-                    calendarSection
+                if FeatureAccess.isCalendarUnlocked {
+                    retroSection("CALENDAR") {
+                        CalendarSettingsRows(store: store, calendar: calendar)
+                    }
                 }
                 retroSection("HELP") {
                     Button { showHelp = true } label: {
@@ -133,16 +164,20 @@ struct SettingsSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
+                retroSection("SUPPORT") {
+                    retroLink("> Support", to: AppInfo.supportURL)
+                    retroLink("> Privacy Policy", to: AppInfo.privacyPolicyURL)
+                }
                 retroSection("ABOUT") {
                     HStack {
                         Text("Version").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                         Spacer()
-                        Text("1.0").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                        Text(AppInfo.version()).font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
                     }
                     HStack {
                         Text("Build").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
                         Spacer()
-                        Text("1").font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                        Text(AppInfo.build()).font(Theme.bodyFont(theme)).foregroundStyle(Theme.textPrimary(theme, rc: rc))
                     }
                 }
             }
@@ -150,6 +185,16 @@ struct SettingsSheet: View {
         }
         .background(Theme.background(theme))
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+    }
+
+    /// Opens in Safari.
+    private func retroLink(_ title: String, to url: URL) -> some View {
+        Link(destination: url) {
+            Text(title)
+                .font(Theme.bodyFont(theme))
+                .foregroundStyle(Theme.accent(theme, rc: rc))
+                .frame(minHeight: 44)
+        }
     }
 
     @ViewBuilder
@@ -268,15 +313,6 @@ struct SettingsSheet: View {
         }
     }
 
-    @ViewBuilder
-    private var calendarSection: some View {
-        if FeatureAccess.isCalendarUnlocked {
-            CalendarSettingsRows(store: store, calendar: calendar)
-        } else {
-            calendarRow
-        }
-    }
-
     /// Sunday or Monday. Changing it moves saved weeks by a day so tasks stay with their week.
     private var weekStartRow: some View {
         HStack {
@@ -296,26 +332,6 @@ struct SettingsSheet: View {
             .pickerStyle(.segmented)
             .fixedSize()
             .labelsHidden()
-        }
-    }
-
-    /// Shown while calendar integration is locked (future paid unlock).
-    @ViewBuilder
-    private var calendarRow: some View {
-        HStack {
-            if retro {
-                Text("> Calendar Integration")
-                    .font(Theme.bodyFont(theme))
-                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-            } else {
-                Label("Calendar Integration", systemImage: "calendar.badge.plus")
-            }
-            Spacer()
-            Text(retro ? "[SOON]" : "Coming Soon")
-                .font(retro ? .system(.caption, design: .monospaced) : .caption)
-                .foregroundStyle(retro ? Theme.textTertiary(theme, rc: rc) : .secondary)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(retro ? Theme.cardFill(theme) : Color(.quaternarySystemFill), in: retro ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Capsule()))
         }
     }
 }

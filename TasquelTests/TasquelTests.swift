@@ -1251,3 +1251,17 @@ struct GoalNumberTests {
         #expect(time.value(for: .time, locale: german) == 90)
     }
 }
+
+// MARK: - App Info
+
+struct AppInfoTests {
+    @Test("Settings shows the version and build from Info.plist")
+    func versionFromBundle() {
+        let info: [String: Any] = ["CFBundleShortVersionString": "1.2", "CFBundleVersion": "34"]
+        #expect(AppInfo.version(from: info) == "1.2")
+        #expect(AppInfo.build(from: info) == "34")
+        #expect(AppInfo.version(from: nil) == "—")
+        #expect(AppInfo.privacyPolicyURL.scheme == "https")
+        #expect(AppInfo.supportURL.scheme == "https")
+    }
+}
