@@ -278,8 +278,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// Repeating tasks (by title) the user deleted from this week, so syncing with the
     /// week before doesn't bring them back.
     var dismissedRepeating: [String]? = nil
-    /// Set once the week, as the current week, has had its last full sync with the week
-    /// before (see `ChecklistStore.syncWithPreviousWeek`). Nil in older files.
+    /// False for a saved future week until, as the current week, it has had its last
+    /// full sync with the week before (see `ChecklistStore.syncWithPreviousWeek`).
+    /// Nil only in files from before this existed; loading fills it in.
     var didFinalSync: Bool? = nil
 
     init(id: UUID = UUID(), startDay: DayKey, categories: [Category] = []) {

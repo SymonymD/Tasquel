@@ -1425,6 +1425,47 @@ struct FinalSyncTests {
     }
 }
 
+extension FinalSyncTests {
+    @Test("Weeks saved before the flag: current ones are left alone, future ones still get their final sync")
+    func legacyWeeks() throws {
+        let directory = makeTempDirectory()
+        let clock = TestClock(2099, 3, 4)
+        let lastWeek = Week.startOfWeek(containing: clock.weeks(-1, from: clock.now), calendar: clock.calendar)
+        let thisWeek = Week.startOfWeek(containing: clock.now, calendar: clock.calendar)
+        let nextWeek = Week.startOfWeek(containing: clock.weeks(1, from: clock.now), calendar: clock.calendar)
+        let hands = ChecklistTask(title: "Hands", mode: .repeating, taskType: .goal)
+        let books = ChecklistTask(title: "Books", mode: .carryOver, taskType: .goal)
+        // Like the phone's data: "Hands" was renamed "Articles" this week; next week was
+        // saved by peeking, with a copy of "Books"; no week has the flag.
+        func week(_ start: Date, _ tasks: [ChecklistTask]) -> Week {
+            Week(startDay: DayKey(start, in: clock.calendar), categories: [Tasquel.Category(name: "Study", symbol: "book", tasks: tasks)])
+        }
+        var articles = hands; articles.id = UUID(); articles.title = "Articles"
+        var booksNow = books; booksNow.id = UUID()
+        var booksCopy = books; booksCopy.id = UUID(); booksCopy.carriedFrom = booksNow.id
+        let weeks = [week(nextWeek, [booksCopy]), week(thisWeek, [booksNow, articles]), week(lastWeek, [hands])]
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var json = try #require(String(data: encoder.encode(weeks), encoding: .utf8))
+        json = json.replacingOccurrences(of: ",\"didFinalSync\":true", with: "")
+        try Data(json.utf8).write(to: directory.appending(path: "checklist.json"))
+
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        let study = { (store: ChecklistStore) in
+            store.selectedWeek!.categories.first { $0.name == "Study" }!.tasks.map(\.title)
+        }
+        #expect(study(store) == ["Books", "Articles"], "the current week isn't re-synced")
+
+        // Finish Books this week; when next week becomes current, its copy leaves.
+        let category = store.selectedWeek!.categories.first { $0.name == "Study" }!
+        store.toggleTask(categoryID: category.id, taskID: category.tasks[0].id)
+        clock.now = clock.weeks(1, from: clock.now)
+        let later = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(!study(later).contains("Books"), "the old future week got its final sync")
+    }
+}
+
 // MARK: - Week Dates Are Gregorian
 
 struct GregorianWeekTests {

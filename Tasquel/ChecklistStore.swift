@@ -154,9 +154,16 @@ final class ChecklistStore {
             weeks = try decoder.decode([Week].self, from: data)
             sortWeeks()
             weekLoadError = nil
+            var needsSave = !weeks.isEmpty && data.range(of: Data("\"startDay\"".utf8)) == nil
+            // Weeks saved before the final-sync flag: only future ones still need their
+            // final sync. Current and past weeks are the user's as they are.
+            for wi in weeks.indices where weeks[wi].didFinalSync == nil {
+                weeks[wi].didFinalSync = !isFutureWeek(weeks[wi])
+                needsSave = true
+            }
             // Weeks saved before they had a start day just got one, worked out in this
-            // time zone. Save it now so a later time-zone change can't shift them.
-            if !weeks.isEmpty, data.range(of: Data("\"startDay\"".utf8)) == nil { save() }
+            // time zone. Saving now means a later time-zone change can't shift them.
+            if needsSave { save() }
         } catch {
             weekLoadError = "Your saved weeks could not be opened. The file has not been changed."
             print("Failed to load: \(error)")
@@ -291,7 +298,9 @@ final class ChecklistStore {
     private func editableSelectedWeekIndex() -> Int? {
         guard persistenceError == nil, let week = selectedWeek, !isPastWeek(week) else { return nil }
         if let wi = weeks.firstIndex(where: { $0.id == week.id }) { return wi }
-        weeks.append(week)
+        var saved = week
+        saved.didFinalSync = !isFutureWeek(week)
+        weeks.append(saved)
         sortWeeks()
         return weeks.firstIndex { $0.id == week.id }
     }
@@ -397,8 +406,8 @@ final class ChecklistStore {
         }
 
         var newWeek = makeWeek(startingOn: monday)
-        // Built from the week before just now, so already fully synced.
-        if !isFutureWeek(newWeek) { newWeek.didFinalSync = true }
+        // A week built as the current week is already in sync; a future one isn't yet.
+        newWeek.didFinalSync = !isFutureWeek(newWeek)
         weeks.append(newWeek)
         sortWeeks()
         save()
@@ -481,7 +490,7 @@ final class ChecklistStore {
         // A saved week that has just become current gets one last full sync, so changes
         // made last week after it was saved (a task finished, a repeating task renamed)
         // still reach it. Only once: after that the week is the user's own.
-        let isFinalSync = !isFuture && weeks[wi].didFinalSync != true
+        let isFinalSync = !isFuture && weeks[wi].didFinalSync == false
         let follows = isFuture || isFinalSync
         if follows {
             changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek, addsCategories: isFuture)
