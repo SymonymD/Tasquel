@@ -806,17 +806,6 @@ struct CategoryNameTests {
         #expect(names(store, thisMonday) == ["Office", "Home"])
     }
 
-    @Test("Moving a card reorders this and future weeks, not past weeks")
-    func move() {
-        let store = makeStore()
-        store.moveCategory(named: "Home", to: "Work")
-        #expect(names(store, thisMonday) == ["Home", "Work"])
-        #expect(names(store, nextMonday) == ["Home", "Work"])
-        #expect(names(store, lastMonday) == ["Work", "Home"])
-        store.moveCategory(named: "Home", to: "Work")
-        #expect(names(store, thisMonday) == ["Work", "Home"])
-    }
-
     @Test("Setting the card order applies to this and future weeks, not past weeks")
     func setOrder() {
         let store = makeStore()

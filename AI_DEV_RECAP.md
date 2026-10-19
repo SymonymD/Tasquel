@@ -308,8 +308,7 @@ c1b9b27 VoiceOver: checkbox labels say the action, goals read progress
 
 - **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
 - **iCloud sync** (user: later).
-- **Feedback webhook setup**: `FeedbackSheet.swift` is built. Need to: (1) create Google Apps Script project, (2) deploy as Web App, (3) replace `webhookURL` constant with deployed URL. Apps Script template is in the comment header of `FeedbackSheet.swift`.
-- **Feedback entry point**: The Send Feedback button was removed from Settings during this session; `FeedbackSheet` remains in the project but is not currently reachable. Decide whether to reconnect it after the webhook is configured.
+- **In-app feedback**: `FeedbackSheet.swift` (Google Apps Script webhook) was never linked and was removed on 2026-10-19; recover it from git history (before the cleanup commit) if wanted.
 - **Expansion persistence on relaunch**: Expanded cards retain state while switching weeks in one session, but the state is not stored on disk across launches.
 - **Card animation follow-ups**: verify with categories that have many tasks, in light and retro themes, and in edit mode; renaming a category closes its expanded card (expansion is keyed by name); consider keeping the grid's scroll position when changing weeks; consider haptic feedback on week change.
 - iPad-specific layout optimizations

@@ -146,14 +146,6 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// other changes reach the copy instead of adding a second one.
     var repeatsFrom: UUID? = nil
 
-    var allSubtasksCompleted: Bool {
-        subtasks.allSatisfy(\.isCompleted)
-    }
-
-    var completedSubtaskCount: Int {
-        subtasks.filter(\.isCompleted).count
-    }
-
     /// The goal's unit kind. Older goals count a quantity, or a custom unit if one was typed.
     var goalKind: GoalUnitKind {
         goalUnitKind ?? ((goalUnit ?? "").isEmpty ? .quantity : .custom)

@@ -125,17 +125,6 @@ final class EventKitProvider: EventProviding, @unchecked Sendable {
             forName: .EKEventStoreChanged, object: store, queue: nil
         ) { _ in onChange() }
     }
-
-    /// The live event for a specific occurrence, for showing Apple's details view.
-    /// Called on the main thread when the user taps an event.
-    func ekEvent(for event: CalendarEvent) -> EKEvent? {
-        let predicate = store.predicateForEvents(withStart: event.start, end: event.end, calendars: nil)
-        return store.events(matching: predicate).first {
-            $0.eventIdentifier == event.eventIdentifier && $0.startDate == event.start
-        }
-    }
-
-    var eventStore: EKEventStore { store }
 }
 
 /// Sample events relative to the current week, for UI tests (`-fakeCalendar`).

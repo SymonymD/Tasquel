@@ -31,8 +31,6 @@ final class ChecklistStore {
 
     var persistenceError: String? { weekLoadError ?? settingsLoadError }
 
-    var hasSetName: Bool { !userName.isEmpty }
-
     /// The viewed week: the saved one, or, for a week that hasn't been saved (a future
     /// week nobody has edited yet), its preview. Editing a preview saves it.
     var selectedWeek: Week? {
@@ -684,11 +682,6 @@ final class ChecklistStore {
         return newTask
     }
 
-    func navigateWeek(by offset: Int) {
-        guard let newDate = calendar.date(byAdding: .weekOfYear, value: offset, to: selectedDate) else { return }
-        navigateToDate(newDate)
-    }
-
     func replaceCurrentWeekCategories(with categories: [Category]) {
         guard let wi = editableSelectedWeekIndex() else { return }
         weeks[wi].categories = categories
@@ -725,16 +718,6 @@ final class ChecklistStore {
         }
     }
 
-    func saveCategoryAsTemplate(_ categoryID: UUID) {
-        guard let week = selectedWeek,
-              !isPastWeek(week),
-              let category = week.categories.first(where: { $0.id == categoryID }) else { return }
-        // Don't duplicate
-        if !savedCategories.contains(where: { $0.name == category.name }) {
-            addSavedCategory(name: category.name, symbol: category.symbol)
-        }
-    }
-
     /// Renames a category in this week and every future week, and its saved category,
     /// so they stay linked (weeks match categories by name). Past weeks keep the old
     /// name. Fails if another category in this week, or another saved category, has it.
@@ -766,21 +749,6 @@ final class ChecklistStore {
             savedCategories[ti].symbol = symbol
             saveSettings()
         }
-    }
-
-    /// Moves a category to where `targetName` is, in this week and every future week
-    /// that has both, so the order carries forward.
-    func moveCategory(named name: String, to targetName: String) {
-        guard name != targetName, editableSelectedWeekIndex() != nil else { return }
-        var changed = false
-        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
-            let categories = weeks[wi].categories
-            guard let from = categories.firstIndex(where: { $0.name == name }),
-                  let to = categories.firstIndex(where: { $0.name == targetName }) else { continue }
-            weeks[wi].categories.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
-            changed = true
-        }
-        if changed { save() }
     }
 
     /// Puts categories in the order of `names` in this week and every future week.

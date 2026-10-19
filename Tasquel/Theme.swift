@@ -139,7 +139,6 @@ enum Theme {
     static func cardBorderWidth(_ m: AppearanceMode) -> CGFloat { isRetro(m) ? 1 : 0 }
 
     // Font
-    static func primaryFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold() }
     static func bodyFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced) : .subheadline }
     static func captionFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.caption, design: .monospaced) : .caption }
     static func titleFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.title, design: .monospaced).bold() : .title.bold() }

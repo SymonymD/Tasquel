@@ -49,7 +49,6 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 | `Tasquel/CalendarEventsPanel.swift` | The week's events, shown inside the bottom bar when its calendar toggle is on |
 | `Tasquel/WeekCarryOverAnimation.swift` | Welcome illustration: `KeyframeAnimator` loop showing an unfinished task carrying into next week |
 | `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest (no tracking or collected data; UserDefaults reason CA92.1) |
-| `Tasquel/FeedbackSheet.swift` | Feedback webhook sheet — currently not linked from the UI |
 
 ### Data Models (`Models.swift`)
 
