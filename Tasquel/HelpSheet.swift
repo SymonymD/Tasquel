@@ -21,7 +21,7 @@ struct HelpSheet: View {
             ("checkmark.circle", "Checkbox", "A task to tick off. Tap + next to its icons to add sub-tasks."),
             ("target", "Goal", "Progress toward a target, like 50 push-ups or 2 hours. Use Add Progress as you go; it checks itself off when you reach the target."),
             ("list.bullet", "List", "A checklist like Groceries. Type an item and press Return to start the next one. The list checks itself off when every item is checked."),
-            ("hand.draw", "Rename and Delete", "Tap a task's name to rename it. Tap a card's edit button to show a trash can on each task."),
+            ("hand.draw", "Rename and Delete", "Tap a task's name to rename it. Tap a card's edit button to show a trash can on each task. A goal's editor also has Delete."),
         ]),
         ("After This Week", [
             ("1.circle", "One-Time", "This week only. New tasks start as One-Time."),
@@ -37,9 +37,6 @@ struct HelpSheet: View {
             ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and future weeks."),
             ("trash", "Deleting Categories", "Deleting a category removes it from this week on. Past weeks keep their history, and you can add it back from Add Category."),
             ("square.stack", "Saved Categories", "Add Category offers your saved categories. Edit, reorder or delete them in Settings ▸ Saved Categories. A category you add for every week is saved automatically."),
-        ]),
-        ("Upcoming Features", [
-            ("calendar.badge.plus", "Calendar Integration", "A future paid upgrade will allow importing your personal calendar events directly into Tasquel as tasks."),
         ]),
     ]
 
@@ -62,6 +59,8 @@ struct HelpSheet: View {
                 }
             }
         }
+        // A sheet doesn't inherit the app's appearance setting.
+        .preferredColorScheme(store?.colorScheme)
     }
 
     private var darkHelpBg: Color? { Theme.isDark(theme) ? Theme.cardFill(theme) : nil }
@@ -74,12 +73,15 @@ struct HelpSheet: View {
                 HelpRow(symbol: item.symbol, title: item.title, detail: item.detail)
             }
         }
+        .listRowBackground(darkHelpBg)
     }
 
     private var standardHelp: some View {
         List {
             ForEach(helpSections.indices, id: \.self) { helpSection($0) }
         }
+        .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
+        .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
     }
 
     private var retroHelp: some View {

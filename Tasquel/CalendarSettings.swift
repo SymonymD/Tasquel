@@ -84,7 +84,7 @@ struct CalendarSettingsRows: View {
 
 // MARK: - Calendar Picker
 
-/// Which calendars feed the Events card, grouped by account.
+/// Which calendars feed the bottom bar's events, grouped by account.
 struct CalendarPicker: View {
     let store: ChecklistStore
     let calendar: CalendarService

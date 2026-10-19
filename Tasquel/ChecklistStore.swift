@@ -19,7 +19,7 @@ final class ChecklistStore {
     var appearanceMode: AppearanceMode = .system
     var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
-    /// Calendar integration: show the Events card, and which calendars to include
+    /// Calendar integration: show events in the bottom bar, and which calendars to include
     /// (nil until the first time it's turned on, when a default selection is made).
     var calendarEventsEnabled = false
     /// Weeks start on Monday unless the user chooses Sunday.
