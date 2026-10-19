@@ -45,6 +45,9 @@ struct ContentView: View {
     @State private var pagerTarget: PagerTarget?
     @State private var arrivingWeekTitle: String?  // shown from release until the new week takes over
     @State private var weekSwipeAxis: Axis?
+    /// Resets on its own when iOS cancels the touch (onEnded isn't called then), so a
+    /// cancelled swipe can't leave the page disabled and the grid unable to scroll.
+    @GestureState private var isWeekSwiping = false
     @State private var weekDragOrigin: CGFloat = 0  // translation when the swipe was recognized
     @State private var isChangingWeek = false
     @State private var weekPageWidth: CGFloat = 400
@@ -106,6 +109,12 @@ struct ContentView: View {
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekPageWidth = $0 }
                     .simultaneousGesture(weekSwipeGesture)
+                    .onChange(of: isWeekSwiping) { _, swiping in
+                        // Cancelled rather than ended: put the page back.
+                        guard !swiping, weekSwipeAxis != nil else { return }
+                        weekSwipeAxis = nil
+                        if !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
+                    }
                 } else {
                     Spacer()
                     ContentUnavailableView("No Week Data", systemImage: "calendar.badge.exclamationmark")
@@ -221,6 +230,7 @@ struct ContentView: View {
     /// drags are left to the scroll view.
     private var weekSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 20)
+            .updating($isWeekSwiping) { _, swiping, _ in swiping = true }
             .onChanged { value in
                 if weekSwipeAxis == nil {
                     // A lifted card owns the touch: treating it as a week swipe would disable
@@ -1072,6 +1082,8 @@ private struct CardDragGesture: ViewModifier {
                 .onChange(of: isHolding) { _, holding in
                     if !holding { onDrop() }
                 }
+                // A card that goes away mid-drag must not leave the grid locked.
+                .onDisappear(perform: onDrop)
         }
     }
 }

@@ -17,11 +17,11 @@ struct HelpSheet: View {
             ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
         ]),
         ("Tasks", [
-            ("slider.horizontal.3", "Type and Mode", "Every task has a type and a mode. Tap the icons at the end of a task to change either, or long-press the task."),
+            ("slider.horizontal.3", "Type and Mode", "Every task has a type and a mode. Tap the icons at the end of a task to change either."),
             ("checkmark.circle", "Checkbox", "A task to tick off. Tap + next to its icons to add sub-tasks."),
             ("target", "Goal", "Progress toward a target, like 50 push-ups or 2 hours. Use Add Progress as you go; it checks itself off when you reach the target."),
             ("list.bullet", "List", "A checklist like Groceries. Type an item and press Return to start the next one. The list checks itself off when every item is checked."),
-            ("hand.draw", "Rename and Delete", "Tap a task's name to rename it. Touch and hold a task for its type, mode and more. Tap a card's edit button to show a trash can on each task."),
+            ("hand.draw", "Rename and Delete", "Tap a task's name to rename it. Tap a card's edit button to show a trash can on each task."),
         ]),
         ("After This Week", [
             ("1.circle", "One-Time", "This week only. New tasks start as One-Time."),

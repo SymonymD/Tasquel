@@ -83,7 +83,7 @@ Key behaviors:
 - **Calendar events**: the bottom bar's calendar toggle expands the bar to show the viewed week's events (`CalendarEventsPanel`), fed by `CalendarService`; tapping an event opens the Calendar app at its date. Event data is never persisted.
 - **Week start**: Sunday or Monday (Settings ▸ Week). Use `store.startOfWeek(containing:)`, never a hard-coded Monday; changing the setting moves saved weeks by one day.
 - **Destructive actions** (delete task/sub-task/category/template, goal → checkbox) go through `confirmationDialog`.
-- **No swipe actions** (they require `List`); use context menus and edit-mode controls.
+- **No swipe actions** (they require `List`); use edit-mode controls (no long-press menus on cards or tasks).
 - **Retro theme**: every view branches on `Theme.isRetro(theme)` for monospaced fonts/terminal styling.
 
 ## Swift Configuration

@@ -285,5 +285,13 @@ final class GoalUITests: XCTestCase {
         let target = app.textFields["Target"].firstMatch
         target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
         XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
+
+        // Delete sits left of Save Goal and asks first.
+        let delete = app.buttons["Delete"].firstMatch
+        let save = app.buttons["Save Goal"]
+        XCTAssertLessThan(delete.frame.maxX, save.frame.minX)
+        delete.tap()
+        app.buttons["Delete Task"].tap()
+        XCTAssertFalse(app.staticTexts["Read more"].waitForExistence(timeout: 1), "the goal is deleted")
     }
 }

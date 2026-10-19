@@ -51,6 +51,13 @@ final class CalendarUITests: XCTestCase {
         let grid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         for _ in 0..<3 { grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: -400))) }
         XCTAssertLessThan(lastCard.frame.maxY, header.frame.minY, "the bottom row can be reached above the events")
+        // Closing the events while scrolled down brings the top cards back.
+        let firstCard = cards.element(boundBy: 0)
+        app.buttons["Hide events"].tap()
+        _ = firstCard.waitForExistence(timeout: 1)
+        XCTAssertGreaterThan(firstCard.frame.minY, app.buttons["Next week"].frame.maxY, "the top row comes back into view")
+        app.buttons["Show events"].tap()
+        XCTAssertTrue(dentist.waitForExistence(timeout: 3))
 
         // The panel follows the viewed week.
         app.buttons["Next week"].tap()

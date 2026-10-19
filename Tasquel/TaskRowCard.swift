@@ -76,9 +76,6 @@ struct TaskRowCard: View {
     @State private var isAddingProgress = false
     @FocusState private var focusedGoalField: GoalFocus?
     @State private var showDeleteConfirmation = false
-    @State private var showTypeChangeConfirmation = false
-    /// The type waiting on the "Change type?" confirmation (long-press menu).
-    @State private var pendingType: TaskType = .checkbox
     @State private var showOptions = false
     /// The add-sub-task field is open (a list's add-item field is always shown).
     @State private var isAddingSubtask = false
@@ -195,56 +192,12 @@ struct TaskRowCard: View {
             store.listAwaitingFirstItem = nil
             isSubtaskFieldFocused = true
         }
-        .contextMenu {
-            if !isPastWeek {
-            Section("Type") {
-                ForEach(TaskType.allCases, id: \.self) { type in
-                    Button {
-                        selectTaskType(type)
-                    } label: {
-                        Label(type.label, systemImage: type.symbol)
-                        if task.taskType == type { Image(systemName: "checkmark") }
-                    }
-                }
-            }
-            Section("After This Week") {
-                ForEach(TaskMode.ordered, id: \.self) { mode in
-                    Button {
-                        store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: mode)
-                    } label: {
-                        Label(mode.label, systemImage: mode.symbol)
-                        if task.mode == mode { Image(systemName: "checkmark") }
-                    }
-                }
-            }
-            Section {
-                Button("Edit Title", systemImage: "pencil") { startEditingTitle() }
-                if task.taskType == .list && !isPastWeek && !isEditing {
-                    Button("Add Item", systemImage: "plus") {
-                        isSubtaskFieldFocused = true
-                    }
-                } else if task.taskType == .checkbox && !isPastWeek && !isEditing {
-                    Button("Add Sub-Task", systemImage: "list.bullet.indent") { startAddingSubtask() }
-                }
-                Button("Delete", systemImage: "trash", role: .destructive) {
-                    showDeleteConfirmation = true
-                }
-            }
-            }
-        }
         .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete Task", role: .destructive) {
                 store.deleteTask(categoryID: categoryID, taskID: task.id)
             }
         } message: {
             Text(deleteTaskMessage)
-        }
-        .confirmationDialog("Change to \(pendingType.label)?", isPresented: $showTypeChangeConfirmation, titleVisibility: .visible) {
-            Button("Change Type", role: .destructive) {
-                store.updateTaskType(categoryID: categoryID, taskID: task.id, type: pendingType)
-            }
-        } message: {
-            Text("This clears the goal target and progress.")
         }
     }
 
@@ -446,9 +399,15 @@ struct TaskRowCard: View {
             labeledGoalRow("Progress") {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
-            Button("Save Goal", action: saveEditedGoal)
-                .disabled(!canSaveEditedGoal)
-                .frame(maxWidth: .infinity)
+            HStack {
+                Button("Delete", role: .destructive) { showDeleteConfirmation = true }
+                    .tint(.red)
+                    .frame(maxWidth: .infinity)
+                Button("Save Goal", action: saveEditedGoal)
+                    .disabled(!canSaveEditedGoal)
+                    .frame(maxWidth: .infinity)
+            }
+            .accessibilityElement(children: .contain)
         }
         .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -662,17 +621,6 @@ struct TaskRowCard: View {
         isAddingProgress = false
         addProgressInput = GoalAmountInput()
         focusedGoalField = nil
-    }
-
-    /// Leaving a goal that has a target or progress asks first, since it clears them.
-    private func selectTaskType(_ type: TaskType) {
-        guard !isPastWeek, task.taskType != type else { return }
-        if task.taskType == .goal && (task.goalTarget != nil || task.goalProgress != nil) {
-            pendingType = type
-            showTypeChangeConfirmation = true
-        } else {
-            store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
-        }
     }
 
     /// Adds the typed amount, then hides the entry row and closes the keyboard.
