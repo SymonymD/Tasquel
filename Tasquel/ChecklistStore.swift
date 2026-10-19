@@ -6,7 +6,7 @@ import SwiftUI
 final class ChecklistStore {
 
     var weeks: [Week] = [] { didSet { previewCache.removeAll() } }
-    var selectedDate: Date = Date()
+    var selectedDate: Date
     /// Starter categories already added to Saved Categories, so removed ones stay removed.
     private var offeredStarterNames: [String]?
     /// A list task just created from the add-task row, whose item field should take the
@@ -33,9 +33,12 @@ final class ChecklistStore {
 
     var hasSetName: Bool { !userName.isEmpty }
 
+    /// The viewed week: the saved one, or, for a week that hasn't been saved (a future
+    /// week nobody has edited yet), its preview. Editing a preview saves it.
     var selectedWeek: Week? {
-        let monday = startOfWeek(containing: selectedDate)
-        return weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }
+        if let wi = storedWeekIndex(startingOn: startOfWeek(containing: selectedDate)) { return weeks[wi] }
+        guard persistenceError == nil else { return nil }
+        return previewWeek(for: selectedDate)
     }
 
     var shouldShowWelcome: Bool {
@@ -53,12 +56,22 @@ final class ChecklistStore {
     private let fileURL: URL
     private let settingsURL: URL
     private let defaults: UserDefaults
+    /// The current moment and calendar (with its time zone). Injectable so tests decide
+    /// what "today" is instead of depending on the real date.
+    @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let calendarProvider: () -> Calendar
+
+    var calendar: Calendar { calendarProvider() }
 
     /// `directory` and `defaults` are injectable so tests never touch the app's real data.
-    init(directory: URL = .documentsDirectory, defaults: UserDefaults = .standard) {
+    init(directory: URL = .documentsDirectory, defaults: UserDefaults = .standard,
+         now: @escaping () -> Date = { Date() }, calendar: @escaping () -> Calendar = { .current }) {
         fileURL = directory.appending(path: "checklist.json")
         settingsURL = directory.appending(path: "settings.json")
         self.defaults = defaults
+        self.now = now
+        calendarProvider = calendar
+        selectedDate = now()
         userName = defaults.string(forKey: "userName") ?? ""
         loadAndPrepare()
     }
@@ -83,9 +96,9 @@ final class ChecklistStore {
         seedStarterTemplates()
         load()
         guard weekLoadError == nil else { return }
-        let currentWeek = ensureWeekExists(for: Date())
+        let currentWeek = ensureWeekExists(for: now())
         migrateStartersIfNeeded(into: currentWeek)
-        syncWithPreviousWeek(for: Date())
+        syncWithPreviousWeek(for: now())
     }
 
     /// Adds each starter category to Saved Categories once. A starter the user later
@@ -238,7 +251,42 @@ final class ChecklistStore {
 
     /// Start of the week containing `date`, honoring the week-start setting.
     func startOfWeek(containing date: Date) -> Date {
-        Week.startOfWeek(containing: date, firstWeekday: firstWeekday)
+        Week.startOfWeek(containing: date, firstWeekday: firstWeekday, calendar: calendar)
+    }
+
+    // MARK: - Week Status
+
+    /// The day after the week's last day.
+    func endDate(of week: Week) -> Date {
+        calendar.date(byAdding: .day, value: 7, to: week.startDate) ?? week.startDate
+    }
+
+    /// Whether today falls within the week (any week start day).
+    func isCurrentWeek(_ week: Week) -> Bool {
+        let today = now()
+        return week.startDate <= today && today < endDate(of: week)
+    }
+
+    func isFutureWeek(_ week: Week) -> Bool { week.startDate > now() }
+
+    /// Past weeks are read-only.
+    func isPastWeek(_ week: Week) -> Bool { !isCurrentWeek(week) && !isFutureWeek(week) }
+
+    /// The saved week starting on `start`'s day, if any.
+    private func storedWeekIndex(startingOn start: Date) -> Int? {
+        let calendar = calendar
+        return weeks.firstIndex { calendar.isDate($0.startDate, inSameDayAs: start) }
+    }
+
+    /// Where the viewed week is in `weeks`, ready to change. A week that's only a preview
+    /// is saved first (the first edit is what makes a future week real). Nil for past
+    /// weeks, which are read-only, and when data couldn't be loaded.
+    private func editableSelectedWeekIndex() -> Int? {
+        guard persistenceError == nil, let week = selectedWeek, !isPastWeek(week) else { return nil }
+        if let wi = weeks.firstIndex(where: { $0.id == week.id }) { return wi }
+        weeks.append(week)
+        sortWeeks()
+        return weeks.firstIndex { $0.id == week.id }
     }
 
     /// Changes the week start day. Every saved week moves by one day (Monday ↔ the
@@ -249,16 +297,16 @@ final class ChecklistStore {
         let selectedStart = selectedWeek?.startDate
         weeks = weeks.map { week in
             var moved = week
-            moved.startDate = Calendar.current.date(byAdding: .day, value: shift, to: week.startDate) ?? week.startDate
+            moved.startDate = calendar.date(byAdding: .day, value: shift, to: week.startDate) ?? week.startDate
             return moved
         }
         weekStartsOnSunday = sunday
-        if let selectedStart, let moved = Calendar.current.date(byAdding: .day, value: shift, to: selectedStart) {
+        if let selectedStart, let moved = calendar.date(byAdding: .day, value: shift, to: selectedStart) {
             selectedDate = moved
         }
         save()
         saveSettings()
-        ensureWeekExists(for: Date())
+        ensureWeekExists(for: now())
     }
 
     func setCalendarEventsEnabled(_ enabled: Bool) {
@@ -339,8 +387,8 @@ final class ChecklistStore {
     @discardableResult
     func ensureWeekExists(for date: Date) -> Week {
         let monday = startOfWeek(containing: date)
-        if let existing = weeks.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }) {
-            return existing
+        if let wi = storedWeekIndex(startingOn: monday) {
+            return weeks[wi]
         }
 
         let newWeek = makeWeek(startingOn: monday)
@@ -370,11 +418,11 @@ final class ChecklistStore {
     func previewWeek(for date: Date) -> Week {
         let monday = startOfWeek(containing: date)
         if let cached = previewCache[monday] { return cached }
-        var week = weeks.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) })
-            ?? makeWeek(startingOn: monday)
-        if !week.isPastWeek, let source = mostRecentWeekBefore(monday) {
-            if week.isFutureWeek { _ = Self.syncRecurringTasks(into: &week, from: source) }
-            _ = Self.syncCarryOverTasks(into: &week, from: source)
+        var week = storedWeekIndex(startingOn: monday).map { weeks[$0] } ?? makeWeek(startingOn: monday)
+        if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
+            let isFuture = isFutureWeek(week)
+            if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source) }
+            _ = Self.syncCarryOverTasks(into: &week, from: source, isFuture: isFuture)
         }
         previewCache[monday] = week
         return week
@@ -407,13 +455,14 @@ final class ChecklistStore {
         }
     }
 
+    /// Shows the week containing `date`. Only the current week is created and saved by
+    /// looking at it; any other week that hasn't been saved stays a preview until edited,
+    /// so it keeps following the weeks before it.
     func navigateToDate(_ date: Date) {
         guard persistenceError == nil else { return }
         selectedDate = date
-        let week = ensureWeekExists(for: date)
-        if !week.isPastWeek {
-            syncWithPreviousWeek(for: date)
-        }
+        if let week = selectedWeek, isCurrentWeek(week) { ensureWeekExists(for: date) }
+        syncWithPreviousWeek(for: date)
     }
 
     /// Brings the current or a future week up to date with the most recent week before
@@ -422,14 +471,15 @@ final class ChecklistStore {
     /// also its categories and recurring tasks.
     private func syncWithPreviousWeek(for date: Date) {
         let monday = startOfWeek(containing: date)
-        guard let wi = weeks.firstIndex(where: { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }),
-              !weeks[wi].isPastWeek,
+        guard let wi = storedWeekIndex(startingOn: monday),
+              !isPastWeek(weeks[wi]),
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
         var changed = false
-        if weeks[wi].isFutureWeek {
+        let isFuture = isFutureWeek(weeks[wi])
+        if isFuture {
             changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek)
         }
-        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek) { changed = true }
+        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek, isFuture: isFuture) { changed = true }
         if changed { save() }
     }
 
@@ -438,14 +488,14 @@ final class ChecklistStore {
     /// (nothing checked) also follow their source: they pick up its new unchecked items,
     /// and go away once it's finished or no longer carries over. Returns whether
     /// anything changed.
-    private static func syncCarryOverTasks(into week: inout Week, from source: Week) -> Bool {
+    private static func syncCarryOverTasks(into week: inout Week, from source: Week, isFuture: Bool) -> Bool {
         var changed = false
         let dismissed = Set(week.dismissedCarryOvers ?? [])
         for sourceCategory in source.categories where !sourceCategory.isThisWeekOnly {
             guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else { continue }
             let sources = Dictionary(sourceCategory.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-            if week.isFutureWeek {
+            if isFuture {
                 // Copies made before copies remembered their source (same title, never
                 // touched) are adopted, so they follow too instead of going stale.
                 for task in sourceCategory.tasks where task.mode == .carryOver && !task.isCompleted {
@@ -522,13 +572,14 @@ final class ChecklistStore {
         return copy
     }
 
-    /// Adds the source week's categories and recurring tasks that `week` is missing.
-    /// Returns whether anything changed.
+    /// Adds the source week's categories and recurring tasks that `week` is missing,
+    /// skipping repeating tasks the user deleted from `week`. Returns whether anything changed.
     private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week) -> Bool {
         var changed = false
 
+        let dismissed = Set(week.dismissedRepeating ?? [])
         for sourceCategory in sourceWeek.categories where !sourceCategory.isThisWeekOnly {
-            let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating }
+            let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating && !dismissed.contains($0.title) }
 
             if let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) {
                 // Category exists — add any missing recurring tasks
@@ -565,13 +616,12 @@ final class ChecklistStore {
     }
 
     func navigateWeek(by offset: Int) {
-        guard let newDate = Calendar.current.date(byAdding: .weekOfYear, value: offset, to: selectedDate) else { return }
+        guard let newDate = calendar.date(byAdding: .weekOfYear, value: offset, to: selectedDate) else { return }
         navigateToDate(newDate)
     }
 
     func replaceCurrentWeekCategories(with categories: [Category]) {
-        guard let week = selectedWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
+        guard let wi = editableSelectedWeekIndex() else { return }
         weeks[wi].categories = categories
         save()
     }
@@ -582,11 +632,9 @@ final class ChecklistStore {
     /// into later weeks like every other category.
     func addCategory(name: String, symbol: String, thisWeekOnly: Bool = false) {
         let name = Self.cleanName(name)
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              !name.isEmpty,
-              !Self.containsName(name, in: week.categories.map(\.name)),
-              let wi = weeks.firstIndex(where: { $0.id == week.id }) else { return }
+        guard !name.isEmpty,
+              !Self.containsName(name, in: selectedWeek?.categories.map(\.name) ?? []),
+              let wi = editableSelectedWeekIndex() else { return }
         var category = Category(name: name, symbol: symbol)
         category.isThisWeekOnly = thisWeekOnly
         weeks[wi].categories.append(category)
@@ -597,10 +645,9 @@ final class ChecklistStore {
     /// week, so future-week syncing can't bring it back. Past weeks keep their history.
     /// Its saved template is kept (or created) so it can be re-added from Add Category.
     func deleteCategory(_ categoryID: UUID) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let category = week.categories.first(where: { $0.id == categoryID }) else { return }
-        for wi in weeks.indices where !weeks[wi].isPastWeek {
+        guard let wi = editableSelectedWeekIndex(),
+              let category = weeks[wi].categories.first(where: { $0.id == categoryID }) else { return }
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
             weeks[wi].categories.removeAll { $0.name == category.name }
         }
         save()
@@ -611,7 +658,7 @@ final class ChecklistStore {
 
     func saveCategoryAsTemplate(_ categoryID: UUID) {
         guard let week = selectedWeek,
-              !week.isPastWeek,
+              !isPastWeek(week),
               let category = week.categories.first(where: { $0.id == categoryID }) else { return }
         // Don't duplicate
         if !savedCategories.contains(where: { $0.name == category.name }) {
@@ -625,10 +672,10 @@ final class ChecklistStore {
     @discardableResult
     func renameCategory(_ categoryID: UUID, newName: String) -> Bool {
         let newName = Self.cleanName(newName)
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              !newName.isEmpty,
-              let oldName = week.categories.first(where: { $0.id == categoryID })?.name else { return false }
+        guard !newName.isEmpty,
+              let wi = editableSelectedWeekIndex(),
+              let oldName = weeks[wi].categories.first(where: { $0.id == categoryID })?.name else { return false }
+        let week = weeks[wi]
         guard newName != oldName else { return true }
         let otherNames = week.categories.filter { $0.id != categoryID }.map(\.name)
             + savedCategories.filter { $0.name != oldName }.map(\.name)
@@ -643,9 +690,8 @@ final class ChecklistStore {
 
     /// Changes a category's icon in this week, every future week, and its saved category.
     func setCategorySymbol(_ categoryID: UUID, symbol: String) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let name = week.categories.first(where: { $0.id == categoryID })?.name else { return }
+        guard let wi = editableSelectedWeekIndex(),
+              let name = weeks[wi].categories.first(where: { $0.id == categoryID })?.name else { return }
         updateCategories(named: name) { $0.symbol = symbol }
         if let ti = savedCategories.firstIndex(where: { $0.name == name }) {
             savedCategories[ti].symbol = symbol
@@ -656,9 +702,9 @@ final class ChecklistStore {
     /// Moves a category to where `targetName` is, in this week and every future week
     /// that has both, so the order carries forward.
     func moveCategory(named name: String, to targetName: String) {
-        guard name != targetName, selectedWeek?.isPastWeek == false else { return }
+        guard name != targetName, editableSelectedWeekIndex() != nil else { return }
         var changed = false
-        for wi in weeks.indices where !weeks[wi].isPastWeek {
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
             let categories = weeks[wi].categories
             guard let from = categories.firstIndex(where: { $0.name == name }),
                   let to = categories.firstIndex(where: { $0.name == targetName }) else { continue }
@@ -671,10 +717,10 @@ final class ChecklistStore {
     /// Puts categories in the order of `names` in this week and every future week.
     /// Categories not named keep their relative order, after the named ones.
     func setCategoryOrder(_ names: [String]) {
-        guard selectedWeek?.isPastWeek == false else { return }
+        guard editableSelectedWeekIndex() != nil else { return }
         let rank = Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         var changed = false
-        for wi in weeks.indices where !weeks[wi].isPastWeek {
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
             let sorted = weeks[wi].categories.enumerated()
                 .sorted { (rank[$0.element.name] ?? names.count, $0.offset) < (rank[$1.element.name] ?? names.count, $1.offset) }
                 .map(\.element)
@@ -688,7 +734,7 @@ final class ChecklistStore {
 
     /// Applies `change` to the category named `name` in the current and future weeks.
     private func updateCategories(named name: String, _ change: (inout Category) -> Void) {
-        for wi in weeks.indices where !weeks[wi].isPastWeek {
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
             for ci in weeks[wi].categories.indices where weeks[wi].categories[ci].name == name {
                 change(&weeks[wi].categories[ci])
             }
@@ -701,9 +747,7 @@ final class ChecklistStore {
     /// Returns the new task's ID.
     @discardableResult
     func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver, type: TaskType = .checkbox) -> UUID? {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return nil }
         let task = ChecklistTask(title: title, mode: mode, taskType: type)
         weeks[wi].categories[ci].tasks.append(task)
@@ -712,9 +756,7 @@ final class ChecklistStore {
     }
 
     func toggleTask(categoryID: UUID, taskID: UUID) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].isCompleted.toggle()
@@ -722,21 +764,23 @@ final class ChecklistStore {
     }
 
     func deleteTask(categoryID: UUID, taskID: UUID) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
-        if let sourceID = weeks[wi].categories[ci].tasks.first(where: { $0.id == taskID })?.carriedFrom {
-            weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+        if let task = weeks[wi].categories[ci].tasks.first(where: { $0.id == taskID }) {
+            if let sourceID = task.carriedFrom {
+                weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+            }
+            // In a future week, a deleted repeating task must not be synced back in.
+            if task.mode == .repeating && isFutureWeek(weeks[wi]) {
+                weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
+            }
         }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
         save()
     }
 
     func updateTaskMode(categoryID: UUID, taskID: UUID, mode: TaskMode) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
@@ -744,9 +788,7 @@ final class ChecklistStore {
     }
 
     func renameTask(categoryID: UUID, taskID: UUID, newTitle: String) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
@@ -756,9 +798,7 @@ final class ChecklistStore {
     // MARK: - Goal Task CRUD
 
     func updateTaskType(categoryID: UUID, taskID: UUID, type: TaskType) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].taskType = type
@@ -777,9 +817,7 @@ final class ChecklistStore {
         guard target.isFinite, target > 0 else { return }
         let unit = unit.trimmingCharacters(in: .whitespaces)
         let kind = kind ?? (unit.isEmpty ? .quantity : .custom)
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalTarget = target
@@ -793,9 +831,7 @@ final class ChecklistStore {
 
     func updateGoalProgress(categoryID: UUID, taskID: UUID, progress: Double) {
         guard progress.isFinite, progress >= 0 else { return }
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalProgress = progress
@@ -807,9 +843,7 @@ final class ChecklistStore {
     // MARK: - Sub-Task CRUD
 
     func addSubtask(categoryID: UUID, taskID: UUID, title: String) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
@@ -819,9 +853,7 @@ final class ChecklistStore {
     }
 
     func toggleSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
@@ -835,9 +867,7 @@ final class ChecklistStore {
     }
 
     func deleteSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
@@ -850,9 +880,7 @@ final class ChecklistStore {
     }
 
     func renameSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, newTitle: String) {
-        guard let week = selectedWeek,
-              !week.isPastWeek,
-              let wi = weeks.firstIndex(where: { $0.id == week.id }),
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }

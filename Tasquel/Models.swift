@@ -176,6 +176,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// Carry-over tasks (by their source's ID) the user deleted from this week, so
     /// syncing with the week before doesn't bring them back.
     var dismissedCarryOvers: [UUID]? = nil
+    /// Repeating tasks (by title) the user deleted from this week, so syncing with the
+    /// week before doesn't bring them back.
+    var dismissedRepeating: [String]? = nil
 
     var displayTitle: String {
         let formatter = DateFormatter()
@@ -183,24 +186,8 @@ struct Week: Codable, Identifiable, Equatable {
         return "Week of \(formatter.string(from: startDate))"
     }
 
-    /// The day after the week's last day.
-    var endDate: Date {
-        Calendar.current.date(byAdding: .day, value: 7, to: startDate) ?? startDate
-    }
-
-    /// Whether today falls within this week (works for any week start day).
-    var isCurrentWeek: Bool {
-        let now = Date()
-        return startDate <= now && now < endDate
-    }
-
-    var isFutureWeek: Bool {
-        startDate > Date()
-    }
-
-    var isPastWeek: Bool {
-        !isCurrentWeek && !isFutureWeek
-    }
+    // Whether a week is past, current or future depends on today, so the store answers
+    // it (`isPastWeek(_:)` etc.), using a clock tests can control.
 
     /// Calendar weekday numbers for the supported week start days.
     static let sunday = 1
@@ -208,8 +195,8 @@ struct Week: Codable, Identifiable, Equatable {
 
     /// Start (midnight) of the week containing `date`. `firstWeekday` is 1 for
     /// Sunday or 2 for Monday; the store passes the user's setting.
-    static func startOfWeek(containing date: Date, firstWeekday: Int = monday) -> Date {
-        var calendar = Calendar.current
+    static func startOfWeek(containing date: Date, firstWeekday: Int = monday, calendar: Calendar = .current) -> Date {
+        var calendar = calendar
         calendar.firstWeekday = firstWeekday  // must be set, or US locales default to Sunday
         var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         components.weekday = firstWeekday

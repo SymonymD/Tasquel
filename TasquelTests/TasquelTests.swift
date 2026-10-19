@@ -12,9 +12,30 @@ import SwiftUI
 
 /// A store backed by a throwaway directory and defaults suite, so tests can run
 /// in parallel without reading or overwriting the app's real data.
-private func makeIsolatedStore(directory: URL = makeTempDirectory()) -> ChecklistStore {
+private func makeIsolatedStore(directory: URL = makeTempDirectory(), clock: TestClock? = nil) -> ChecklistStore {
     let suite = "TasquelTests-\(UUID().uuidString)"
-    return ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: suite)!)
+    let defaults = UserDefaults(suiteName: suite)!
+    guard let clock else { return ChecklistStore(directory: directory, defaults: defaults) }
+    return ChecklistStore(directory: directory, defaults: defaults,
+                          now: { clock.now }, calendar: { clock.calendar })
+}
+
+/// A "now" and calendar a test controls: move the time, or fly to another time zone.
+final class TestClock {
+    var now: Date
+    var calendar: Calendar
+
+    /// Noon on the given day, in `timeZone`.
+    init(_ year: Int, _ month: Int, _ day: Int, hour: Int = 12, timeZone: String = "America/New_York") {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZone)!
+        self.calendar = calendar
+        now = calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    func weeks(_ count: Int, from date: Date) -> Date {
+        calendar.date(byAdding: .weekOfYear, value: count, to: date)!
+    }
 }
 
 private func makeTempDirectory() -> URL {
@@ -608,13 +629,14 @@ struct WeekStartTests {
 
     @Test("The current week is the one containing today, whatever day it starts on")
     func currentWeekAnyStart() {
-        let today = Date()
-        let sundayWeek = Week(startDate: Week.startOfWeek(containing: today, firstWeekday: Week.sunday))
-        let mondayWeek = Week(startDate: Week.startOfWeek(containing: today, firstWeekday: Week.monday))
-        #expect(sundayWeek.isCurrentWeek)
-        #expect(mondayWeek.isCurrentWeek)
-        let lastWeek = Week(startDate: Calendar.current.date(byAdding: .day, value: -7, to: sundayWeek.startDate)!)
-        #expect(lastWeek.isPastWeek)
+        let clock = TestClock(2099, 3, 4)  // a Wednesday
+        let store = makeIsolatedStore(clock: clock)
+        let sundayWeek = Week(startDate: Week.startOfWeek(containing: clock.now, firstWeekday: Week.sunday, calendar: clock.calendar))
+        let mondayWeek = Week(startDate: Week.startOfWeek(containing: clock.now, firstWeekday: Week.monday, calendar: clock.calendar))
+        #expect(store.isCurrentWeek(sundayWeek))
+        #expect(store.isCurrentWeek(mondayWeek))
+        let lastWeek = Week(startDate: clock.calendar.date(byAdding: .day, value: -7, to: sundayWeek.startDate)!)
+        #expect(store.isPastWeek(lastWeek))
     }
 }
 
@@ -990,5 +1012,100 @@ struct CarryOverSyncTests {
         store.toggleTask(categoryID: store.selectedWeek!.categories[0].id, taskID: tasks(store, thisMonday)[0].id)
         store.navigateToDate(thisMonday)
         #expect(tasks(store, thisMonday).count == 1)
+    }
+}
+
+// MARK: - Future Weeks Are Previews
+
+/// Looking at a future week doesn't save it; it keeps following this week until edited.
+struct FutureWeekPreviewTests {
+    private let clock = TestClock(2099, 3, 4)  // a Wednesday
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func titles(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories[0].tasks.map(\.title)
+    }
+
+    @Test("Peeking at next week doesn't save it")
+    func peekDoesNotSave() {
+        let store = makeIsolatedStore(clock: clock)
+        let count = store.weeks.count
+        store.navigateToDate(nextWeek)
+        #expect(store.weeks.count == count)
+        #expect(store.selectedWeek != nil)
+    }
+
+    @Test("A carry-over finished after peeking doesn't appear next week")
+    func finishedAfterPeek() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let taskID = store.addTask(categoryID: categoryID, title: "Call bank", mode: .carryOver)!
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Call bank"])
+
+        store.navigateToDate(clock.now)
+        store.toggleTask(categoryID: categoryID, taskID: taskID)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store).isEmpty)
+    }
+
+    @Test("A carry-over added after peeking appears next week")
+    func addedAfterPeek() {
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store).isEmpty)
+
+        store.navigateToDate(clock.now)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Return books", mode: .carryOver)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Return books"])
+    }
+
+    @Test("Mode changes this week reach next week")
+    func modeChangeAfterPeek() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let taskID = store.addTask(categoryID: categoryID, title: "Taxes", mode: .carryOver)!
+        store.navigateToDate(nextWeek)
+        store.navigateToDate(clock.now)
+        store.updateTaskMode(categoryID: categoryID, taskID: taskID, mode: .oneTime)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store).isEmpty)
+    }
+
+    @Test("Editing next week saves it, and it still follows this week's carry-overs")
+    func editedWeekFollows() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let taskID = store.addTask(categoryID: categoryID, title: "Call bank", mode: .carryOver)!
+        let count = store.weeks.count
+
+        store.navigateToDate(nextWeek)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Dentist", mode: .oneTime)
+        #expect(store.weeks.count == count + 1, "the first edit saves the week")
+        #expect(titles(store) == ["Call bank", "Dentist"])
+
+        store.navigateToDate(clock.now)
+        store.toggleTask(categoryID: categoryID, taskID: taskID)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Dentist"], "the finished carry-over leaves; the user's task stays")
+    }
+
+    @Test("A repeating task deleted from a future week stays deleted")
+    func deletedRepeatingStaysDeleted() {
+        let directory = makeTempDirectory()
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Gym", mode: .repeating)
+
+        store.navigateToDate(nextWeek)
+        let gym = store.selectedWeek!.categories[0].tasks.first { $0.title == "Gym" }!
+        store.deleteTask(categoryID: store.selectedWeek!.categories[0].id, taskID: gym.id)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store).isEmpty)
+
+        let reloaded = makeIsolatedStore(directory: directory, clock: clock)
+        reloaded.navigateToDate(nextWeek)
+        #expect(titles(reloaded).isEmpty, "still deleted after relaunch")
     }
 }

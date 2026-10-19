@@ -57,7 +57,7 @@ struct ContentView: View {
     private var rc: RetroColor { store.retroColor }
 
     private var isPastWeek: Bool {
-        store.selectedWeek?.isPastWeek ?? false
+        store.selectedWeek.map(store.isPastWeek) ?? false
     }
 
     var body: some View {
@@ -547,7 +547,7 @@ struct ContentView: View {
             Spacer()
 
             // Today's date / Go to Today
-            if store.selectedWeek?.isCurrentWeek == true {
+            if store.selectedWeek.map(store.isCurrentWeek) == true {
                 todayText
             } else {
                 Button {
@@ -652,7 +652,7 @@ struct ContentView: View {
     @ViewBuilder
     private func weekContent(_ week: Week) -> some View {
         let categories = week.categories
-        let showAdd = isEditing && !week.isPastWeek
+        let showAdd = isEditing && !store.isPastWeek(week)
 
         ScrollView {
             VStack(spacing: 8) {
@@ -666,7 +666,7 @@ struct ContentView: View {
                             isExpanded: isExpanded,
                             isEditing: isEditing,
                             isEditingTasks: isEditing || editingCategoryKeys.contains(entry.id),
-                            isPastWeek: week.isPastWeek,
+                            isPastWeek: store.isPastWeek(week),
                             onToggleEdit: {
                                 withAnimation(.snappy(duration: 0.25)) {
                                     if editingCategoryKeys.contains(entry.id) {
@@ -691,7 +691,7 @@ struct ContentView: View {
                         // open card is for its tasks.)
                         .modifier(CardDragGesture(
                             isCollapsed: !isExpanded,
-                            canDrag: !week.isPastWeek,
+                            canDrag: !store.isPastWeek(week),
                             onTap: {
                                 // A hold that's released without moving isn't a tap.
                                 guard cardDrag == nil, Date().timeIntervalSince(lastCardDrop) > 0.5 else { return }
@@ -702,7 +702,7 @@ struct ContentView: View {
                             onDrop: { dropCard(in: week) }
                         ))
                         .accessibilityActions {
-                            if !week.isPastWeek && !isExpanded { cardMoveActions(entry.id, in: week) }
+                            if !store.isPastWeek(week) && !isExpanded { cardMoveActions(entry.id, in: week) }
                         }
                         // Outside the modifiers above, where the grid layout can read it.
                         .categoryGridFullWidth(isExpanded)
