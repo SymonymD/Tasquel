@@ -818,6 +818,7 @@ final class ChecklistStore {
     /// custom unit; without a `kind`, a non-empty unit means a custom goal.
     func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, kind: GoalUnitKind? = nil, unit: String = "") {
         guard target.isFinite, target > 0 else { return }
+        let target = min(target, GoalUnitKind.maxValue)
         let unit = unit.trimmingCharacters(in: .whitespaces)
         let kind = kind ?? (unit.isEmpty ? .quantity : .custom)
         guard let wi = editableSelectedWeekIndex(),
@@ -834,6 +835,7 @@ final class ChecklistStore {
 
     func updateGoalProgress(categoryID: UUID, taskID: UUID, progress: Double) {
         guard progress.isFinite, progress >= 0 else { return }
+        let progress = min(progress, GoalUnitKind.maxValue)
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }

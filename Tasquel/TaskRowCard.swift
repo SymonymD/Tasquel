@@ -644,33 +644,38 @@ struct GoalAmountInput: Equatable {
 
     init() {}
 
-    /// Prefilled with a saved value (minutes for time goals).
-    init(_ value: Double, kind: GoalUnitKind) {
+    /// Prefilled with a saved value (minutes for time goals), without a trailing ".0".
+    init(_ value: Double, kind: GoalUnitKind, locale: Locale = .current) {
+        let value = value.isFinite ? min(max(value, 0), GoalUnitKind.maxValue) : 0
         if kind == .time {
             let total = Int(value.rounded())
             hours = String(total / 60)
             minutes = String(total % 60)
         } else {
-            number = value.formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+            number = GoalNumber.fieldText(value, locale: locale)
         }
     }
 
-    /// The typed value (minutes for time goals), or nil if it isn't a valid amount.
-    func value(for kind: GoalUnitKind) -> Double? {
+    /// The typed value (minutes for time goals), or nil if it isn't a valid amount or is
+    /// over the maximum.
+    func value(for kind: GoalUnitKind, locale: Locale = .current) -> Double? {
+        let result: Double
         if kind == .time {
             guard !(hours.isEmpty && minutes.isEmpty),
-                  let h = hours.isEmpty ? 0 : Double(hours),
-                  let m = minutes.isEmpty ? 0 : Double(minutes),
-                  h.isFinite, m.isFinite, h >= 0, m >= 0 else { return nil }
-            return h * 60 + m
+                  let h = hours.isEmpty ? 0 : GoalNumber.parse(hours, locale: locale),
+                  let m = minutes.isEmpty ? 0 : GoalNumber.parse(minutes, locale: locale),
+                  h >= 0, m >= 0 else { return nil }
+            result = h * 60 + m
+        } else {
+            guard let n = GoalNumber.parse(number, locale: locale), n >= 0 else { return nil }
+            result = n
         }
-        guard let n = Double(number), n.isFinite, n >= 0 else { return nil }
-        return n
+        return result <= GoalUnitKind.maxValue ? result : nil
     }
 
     /// The typed value if it's greater than zero.
-    func positiveValue(for kind: GoalUnitKind) -> Double? {
-        value(for: kind).flatMap { $0 > 0 ? $0 : nil }
+    func positiveValue(for kind: GoalUnitKind, locale: Locale = .current) -> Double? {
+        value(for: kind, locale: locale).flatMap { $0 > 0 ? $0 : nil }
     }
 
     /// The same amount after switching units: a number becomes hours, and time becomes hours.
@@ -680,7 +685,7 @@ struct GoalAmountInput: Equatable {
         if new == .time {
             result.hours = number
         } else if let minutes = value(for: .time) {
-            result.number = (minutes / 60).formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+            result.number = GoalNumber.fieldText(minutes / 60)
         }
         return result
     }

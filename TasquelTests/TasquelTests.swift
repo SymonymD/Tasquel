@@ -1202,3 +1202,52 @@ struct WeekDayIdentityTests {
         #expect(DayKey(year: 2099, month: 3, day: 1).adding(days: -1) == DayKey(year: 2099, month: 2, day: 28))
     }
 }
+
+// MARK: - Goal Numbers
+
+struct GoalNumberTests {
+    private let english = Locale(identifier: "en_US")
+    private let german = Locale(identifier: "de_DE")
+
+    @Test("A huge target is rejected in the field and capped in the store, without crashing")
+    func hugeValues() {
+        var input = GoalAmountInput()
+        input.number = String(repeating: "9", count: 20)
+        #expect(input.positiveValue(for: .quantity, locale: english) == nil, "Set stays disabled")
+
+        let store = makeIsolatedStore(clock: TestClock(2099, 3, 4))
+        let categoryID = store.selectedWeek!.categories[0].id
+        let taskID = store.addTask(categoryID: categoryID, title: "Read", type: .goal)!
+        store.setGoalTarget(categoryID: categoryID, taskID: taskID, target: 1e20)
+        store.updateGoalProgress(categoryID: categoryID, taskID: taskID, progress: 1e21)
+        let task = store.selectedWeek!.categories[0].tasks[0]
+        #expect(task.goalTarget == GoalUnitKind.maxValue)
+        #expect(task.goalProgress == GoalUnitKind.maxValue)
+        _ = task.goalFraction
+        _ = GoalUnitKind.time.format(1e20)
+        _ = GoalAmountInput(1e20, kind: .time)
+    }
+
+    @Test("Amounts show up to two decimals with no trailing .0")
+    func formatting() {
+        #expect(GoalNumber.fieldText(2.5, locale: english) == "2.5")
+        #expect(GoalNumber.fieldText(5, locale: english) == "5")
+        #expect(GoalNumber.fieldText(2.5, locale: german) == "2,5")
+        #expect(GoalAmountInput(5, kind: .quantity, locale: english).number == "5")
+    }
+
+    @Test("Amounts are read in the user's locale")
+    func localeParsing() {
+        #expect(GoalNumber.parse("2.5", locale: english) == 2.5)
+        #expect(GoalNumber.parse("1,000", locale: english) == 1000)
+        #expect(GoalNumber.parse("2,5", locale: german) == 2.5)
+        #expect(GoalNumber.parse("1.000,5", locale: german) == 1000.5)
+        #expect(GoalNumber.parse("abc", locale: german) == nil)
+        var input = GoalAmountInput()
+        input.number = "2,5"
+        #expect(input.positiveValue(for: .quantity, locale: german) == 2.5, "Set is enabled for 2,5 in German")
+        var time = GoalAmountInput()
+        time.hours = "1,5"
+        #expect(time.value(for: .time, locale: german) == 90)
+    }
+}

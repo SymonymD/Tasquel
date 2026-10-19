@@ -77,8 +77,14 @@ enum GoalUnitKind: String, Codable, CaseIterable {
         }
     }
 
-    /// A goal value for display: "1h 30m" for time, otherwise the number.
+    /// The largest goal target or progress (minutes, for time goals). Keeps numbers
+    /// readable and well inside what formatting can handle.
+    static let maxValue: Double = 999_999
+
+    /// A goal value for display: "1h 30m" for time, otherwise the number with up to two
+    /// decimals and no trailing ".0" ("2.5", "3").
     func format(_ value: Double) -> String {
+        let value = value.isFinite ? min(max(value, 0), Self.maxValue) : 0
         guard self == .time else {
             return value.formatted(.number.precision(.fractionLength(0...2)))
         }
@@ -86,6 +92,29 @@ enum GoalUnitKind: String, Codable, CaseIterable {
         let hours = minutes / 60, remainder = minutes % 60
         if hours == 0 { return "\(remainder)m" }
         return remainder == 0 ? "\(hours)h" : "\(hours)h \(remainder)m"
+    }
+}
+
+// MARK: - Goal Numbers
+
+enum GoalNumber {
+    /// Reads a typed amount in the user's locale ("2,5" in German, "2.5" or "1,000" in
+    /// English). Falls back to a plain "2.5", which can be typed or pasted anywhere.
+    static func parse(_ text: String, locale: Locale = .current) -> Double? {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        let value = formatter.number(from: text)?.doubleValue ?? Double(text)
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
+    /// A saved amount for an input field, in the user's locale: "5", "2,5", no grouping.
+    static func fieldText(_ value: Double, locale: Locale = .current) -> String {
+        let value = value.isFinite ? min(max(value, 0), GoalUnitKind.maxValue) : 0
+        return value.formatted(.number.precision(.fractionLength(0...2)).grouping(.never).locale(locale))
     }
 }
 
