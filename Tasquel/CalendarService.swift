@@ -243,10 +243,14 @@ final class CalendarService {
         }
     }
 
-    /// The provider for this launch: a fake for UI tests, otherwise EventKit.
+    /// The provider for this launch: a fake for UI tests (debug builds only), otherwise EventKit.
     static func makeDefault() -> CalendarService {
-        let useFake = ProcessInfo.processInfo.arguments.contains("-fakeCalendar")
-        return CalendarService(provider: useFake ? FakeEventProvider() : EventKitProvider())
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-fakeCalendar") {
+            return CalendarService(provider: FakeEventProvider())
+        }
+        #endif
+        return CalendarService(provider: EventKitProvider())
     }
 
     var isAuthorized: Bool { authorization == .authorized }

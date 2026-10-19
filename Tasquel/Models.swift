@@ -145,6 +145,9 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// For a repeating task's copy in a later week: the task it repeats, so renames and
     /// other changes reach the copy instead of adding a second one.
     var repeatsFrom: UUID? = nil
+    /// Set when the user adds or changes the task in its own week. Syncing with the week
+    /// before then leaves it as it is: it isn't updated, removed, or adopted as a copy.
+    var isUserEdited = false
 
     /// The goal's unit kind. Older goals count a quantity, or a custom unit if one was typed.
     var goalKind: GoalUnitKind {
@@ -169,6 +172,37 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     }
 }
 
+extension SubTask {
+    /// Decodes leniently so files from older (or newer) versions still load.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+    }
+}
+
+extension ChecklistTask {
+    /// Decodes leniently: a missing field gets its default and an unknown mode, type or
+    /// unit falls back to the default, so one odd task can't stop every week loading.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+        mode = (try? container.decodeIfPresent(TaskMode.self, forKey: .mode)) ?? .carryOver
+        subtasks = try container.decodeIfPresent([SubTask].self, forKey: .subtasks) ?? []
+        taskType = (try? container.decodeIfPresent(TaskType.self, forKey: .taskType)) ?? .checkbox
+        goalTarget = try container.decodeIfPresent(Double.self, forKey: .goalTarget)
+        goalProgress = try container.decodeIfPresent(Double.self, forKey: .goalProgress)
+        goalUnit = try container.decodeIfPresent(String.self, forKey: .goalUnit)
+        goalUnitKind = try? container.decodeIfPresent(GoalUnitKind.self, forKey: .goalUnitKind)
+        carriedFrom = try container.decodeIfPresent(UUID.self, forKey: .carriedFrom)
+        repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
+        isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+    }
+}
+
 struct Category: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -188,7 +222,7 @@ extension Category {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         symbol = try container.decode(String.self, forKey: .symbol)
-        tasks = try container.decode([ChecklistTask].self, forKey: .tasks)
+        tasks = try container.decodeIfPresent([ChecklistTask].self, forKey: .tasks) ?? []
         isThisWeekOnly = try container.decodeIfPresent(Bool.self, forKey: .isThisWeekOnly) ?? false
     }
 }
@@ -278,6 +312,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// Repeating tasks (by title) the user deleted from this week, so syncing with the
     /// week before doesn't bring them back.
     var dismissedRepeating: [String]? = nil
+    /// Categories (by name) the user deleted from this future week while the week before
+    /// still has them, so syncing doesn't add them back.
+    var dismissedCategories: [String]? = nil
     /// False for a saved future week until, as the current week, it has had its last
     /// full sync with the week before (see `ChecklistStore.syncWithPreviousWeek`).
     /// Nil only in files from before this existed; loading fills it in.
@@ -297,12 +334,18 @@ struct Week: Codable, Identifiable, Equatable {
     /// Midnight at the start of the week, in the current time zone.
     var startDate: Date { startDay.date(in: .weekDates()) }
 
+    /// Records that the user deleted the copy of `sourceID` from this week.
+    mutating func dismissCarryOver(_ sourceID: UUID) {
+        guard !(dismissedCarryOvers ?? []).contains(sourceID) else { return }
+        dismissedCarryOvers = (dismissedCarryOvers ?? []) + [sourceID]
+    }
+
     var displayTitle: String {
         "Week of \(startDay.month)/\(startDay.day)/\(String(format: "%02d", startDay.year % 100))"
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating, didFinalSync
+        case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating, dismissedCategories, didFinalSync
     }
 
     /// Weeks saved before `startDay` existed only have `startDate`, a moment; their day
@@ -319,6 +362,7 @@ struct Week: Codable, Identifiable, Equatable {
         categories = try container.decode([Category].self, forKey: .categories)
         dismissedCarryOvers = try container.decodeIfPresent([UUID].self, forKey: .dismissedCarryOvers)
         dismissedRepeating = try container.decodeIfPresent([String].self, forKey: .dismissedRepeating)
+        dismissedCategories = try container.decodeIfPresent([String].self, forKey: .dismissedCategories)
         didFinalSync = try container.decodeIfPresent(Bool.self, forKey: .didFinalSync)
     }
 
@@ -331,6 +375,7 @@ struct Week: Codable, Identifiable, Equatable {
         try container.encode(categories, forKey: .categories)
         try container.encodeIfPresent(dismissedCarryOvers, forKey: .dismissedCarryOvers)
         try container.encodeIfPresent(dismissedRepeating, forKey: .dismissedRepeating)
+        try container.encodeIfPresent(dismissedCategories, forKey: .dismissedCategories)
         try container.encodeIfPresent(didFinalSync, forKey: .didFinalSync)
     }
 

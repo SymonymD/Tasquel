@@ -29,7 +29,7 @@ Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are au
 
 | File | Purpose |
 |------|---------|
-| `Tasquel/TasquelApp.swift` | `@main` App struct, single `WindowGroup` |
+| `Tasquel/TasquelApp.swift` | `@main` App struct; owns the shared store and calendar service |
 | `Tasquel/Models.swift` | All data models (value types + enums) |
 | `Tasquel/ChecklistStore.swift` | `@Observable` store — business logic, persistence, state |
 | `Tasquel/Theme.swift` | `Theme` color/font functions for all appearance modes + `ScanlineOverlay` |
@@ -71,16 +71,17 @@ Single `@Observable` store owns all app state. `init(directory:defaults:now:cale
 
 Key behaviors:
 - **Weekly rollover**: a week is built by rolling forward categories from the most recent saved prior week. Repeating tasks always carry (reset). Carry-over tasks carry only if incomplete. One-time tasks never carry. Category UUIDs change every week.
-- **Future weeks are previews until edited**: only the current week is created by looking at it (`ensureWeekExists` at launch / navigation). Any other unsaved week is `previewWeek(for:)` (cached so IDs stay stable) and `selectedWeek` returns it. Every mutation goes through `editableSelectedWeekIndex()`, which saves the preview first. Saved future weeks keep syncing with the week before (`syncWithPreviousWeek`): untouched carried copies (`carriedFrom`) follow or leave with their source, missing ones are added unless dismissed, and missing repeating tasks are added unless in `dismissedRepeating`. When a saved week becomes current it gets one final full sync (follow/remove untouched copies, no categories re-added) and is marked `didFinalSync`, so later edits to the current week are never undone.
+- **Future weeks are previews until edited**: only the current week is created by looking at it (`ensureWeekExists` at launch / navigation). Any other unsaved week is `previewWeek(for:)` (cached so IDs stay stable) and `selectedWeek` returns it. Every mutation goes through `editableSelectedWeekIndex()`, which saves the preview first. Saved future weeks keep syncing with the week before (`syncWithPreviousWeek`): untouched carried copies (`carriedFrom`) follow or leave with their source (a task the user added or changed in its week has `isUserEdited` and is never followed, removed or adopted), missing ones are added unless dismissed, and missing repeating tasks are added unless in `dismissedRepeating`. When a saved week becomes current it gets one final full sync (follow/remove untouched copies, no categories re-added) and is marked `didFinalSync`, so later edits to the current week are never undone.
 - **Load order** (`loadAndPrepare`, used by init and `retryLoadingData`): settings → seed starter templates → weeks → ensure current week → starter migration.
-- **Load-failure safety**: if either JSON file fails to decode, `persistenceError` is set, all saves are blocked (so defaults never overwrite the file), and `ContentView` shows a retry screen.
+- **Load-failure safety**: if either JSON file fails to decode, `persistenceError` is set, all saves are blocked (so defaults never overwrite the file), and `ContentView` shows a retry screen with Start Fresh (`setAsideUnreadableData()` renames the bad file, never deletes it). Task decoding is lenient (missing fields and unknown enum values get defaults). Save failures set `saveError`, shown as an alert.
+- **One store per app**: `TasquelApp` owns the store and calendar service and passes them to `ContentView`, so iPad windows share them.
 - **Past weeks are read-only**: `editableSelectedWeekIndex()` returns nil for them.
 
 ### UI Patterns
 
 - **Card grid** (`ScrollView`, not `List`): collapsed cards in 2-column rows; an expanded card takes a full-width row. Multiple cards can be open; expansion is tracked by `CategoryLayoutKey` (name + occurrence) since UUIDs change per week, so open cards persist across week navigation (in memory only).
 - **Bottom bar**: settings (left), today's date / go-to-today (center), edit/done (right), flush with the bottom of the screen as a flat translucent bar with only a top border (also in retro). The grid's bottom padding follows the bar's measured height.
-- **Edit mode (bottom bar)**: category management — add-category card and delete badges; all cards collapse and can't open. A card's own edit button edits only that card's tasks (trash cans, renaming). Deleting a category removes it from the current and all future weeks (past weeks keep history) and keeps its saved template.
+- **Edit mode (bottom bar)**: category management — add-category card and delete badges; all cards collapse and can't open. A card's own edit button edits only that card's tasks (trash cans, renaming). Deleting a category removes it from the viewed week and all later weeks (earlier weeks keep it; a future week records it in `dismissedCategories` so syncing doesn't add it back) and keeps its saved template.
 - **Week paging**: last/this/next week are laid side by side (`PagerTrack`); drag offset lives in `WeekPagerState` so dragging doesn't rebuild pages.
 - **Header / bottom bar**: the header shows the viewed week ("Week of …"); the bottom bar shows Settings, the calendar toggle (when calendar events are on), today's date (with Go to Today on other weeks), and Edit.
 - **Calendar events**: the bottom bar's calendar toggle expands the bar to show the viewed week's events (`CalendarEventsPanel`), fed by `CalendarService`; tapping an event opens the Calendar app at its date. Event data is never persisted.
@@ -98,6 +99,7 @@ Key behaviors:
 
 ## Testing Launch Arguments
 
+- Debug builds only.
 - `-isolatedData`: the app uses throwaway storage (never the simulator's real data). Fresh data shows onboarding first.
 - `-fakeCalendar`: sample calendar events instead of EventKit.
 

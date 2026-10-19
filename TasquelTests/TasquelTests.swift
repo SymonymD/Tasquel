@@ -307,7 +307,7 @@ struct RolloverTests {
 
     // MARK: - Category deletion
 
-    @Test("Deleting a category removes it from the current and future weeks, keeps past weeks and its template")
+    @Test("Deleting a category from a future week removes it from that week on; earlier weeks and its template keep it")
     func deleteCategoryStaysDeleted() {
         let store = makeIsolatedStore()
         let thisMonday = Week.startOfWeek(containing: Date())
@@ -324,7 +324,7 @@ struct RolloverTests {
 
         let names = { (date: Date) in store.weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: date) }!.categories.map(\.name) }
         #expect(names(lastMonday).contains("Gone"), "past weeks keep their history")
-        #expect(!names(thisMonday).contains("Gone"))
+        #expect(names(thisMonday).contains("Gone"), "weeks before the viewed one keep it")
         #expect(!names(nextMonday).contains("Gone"))
         #expect(names(nextMonday).contains("Kept"))
 
@@ -1492,4 +1492,244 @@ struct GregorianWeekTests {
                 == Week.startOfWeek(containing: clock.now, calendar: .weekDates(in: other.timeZone)))
         #expect(DayKey(clock.now, in: other) == DayKey(year: 2099, month: 3, day: 4))
     }
+}
+
+// MARK: - Copies Edited in a Future Week
+
+struct EditedCopyTests {
+    private let clock = TestClock(2099, 3, 4)
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func titles(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories[0].tasks.map(\.title)
+    }
+
+    @Test("Renaming next week's repeating copy sticks, also through its final sync")
+    func renamedRepeatingCopyStays() {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Hands", mode: .repeating)
+        let next = nextWeek
+        store.navigateToDate(next)
+        let category = store.selectedWeek!.categories[0]
+        store.renameTask(categoryID: category.id, taskID: category.tasks[0].id, newTitle: "Hands x2")
+        store.navigateToDate(clock.now)
+        store.navigateToDate(next)
+        #expect(titles(store) == ["Hands x2"])
+
+        clock.now = next
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(relaunched) == ["Hands x2"])
+    }
+
+    @Test("A goal set up on next week's repeating copy stays")
+    func goalOnCopyStays() {
+        let store = makeIsolatedStore(clock: clock)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Run", mode: .repeating)
+        store.navigateToDate(nextWeek)
+        let category = store.selectedWeek!.categories[0]
+        store.updateTaskType(categoryID: category.id, taskID: category.tasks[0].id, type: .goal)
+        store.setGoalTarget(categoryID: category.id, taskID: category.tasks[0].id, target: 5)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks[0]
+        #expect(copy.taskType == .goal)
+        #expect(copy.goalTarget == 5)
+    }
+
+    @Test("Progress entered on next week's carried copy stays when this week's task is finished")
+    func carriedProgressStays() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let books = store.addTask(categoryID: categoryID, title: "Books", mode: .carryOver, type: .goal)!
+        store.setGoalTarget(categoryID: categoryID, taskID: books, target: 10)
+        store.updateGoalProgress(categoryID: categoryID, taskID: books, progress: 2)
+        store.navigateToDate(nextWeek)
+        let category = store.selectedWeek!.categories[0]
+        store.updateGoalProgress(categoryID: category.id, taskID: category.tasks[0].id, progress: 5)
+
+        store.navigateToDate(clock.now)
+        store.updateGoalProgress(categoryID: categoryID, taskID: books, progress: 10)
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks.first { $0.title == "Books" }
+        #expect(copy?.goalProgress == 5)
+    }
+
+    @Test("A task typed into next week isn't taken over by this week's task with the same name")
+    func typedTaskIsNotAdopted() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.navigateToDate(nextWeek)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Pay rent", mode: .carryOver)
+        store.navigateToDate(clock.now)
+        let rent = store.addTask(categoryID: categoryID, title: "Pay rent", mode: .carryOver)!
+        store.navigateToDate(nextWeek)
+        store.navigateToDate(clock.now)
+        store.toggleTask(categoryID: categoryID, taskID: rent)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Pay rent"])
+    }
+
+    @Test("A repeating copy that follows a new target is checked again only if it meets it")
+    func followedTargetRedecidesCompletion() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let hands = store.addTask(categoryID: categoryID, title: "Hands", mode: .repeating, type: .goal)!
+        store.setGoalTarget(categoryID: categoryID, taskID: hands, target: 5)
+        store.navigateToDate(nextWeek)
+        let category = store.selectedWeek!.categories[0]
+        store.updateGoalProgress(categoryID: category.id, taskID: category.tasks[0].id, progress: 5)
+        #expect(store.selectedWeek!.categories[0].tasks[0].isCompleted)
+
+        store.navigateToDate(clock.now)
+        store.setGoalTarget(categoryID: categoryID, taskID: hands, target: 10)
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks[0]
+        #expect(copy.goalTarget == 10)
+        #expect(!copy.isCompleted)
+    }
+}
+
+// MARK: - Deleting a Category From a Future Week
+
+struct FutureCategoryDeletionTests {
+    private let clock = TestClock(2099, 3, 4)
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func names(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories.map(\.name)
+    }
+
+    @Test("Deleting a category from next week keeps it this week, and syncing doesn't add it back")
+    func keepsCurrentWeek() {
+        let store = makeIsolatedStore(clock: clock)
+        let name = store.selectedWeek!.categories[0].name
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Keep me", mode: .oneTime)
+        store.navigateToDate(nextWeek)
+        store.deleteCategory(store.selectedWeek!.categories[0].id)
+
+        store.navigateToDate(clock.now)
+        #expect(names(store).contains(name))
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Keep me"])
+        store.navigateToDate(nextWeek)
+        #expect(!names(store).contains(name))
+
+        // Adding it back to next week works.
+        store.addCategory(name: name, symbol: "star")
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        #expect(names(store).contains(name))
+    }
+
+    @Test("A this-week-only category is deleted from its own week only")
+    func thisWeekOnly() {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        let trip = store.selectedWeek!.categories.first { $0.name == "Trip" }!
+        store.deleteCategory(trip.id)
+        #expect(!names(store).contains("Trip"))
+        #expect(!store.savedCategories.contains { $0.name == "Trip" })
+    }
+}
+
+// MARK: - A Week Becoming Current While the App Is Open
+
+@Test("A saved week that becomes current on screen gets its final sync before the first edit")
+func finalSyncBeforeFirstEdit() {
+    let directory = makeTempDirectory()
+    let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Hands", mode: .repeating)
+    let next = clock.weeks(1, from: clock.now)
+    store.navigateToDate(next)
+    store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Dentist", mode: .oneTime)
+
+    // Midnight passes with next week on screen; then the user deletes its "Hands".
+    clock.now = next
+    let category = store.selectedWeek!.categories[0]
+    store.deleteTask(categoryID: category.id, taskID: category.tasks.first { $0.title == "Hands" }!.id)
+
+    let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    #expect(relaunched.selectedWeek!.categories[0].tasks.map(\.title) == ["Dentist"])
+}
+
+@Test("Switching to Monday weeks on a Sunday doesn't bring back categories deleted that week")
+func weekStartSwitchOnSunday() {
+    let clock = TestClock(2099, 3, 1)  // a Sunday
+    let store = makeIsolatedStore(clock: clock)
+    store.setWeekStartsOnSunday(true)
+    clock.now = clock.weeks(1, from: clock.now)  // the next Sunday
+    store.navigateToDate(clock.now)
+    let removed = store.selectedWeek!.categories[0].name
+    store.deleteCategory(store.selectedWeek!.categories[0].id)
+
+    // Today's week moves a day later and becomes next week.
+    store.setWeekStartsOnSunday(false)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(!store.selectedWeek!.categories.contains { $0.name == removed })
+}
+
+// MARK: - Unreadable or Odd Data
+
+struct DataRecoveryTests {
+    private let clock = TestClock(2099, 3, 4)
+
+    @Test("A task with missing fields or an unknown mode still loads")
+    func lenientTaskDecoding() throws {
+        let directory = makeTempDirectory()
+        let json = """
+        [{"id":"\(UUID())","startDay":"2099-03-02","categories":[{"id":"\(UUID())","name":"Home","symbol":"house",
+          "tasks":[{"id":"\(UUID())","title":"Odd","mode":"fortnightly"},{"title":"Bare"}]}]}]
+        """
+        try Data(json.utf8).write(to: directory.appending(path: "checklist.json"))
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        #expect(store.persistenceError == nil)
+        let tasks = store.selectedWeek?.categories.first { $0.name == "Home" }?.tasks ?? []
+        #expect(tasks.map(\.title) == ["Odd", "Bare"])
+        #expect(tasks.first?.mode == .carryOver)
+    }
+
+    @Test("Start Fresh keeps the unreadable file and continues without it")
+    func setAsideUnreadableFile() throws {
+        let directory = makeTempDirectory()
+        try Data("not json".utf8).write(to: directory.appending(path: "checklist.json"))
+        let store = makeIsolatedStore(directory: directory, clock: clock)
+        #expect(store.persistenceError != nil)
+
+        store.setAsideUnreadableData()
+        #expect(store.persistenceError == nil)
+        #expect(store.selectedWeek != nil)
+        let kept = try FileManager.default.contentsOfDirectory(atPath: directory.path())
+            .filter { $0.hasPrefix("checklist-unreadable-") }
+        #expect(kept.count == 1)
+        #expect(try String(contentsOf: directory.appending(path: kept[0]), encoding: .utf8) == "not json")
+    }
+
+    @Test("Finishing onboarding keeps categories that already have tasks")
+    func onboardingKeepsTasks() {
+        let store = makeIsolatedStore(clock: clock)
+        let existing = store.selectedWeek!.categories[0]
+        store.addTask(categoryID: existing.id, title: "Keep me", mode: .oneTime)
+        store.replaceCurrentWeekCategories(with: [Tasquel.Category(name: "Garden", symbol: "leaf")])
+        let categories = store.selectedWeek!.categories
+        #expect(categories.map(\.name) == ["Garden", existing.name])
+        #expect(categories[1].tasks.map(\.title) == ["Keep me"])
+    }
+}
+
+@Test("Next week's preview keeps its IDs when this week changes")
+func previewKeepsIDs() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let categoryID = store.selectedWeek!.categories[0].id
+    store.addTask(categoryID: categoryID, title: "Books", mode: .carryOver)
+    let next = clock.weeks(1, from: clock.now)
+    let before = store.previewWeek(for: next)
+    store.addTask(categoryID: categoryID, title: "Today only", mode: .oneTime)
+    let after = store.previewWeek(for: next)
+    #expect(after.id == before.id)
+    #expect(after.categories.map(\.id) == before.categories.map(\.id))
+    #expect(after.categories[0].tasks.map(\.id) == before.categories[0].tasks.map(\.id))
 }

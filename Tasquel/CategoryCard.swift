@@ -127,7 +127,10 @@ struct CategoryGridCard: View {
         // No long-press menu: in edit mode holding a card starts a drag, and deleting
         // goes through the remove badge.
         .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
-        .onChange(of: isRenaming, initial: true) {
+        .onChange(of: isRenaming, initial: true) { wasRenaming, renaming in
+            // Finishing with the card's checkmark removes the field before it loses
+            // focus, so the typed name is saved here.
+            if wasRenaming && !renaming { commitName() }
             editedName = category.name
             nameError = nil
         }

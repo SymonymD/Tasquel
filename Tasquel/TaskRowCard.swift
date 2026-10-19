@@ -798,6 +798,10 @@ struct SubTaskRowCard: View {
         }
         .padding(.leading, 24 * expandedCardScale)
         .padding(.vertical, 2)
+        // Leaving edit mode removes the field before it loses focus: save the name now.
+        .onChange(of: isEditing) { _, editing in
+            if !editing && isEditingTitle { commitTitle() }
+        }
         .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button(isListItem ? "Delete Item" : "Delete Sub-Task", role: .destructive) {
                 store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)

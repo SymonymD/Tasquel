@@ -16,6 +16,9 @@ final class ChecklistStore {
     /// Previewed weeks, so repeated previews (every render while paging) return identical
     /// values instead of new IDs. Cleared whenever the data they're built from changes.
     @ObservationIgnored private var previewCache: [DayKey: Week] = [:]
+    /// The last preview built for each week (kept when the cache is cleared), whose IDs a
+    /// rebuilt preview takes over so its cards and rows keep their identity.
+    @ObservationIgnored private var lastPreviews: [DayKey: Week] = [:]
     var appearanceMode: AppearanceMode = .system
     var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
@@ -30,6 +33,9 @@ final class ChecklistStore {
     private(set) var settingsLoadError: String?
 
     var persistenceError: String? { weekLoadError ?? settingsLoadError }
+    /// Set when saving fails (the device is full, say), so the user can be told. The next
+    /// successful save, which writes everything, clears it.
+    private(set) var saveError: String?
 
     /// The viewed week: the saved one, or, for a week that hasn't been saved (a future
     /// week nobody has edited yet), its preview. Editing a preview saves it.
@@ -80,13 +86,18 @@ final class ChecklistStore {
     /// The app's store, or one backed by throwaway storage when UI tests pass
     /// `-isolatedData`, so they never touch the simulator's real data.
     /// `-isolatedDataID <name>` reuses the same throwaway storage across launches.
+    /// Debug builds only.
     static func makeDefault() -> ChecklistStore {
+        #if !DEBUG
+        return ChecklistStore()
+        #else
         let arguments = ProcessInfo.processInfo.arguments
         let reusableID = arguments.firstIndex(of: "-isolatedDataID").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         guard arguments.contains("-isolatedData") || reusableID != nil else { return ChecklistStore() }
         let directory = FileManager.default.temporaryDirectory.appending(path: "isolated-\(reusableID ?? UUID().uuidString)")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: directory.lastPathComponent) ?? .standard)
+        #endif
     }
 
     /// Init order matters: settings → seed starter templates → weeks → current week.
@@ -174,6 +185,31 @@ final class ChecklistStore {
         loadAndPrepare()
     }
 
+    /// Starts over when a data file can't be read: the unreadable file is renamed (kept
+    /// beside the others, never deleted) and the app continues without it.
+    func setAsideUnreadableData() {
+        let stamp = Int(now().timeIntervalSince1970)
+        for (error, url) in [(weekLoadError, fileURL), (settingsLoadError, settingsURL)] where error != nil {
+            let name = url.deletingPathExtension().lastPathComponent
+            let kept = url.deletingLastPathComponent().appending(path: "\(name)-unreadable-\(stamp).json")
+            try? FileManager.default.moveItem(at: url, to: kept)
+        }
+        loadAndPrepare()
+    }
+
+    func dismissSaveError() {
+        saveError = nil
+    }
+
+    private func reportSave(_ error: Error?) {
+        if let error {
+            print("Failed to save: \(error)")
+            saveError = "Your latest changes couldn't be saved. If your device is low on storage, free up some space; everything is saved again with your next change."
+        } else if saveError != nil {
+            saveError = nil
+        }
+    }
+
     func save() {
         guard persistenceError == nil else { return }
         do {
@@ -182,8 +218,9 @@ final class ChecklistStore {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(weeks)
             try data.write(to: fileURL, options: .atomic)
+            reportSave(nil)
         } catch {
-            print("Failed to save: \(error)")
+            reportSave(error)
         }
     }
 
@@ -239,8 +276,9 @@ final class ChecklistStore {
             )
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsURL, options: .atomic)
+            reportSave(nil)
         } catch {
-            print("Failed to save settings: \(error)")
+            reportSave(error)
         }
     }
 
@@ -297,7 +335,13 @@ final class ChecklistStore {
     /// weeks, which are read-only, and when data couldn't be loaded.
     private func editableSelectedWeekIndex() -> Int? {
         guard persistenceError == nil, let week = selectedWeek, !isPastWeek(week) else { return nil }
-        if let wi = weeks.firstIndex(where: { $0.id == week.id }) { return wi }
+        if let wi = weeks.firstIndex(where: { $0.id == week.id }) {
+            // A saved week that became current while it was on screen (the app stayed
+            // open into a new week) gets its final sync before the user's first edit,
+            // so the sync can't undo that edit later.
+            if weeks[wi].didFinalSync == false && !isFutureWeek(weeks[wi]) { syncWithPreviousWeek(for: selectedDate) }
+            return wi
+        }
         var saved = week
         saved.didFinalSync = !isFutureWeek(week)
         weeks.append(saved)
@@ -321,6 +365,8 @@ final class ChecklistStore {
         save()
         saveSettings()
         ensureWeekExists(for: now())
+        // A saved future week may have just become current.
+        syncWithPreviousWeek(for: now())
     }
 
     func setCalendarEventsEnabled(_ enabled: Bool) {
@@ -434,14 +480,45 @@ final class ChecklistStore {
     func previewWeek(for date: Date) -> Week {
         let monday = weekStartDay(containing: date)
         if let cached = previewCache[monday] { return cached }
-        var week = storedWeekIndex(startingOn: monday).map { weeks[$0] } ?? makeWeek(startingOn: monday)
+        let stored = storedWeekIndex(startingOn: monday).map { weeks[$0] }
+        var week = stored ?? makeWeek(startingOn: monday)
         if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
-            let isFuture = isFutureWeek(week)
+            let isFuture = isFutureWeek(week) && week.didFinalSync != true
             if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source, addsCategories: true) }
             _ = Self.syncCarryOverTasks(into: &week, from: source, followsSource: isFuture)
         }
+        if stored == nil, let last = lastPreviews[monday] { Self.reuseIDs(of: last, in: &week) }
         previewCache[monday] = week
+        lastPreviews[monday] = week
         return week
+    }
+
+    /// Gives a rebuilt preview the IDs of the previous preview of the same week: the week,
+    /// its categories (by name), tasks (by the task they copy) and items (by title).
+    private static func reuseIDs(of last: Week, in week: inout Week) {
+        week.id = last.id
+        for ci in week.categories.indices {
+            guard let lastCategory = last.categories.first(where: { $0.name == week.categories[ci].name }) else { continue }
+            week.categories[ci].id = lastCategory.id
+            var usedTasks = Set<UUID>()
+            for ti in week.categories[ci].tasks.indices {
+                let task = week.categories[ci].tasks[ti]
+                guard let source = task.carriedFrom ?? task.repeatsFrom,
+                      let lastTask = lastCategory.tasks.first(where: {
+                          ($0.carriedFrom ?? $0.repeatsFrom) == source && !usedTasks.contains($0.id)
+                      }) else { continue }
+                usedTasks.insert(lastTask.id)
+                week.categories[ci].tasks[ti].id = lastTask.id
+                var usedItems = Set<UUID>()
+                for si in task.subtasks.indices {
+                    guard let lastItem = lastTask.subtasks.first(where: {
+                        $0.title == task.subtasks[si].title && !usedItems.contains($0.id)
+                    }) else { continue }
+                    usedItems.insert(lastItem.id)
+                    week.categories[ci].tasks[ti].subtasks[si].id = lastItem.id
+                }
+            }
+        }
     }
 
     private func mostRecentWeekBefore(_ day: DayKey) -> Week? {
@@ -486,7 +563,9 @@ final class ChecklistStore {
               !isPastWeek(weeks[wi]),
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
         var changed = false
-        let isFuture = isFutureWeek(weeks[wi])
+        // A week that has had its final sync (it was current, then the week start day
+        // changed and moved it into the future) is the user's own, like a current week.
+        let isFuture = isFutureWeek(weeks[wi]) && weeks[wi].didFinalSync != true
         // A saved week that has just become current gets one last full sync, so changes
         // made last week after it was saved (a task finished, a repeating task renamed)
         // still reach it. Only once: after that the week is the user's own.
@@ -507,7 +586,8 @@ final class ChecklistStore {
     /// the user deleted from `week`. With `followsSource` (a future week, or a week's
     /// final sync), copies the user hasn't touched (nothing checked) also follow their
     /// source: they pick up its new unchecked items, and go away once it's finished or
-    /// no longer carries over. Returns whether anything changed.
+    /// no longer carries over. Copies the user changed in `week` are left alone.
+    /// Returns whether anything changed.
     private static func syncCarryOverTasks(into week: inout Week, from source: Week, followsSource: Bool) -> Bool {
         var changed = false
         let dismissed = Set(week.dismissedCarryOvers ?? [])
@@ -522,7 +602,7 @@ final class ChecklistStore {
                     let tasks = week.categories[ci].tasks
                     guard !tasks.contains(where: { $0.carriedFrom == task.id }),
                           let ti = tasks.firstIndex(where: {
-                              $0.carriedFrom == nil && $0.title == task.title && $0.mode == .carryOver &&
+                              $0.carriedFrom == nil && !$0.isUserEdited && $0.title == task.title && $0.mode == .carryOver &&
                                   !$0.isCompleted && !$0.subtasks.contains(where: \.isCompleted)
                           }) else { continue }
                     week.categories[ci].tasks[ti].carriedFrom = task.id
@@ -531,7 +611,7 @@ final class ChecklistStore {
 
                 for ti in week.categories[ci].tasks.indices.reversed() {
                     let copy = week.categories[ci].tasks[ti]
-                    guard let sourceID = copy.carriedFrom, copy.mode == .carryOver,
+                    guard let sourceID = copy.carriedFrom, copy.mode == .carryOver, !copy.isUserEdited,
                           !copy.isCompleted, !copy.subtasks.contains(where: \.isCompleted) else { continue }
                     if let task = sources[sourceID], task.mode == .carryOver, !task.isCompleted {
                         let followed = following(task, copy: copy)
@@ -617,11 +697,12 @@ final class ChecklistStore {
         let dismissedTitles = Set(week.dismissedRepeating ?? [])
         let dismissedIDs = Set(week.dismissedCarryOvers ?? [])
         let isDismissed = { (task: ChecklistTask) in dismissedIDs.contains(task.id) || dismissedTitles.contains(task.title) }
+        let dismissedCategories = Set(week.dismissedCategories ?? [])
 
         for sourceCategory in sourceWeek.categories where !sourceCategory.isThisWeekOnly {
             let recurringTasks = sourceCategory.tasks.filter { $0.mode == .repeating }
             guard let ci = week.categories.firstIndex(where: { $0.name == sourceCategory.name }) else {
-                guard addsCategories else { continue }
+                guard addsCategories, !dismissedCategories.contains(sourceCategory.name) else { continue }
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
                 newCat.tasks = recurringTasks.filter { !isDismissed($0) }.map { resetRecurringTask($0) }
@@ -635,7 +716,7 @@ final class ChecklistStore {
             for task in recurringTasks {
                 let tasks = week.categories[ci].tasks
                 guard !tasks.contains(where: { $0.repeatsFrom == task.id }),
-                      let ti = tasks.firstIndex(where: { $0.repeatsFrom == nil && $0.carriedFrom == nil && $0.mode == .repeating && $0.title == task.title })
+                      let ti = tasks.firstIndex(where: { $0.repeatsFrom == nil && $0.carriedFrom == nil && !$0.isUserEdited && $0.mode == .repeating && $0.title == task.title })
                 else { continue }
                 week.categories[ci].tasks[ti].repeatsFrom = task.id
                 changed = true
@@ -643,7 +724,8 @@ final class ChecklistStore {
 
             for ti in week.categories[ci].tasks.indices.reversed() {
                 let copy = week.categories[ci].tasks[ti]
-                guard let sourceID = copy.repeatsFrom, copy.mode == .repeating else { continue }
+                // A copy the user changed in this week is theirs: it neither follows nor goes away.
+                guard let sourceID = copy.repeatsFrom, copy.mode == .repeating, !copy.isUserEdited else { continue }
                 // Linked to the source, or to the task the source itself repeats (a week
                 // in between was saved after this one).
                 let source = sources[sourceID] ?? sourceCategory.tasks.first { $0.repeatsFrom == sourceID }
@@ -673,8 +755,8 @@ final class ChecklistStore {
     /// A later week's copy of a repeating task updated from its source: name, type and
     /// goal setup follow; the copy's own progress and checks stay. A list gains the
     /// source's new items and drops unchecked items the source no longer has.
-    private static func followingRepeating(_ task: ChecklistTask, copy: ChecklistTask) -> ChecklistTask {
-        var copy = copy
+    private static func followingRepeating(_ task: ChecklistTask, copy original: ChecklistTask) -> ChecklistTask {
+        var copy = original
         copy.title = task.title
         copy.taskType = task.taskType
         copy.goalTarget = task.goalTarget
@@ -686,6 +768,13 @@ final class ChecklistStore {
             copy.subtasks.removeAll { !$0.isCompleted && !sourceTitles.contains($0.title) }
             let present = Set(copy.subtasks.map(\.title))
             copy.subtasks += task.subtasks.filter { !present.contains($0.title) }.map { SubTask(title: $0.title) }
+            if copy.subtasks != original.subtasks, !copy.subtasks.isEmpty {
+                copy.isCompleted = copy.subtasks.allSatisfy(\.isCompleted)
+            }
+        }
+        // A changed target re-decides whether the goal is met.
+        if task.taskType == .goal, copy.goalTarget != original.goalTarget {
+            copy.isCompleted = copy.goalIsComplete
         }
         return copy
     }
@@ -707,9 +796,18 @@ final class ChecklistStore {
         return newTask
     }
 
+    /// Onboarding's categories become the viewed week's. Categories that already have
+    /// tasks (data from before onboarding, say after unreadable settings were set aside)
+    /// are kept, so finishing onboarding never deletes tasks.
     func replaceCurrentWeekCategories(with categories: [Category]) {
         guard let wi = editableSelectedWeekIndex() else { return }
-        weeks[wi].categories = categories
+        let existing = weeks[wi].categories.filter { !$0.tasks.isEmpty }
+        let chosen = Set(categories.map(\.name))
+        weeks[wi].categories = categories.map { new in
+            guard var kept = existing.first(where: { $0.name == new.name }) else { return new }
+            kept.symbol = new.symbol
+            return kept
+        } + existing.filter { !chosen.contains($0.name) }
         save()
     }
 
@@ -725,17 +823,28 @@ final class ChecklistStore {
         var category = Category(name: name, symbol: symbol)
         category.isThisWeekOnly = thisWeekOnly
         weeks[wi].categories.append(category)
+        weeks[wi].dismissedCategories?.removeAll { $0 == name }
         save()
     }
 
-    /// Deletes the category (matched by name) from the current week and every future
-    /// week, so future-week syncing can't bring it back. Past weeks keep their history.
-    /// Its saved template is kept (or created) so it can be re-added from Add Category.
+    /// Deletes the category (matched by name) from the viewed week and every later week,
+    /// so future-week syncing can't bring it back. Earlier weeks keep it. A "this week
+    /// only" category is deleted from the viewed week alone. Its saved template is kept
+    /// (or created) so it can be re-added from Add Category.
     func deleteCategory(_ categoryID: UUID) {
         guard let wi = editableSelectedWeekIndex(),
               let category = weeks[wi].categories.first(where: { $0.id == categoryID }) else { return }
-        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
-            weeks[wi].categories.removeAll { $0.name == category.name }
+        let fromDay = weeks[wi].startDay
+        if category.isThisWeekOnly {
+            weeks[wi].categories.removeAll { $0.id == categoryID }
+        } else {
+            for index in weeks.indices where weeks[index].startDay >= fromDay {
+                weeks[index].categories.removeAll { $0.name == category.name }
+            }
+            // The week before may still have it; a future week's sync would add it back.
+            if isFutureWeek(weeks[wi]), !(weeks[wi].dismissedCategories ?? []).contains(category.name) {
+                weeks[wi].dismissedCategories = (weeks[wi].dismissedCategories ?? []) + [category.name]
+            }
         }
         save()
         if !category.isThisWeekOnly && !savedCategories.contains(where: { $0.name == category.name }) {
@@ -811,7 +920,7 @@ final class ChecklistStore {
     func addTask(categoryID: UUID, title: String, mode: TaskMode = .carryOver, type: TaskType = .checkbox) -> UUID? {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return nil }
-        let task = ChecklistTask(title: title, mode: mode, taskType: type)
+        let task = ChecklistTask(title: title, mode: mode, taskType: type, isUserEdited: true)
         weeks[wi].categories[ci].tasks.append(task)
         save()
         return task.id
@@ -830,13 +939,15 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         if let task = weeks[wi].categories[ci].tasks.first(where: { $0.id == taskID }) {
             if let sourceID = task.carriedFrom {
-                weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+                weeks[wi].dismissCarryOver(sourceID)
             }
             // In a future week, a deleted repeating task must not be synced back in.
             if task.mode == .repeating && isFutureWeek(weeks[wi]) {
-                weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
+                if !(weeks[wi].dismissedRepeating ?? []).contains(task.title) {
+                    weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
+                }
                 if let sourceID = task.repeatsFrom {
-                    weeks[wi].dismissedCarryOvers = (weeks[wi].dismissedCarryOvers ?? []) + [sourceID]
+                    weeks[wi].dismissCarryOver(sourceID)
                 }
             }
         }
@@ -849,6 +960,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         save()
     }
 
@@ -857,6 +969,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         save()
     }
 
@@ -867,6 +980,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].taskType = type
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         if type != .goal {
             weeks[wi].categories[ci].tasks[ti].goalTarget = nil
             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
@@ -887,6 +1001,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalTarget = target
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         weeks[wi].categories[ci].tasks[ti].goalUnitKind = kind
         weeks[wi].categories[ci].tasks[ti].goalUnit = kind == .custom ? unit : nil
         // Auto-update completion
@@ -902,6 +1017,11 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalProgress = progress
+        // A repeating copy keeps its own progress while following its source. A carried
+        // copy's progress comes from its source, so entering some makes the copy the user's.
+        if weeks[wi].categories[ci].tasks[ti].mode != .repeating {
+            weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        }
         let target = weeks[wi].categories[ci].tasks[ti].goalTarget ?? 0
         weeks[wi].categories[ci].tasks[ti].isCompleted = target > 0 && progress >= target
         save()
@@ -914,6 +1034,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // A new unchecked item means the task isn't done yet.
         weeks[wi].categories[ci].tasks[ti].isCompleted = false
         save()
@@ -938,6 +1059,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // Deleting the last unchecked item completes the task, as checking it would.
         let task = weeks[wi].categories[ci].tasks[ti]
         if !task.subtasks.isEmpty {
@@ -952,6 +1074,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks[si].title = newTitle
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         save()
     }
 

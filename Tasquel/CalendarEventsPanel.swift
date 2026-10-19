@@ -15,6 +15,10 @@ struct CalendarEventsPanel: View {
     @State private var listHeight: CGFloat = 0
     /// How far the panel has been dragged down; it shrinks by this much.
     @State private var dragOffset: CGFloat = 0
+    /// Resets on its own when iOS cancels the drag (onEnded isn't called then), so a
+    /// cancelled drag can't leave the panel shrunk with its events disabled.
+    @GestureState private var isDragging = false
+    @State private var isDismissing = false
 
     private let maxListHeight: CGFloat = 280
     private var listScrolls: Bool { listHeight > maxListHeight }
@@ -72,6 +76,10 @@ struct CalendarEventsPanel: View {
         .padding(.horizontal, 4)
         .padding(.top, 4)
         .accessibilityAction(.escape, onDismiss)
+        .onChange(of: isDragging) { _, dragging in
+            guard !dragging, !isDismissing, dragOffset > 0 else { return }
+            withAnimation(.snappy(duration: 0.25)) { dragOffset = 0 }
+        }
     }
 
     private var measuredList: some View {
@@ -81,11 +89,14 @@ struct CalendarEventsPanel: View {
 
     private var dismissDrag: some Gesture {
         DragGesture(minimumDistance: 8)
+            .updating($isDragging) { _, dragging, _ in dragging = true }
             .onChanged { value in
+                if isDismissing { isDismissing = false }
                 dragOffset = max(0, value.translation.height)
             }
             .onEnded { value in
                 if value.translation.height > 60 || value.predictedEndTranslation.height > 160 {
+                    isDismissing = true
                     onDismiss()
                 } else {
                     withAnimation(.snappy(duration: 0.25)) { dragOffset = 0 }
