@@ -150,12 +150,11 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Task options: List, Repeating"].exists)
 
         app.buttons["Done"].tap()
-        let list = app.buttons["Check Groceries"]
-        XCTAssertEqual(list.value as? String, "Unchecked")
-        app.buttons["Check Eggs"].tap()
-        XCTAssertEqual(list.value as? String, "Unchecked", "one item left")
-        app.buttons["Check Milk"].tap()
-        XCTAssertEqual(list.value as? String, "Checked", "checking every item checks the list")
+        XCTAssertTrue(app.buttons["Complete Groceries"].exists)
+        app.buttons["Complete Eggs"].tap()
+        XCTAssertTrue(app.buttons["Complete Groceries"].exists, "one item left")
+        app.buttons["Complete Milk"].tap()
+        XCTAssertTrue(app.buttons["Mark Groceries incomplete"].waitForExistence(timeout: 2), "checking every item checks the list")
     }
 
     /// Help opens and shows every section (it once indexed past its last section and crashed).

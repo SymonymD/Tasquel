@@ -94,6 +94,9 @@ struct TaskRowCard: View {
                 // Completion indicator
                 if task.taskType == .goal {
                     goalIndicator
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(task.title) progress")
+                        .accessibilityValue(TaskAccessibility.goalValue(task))
                 } else {
                     Button {
                         guard !isPastWeek else { return }
@@ -114,8 +117,8 @@ struct TaskRowCard: View {
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle().size(width: expandedCardControl(36), height: expandedCardControl(36)))
-                    .accessibilityLabel("Check \(task.title)")
-                    .accessibilityValue(task.isCompleted ? "Checked" : "Unchecked")
+                    .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
+                    .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
                 }
 
                 // Title
@@ -634,6 +637,25 @@ struct TaskRowCard: View {
     }
 }
 
+// MARK: - Accessibility
+
+enum TaskAccessibility {
+    /// What tapping a checkbox does: "Complete Eggs" or "Mark Eggs incomplete".
+    static func checkboxLabel(_ title: String, isCompleted: Bool) -> String {
+        isCompleted ? "Mark \(title) incomplete" : "Complete \(title)"
+    }
+
+    /// A goal's progress read aloud: "3 of 5", "3 of 5 pages", "1h of 2h", or that it
+    /// has no target yet.
+    static func goalValue(_ task: ChecklistTask) -> String {
+        guard let target = task.goalTarget, target > 0 else { return "No target yet" }
+        let kind = task.goalKind
+        var value = "\(kind.format(task.goalProgress ?? 0)) of \(kind.format(target))"
+        if let unit = task.goalUnitLabel { value += " \(unit)" }
+        return task.goalIsComplete ? "Done, \(value)" : value
+    }
+}
+
 // MARK: - Goal Amount Input
 
 /// Text typed for one goal amount: a number, or hours and minutes for time goals.
@@ -798,8 +820,8 @@ struct SubTaskRowCard: View {
         .padding(8)
         .contentShape(Rectangle())
         .padding(-8)
-        .accessibilityLabel("Check \(subtask.title)")
-        .accessibilityValue(subtask.isCompleted ? "Checked" : "Unchecked")
+        .accessibilityLabel(TaskAccessibility.checkboxLabel(subtask.title, isCompleted: subtask.isCompleted))
+        .accessibilityAddTraits(subtask.isCompleted ? .isSelected : [])
     }
 }
 

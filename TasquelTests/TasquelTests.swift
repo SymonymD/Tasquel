@@ -1265,3 +1265,27 @@ struct AppInfoTests {
         #expect(AppInfo.supportURL.scheme == "https")
     }
 }
+
+// MARK: - Accessibility
+
+struct TaskAccessibilityTests {
+    @Test("Checkboxes say what tapping them does")
+    func checkboxLabels() {
+        #expect(TaskAccessibility.checkboxLabel("Eggs", isCompleted: false) == "Complete Eggs")
+        #expect(TaskAccessibility.checkboxLabel("Eggs", isCompleted: true) == "Mark Eggs incomplete")
+    }
+
+    @Test("A goal reads its progress")
+    func goalValue() {
+        var task = ChecklistTask(title: "Read", taskType: .goal)
+        #expect(TaskAccessibility.goalValue(task) == "No target yet")
+        task.goalTarget = 5
+        task.goalProgress = 3
+        #expect(TaskAccessibility.goalValue(task) == "3 of 5")
+        task.goalUnitKind = .custom
+        task.goalUnit = "pages"
+        #expect(TaskAccessibility.goalValue(task) == "3 of 5 pages")
+        task.goalProgress = 5
+        #expect(TaskAccessibility.goalValue(task) == "Done, 5 of 5 pages")
+    }
+}
