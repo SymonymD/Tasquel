@@ -1042,6 +1042,20 @@ struct FutureWeekPreviewTests {
         #expect(store.selectedWeek != nil)
     }
 
+    @Test("An edit that's refused in a preview doesn't leave the week saved")
+    func refusedEditKeepsPreview() throws {
+        let store = makeIsolatedStore(clock: clock)
+        let count = store.weeks.count
+        store.navigateToDate(nextWeek)
+        let category = store.selectedWeek!.categories[0]
+        let taken = try #require(store.savedCategories.first { $0.name != category.name }).name
+        #expect(!store.renameCategory(category.id, newName: taken))
+        store.navigateToDate(clock.now)
+        #expect(store.weeks.count == count)
+        store.navigateToDate(nextWeek)
+        #expect(store.selectedWeek!.categories[0].id == category.id, "the preview keeps its IDs")
+    }
+
     @Test("A carry-over finished after peeking doesn't appear next week")
     func finishedAfterPeek() {
         let store = makeIsolatedStore(clock: clock)
@@ -1114,6 +1128,23 @@ struct FutureWeekPreviewTests {
         let reloaded = makeIsolatedStore(directory: directory, clock: clock)
         reloaded.navigateToDate(nextWeek)
         #expect(titles(reloaded).isEmpty, "still deleted after relaunch")
+    }
+
+    @Test("A new repeating task with a deleted one's name still repeats into that week")
+    func sameNameAfterDeleteRepeats() {
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let oldGym = store.addTask(categoryID: categoryID, title: "Gym", mode: .repeating)!
+
+        store.navigateToDate(nextWeek)
+        let copy = store.selectedWeek!.categories[0].tasks.first { $0.title == "Gym" }!
+        store.deleteTask(categoryID: store.selectedWeek!.categories[0].id, taskID: copy.id)
+
+        store.navigateToDate(clock.now)
+        store.deleteTask(categoryID: categoryID, taskID: oldGym)
+        store.addTask(categoryID: categoryID, title: "Gym", mode: .repeating)
+        store.navigateToDate(nextWeek)
+        #expect(titles(store) == ["Gym"])
     }
 }
 
@@ -1260,6 +1291,18 @@ struct AppInfoTests {
 // MARK: - Accessibility
 
 struct TaskAccessibilityTests {
+    @Test("Today's date uses the user's language, with an ordinal day only in English")
+    func todayDateString() {
+        let clock = TestClock(2099, 3, 22)
+        let us = Locale(identifier: "en_US")
+        #expect(ContentView.dateString(clock.now, weekday: .wide, locale: us).hasSuffix("Mar 22nd"))
+        #expect(ContentView.dateString(TestClock(2099, 3, 11).now, weekday: nil, locale: us) == "Mar 11th")
+        let german = ContentView.dateString(clock.now, weekday: .wide, locale: Locale(identifier: "de_DE"))
+        #expect(german.contains("22") && !german.contains("nd"))
+        #expect(!ContentView.dateString(clock.now, weekday: nil, locale: Locale(identifier: "en_GB")).hasSuffix("nd"),
+                "the day doesn't come last here, so no suffix")
+    }
+
     @Test("Checkboxes say what tapping them does")
     func checkboxLabels() {
         #expect(TaskAccessibility.checkboxLabel("Eggs", isCompleted: false) == "Complete Eggs")

@@ -679,27 +679,39 @@ struct ContentView: View {
         return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
     }
 
-    /// Today's date, in the bottom bar.
+    /// Today's date, in the bottom bar: shorter forms on narrow screens instead of
+    /// cutting it off ("Wednesday, Oct 21st", "Wed, Oct 21st", "Oct 21st").
     private var todayText: some View {
-        Text(Theme.isRetro(theme) ? "[\(todayDateString)]" : todayDateString)
-            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+        ViewThatFits(in: .horizontal) {
+            todayLabel(weekday: .wide)
+            todayLabel(weekday: .abbreviated)
+            todayLabel(weekday: nil)
+                .minimumScaleFactor(0.8)
+        }
+        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
     }
 
-    private var todayDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
-        let base = formatter.string(from: today)
-        let day = Calendar.current.component(.day, from: today)
-        let suffix: String
-        switch day {
-        case 1, 21, 31: suffix = "st"
-        case 2, 22: suffix = "nd"
-        case 3, 23: suffix = "rd"
-        default: suffix = "th"
+    private func todayLabel(weekday: Date.FormatStyle.Symbol.Weekday?) -> some View {
+        let date = Self.dateString(today, weekday: weekday)
+        return Text(Theme.isRetro(theme) ? "[\(date)]" : date)
+            .lineLimit(1)
+    }
+
+    /// The date in the user's language and region. English adds the day's ordinal
+    /// suffix where the day comes last ("Oct 21st"); other languages use their own form.
+    static func dateString(_ date: Date, weekday: Date.FormatStyle.Symbol.Weekday?, locale: Locale = .current) -> String {
+        var style = Date.FormatStyle(locale: locale).month(.abbreviated).day()
+        if let weekday { style = style.weekday(weekday) }
+        let text = date.formatted(style)
+        let day = Calendar(identifier: .gregorian).component(.day, from: date)
+        guard locale.language.languageCode == .english, text.hasSuffix(" \(day)") else { return text }
+        let suffix = switch day {
+        case 1, 21, 31: "st"
+        case 2, 22: "nd"
+        case 3, 23: "rd"
+        default: "th"
         }
-        return "\(base)\(suffix)"
+        return text + suffix
     }
 
     // MARK: - Week Content

@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Tasquel is a weekly checklist iOS app (iPhone + iPad) built with SwiftUI, targeting iOS 26.2. Bundle ID: `com.symonym.Tasquel`. No external dependencies — pure Apple frameworks.
+Tasquel is a weekly checklist iOS app (iPhone + iPad) built with SwiftUI, targeting iOS 26.0. Bundle ID: `com.symonym.Tasquel`. No external dependencies — pure Apple frameworks.
 
 Users organize tasks into categories within weekly views. Tasks support three modes (carry-over, repeating, one-time), sub-tasks, and automatic weekly rollover. Categories are saved as reusable templates.
 
@@ -21,7 +21,7 @@ xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS
 xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:TasquelTests/TasquelTests/testExample test
 ```
 
-Simulator: iPhone 17 Pro (iOS 26.2). Files added to the `Tasquel/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
+Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checking the minimum). Files added to the `Tasquel/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
 
 ## Architecture
 

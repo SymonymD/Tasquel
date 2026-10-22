@@ -22,15 +22,15 @@
 
 ## Project
 
-**Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.2 deployment target.
+**Tasquel** — Weekly checklist iOS app (iPhone + iPad), SwiftUI, iOS 26.0 deployment target (was 26.2 until 2026-10-21).
 Bundle ID: `com.symonym.Tasquel`
 Repo: https://github.com/SymonymD/Tasquel
 Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-10-19)
+## Current State (as of 2026-10-21)
 
-Everything is merged to `main` and pushed (through `a6286ec`); the feature branches (`calendar-integration-and-card-rework`, `final-sync-and-gregorian`, `final-sync-legacy-weeks`) are merged and can be deleted. ~8,400 lines of Swift across app and tests; 78 unit tests (Swift Testing) pass. The UI tests in `TasquelUITests` haven't been re-run since the pre-submission pass (the user asks before simulator runs). The user's iPhone 16 Pro Max runs `a6286ec` (install via `devicectl`, see memory). The file table below is from 2026-10-10; `CLAUDE.md`/`AGENTS.md` have the current file list.
+Everything is merged to `main` and pushed, including the branch `audit-fixes-2026-10-19` (audit fixes, accessibility, app icon, follow-ups). ~9,100 lines of Swift across app and tests; 94 unit tests (Swift Testing) and 11 UI tests (`TasquelUITests`, `CalendarUITests`, `GoalUITests`). The user's iPhone 16 Pro Max runs the branch (install via `devicectl`, see memory). The app icon is an Icon Composer file, `Tasquel/AppIcon.icon` (the empty `AppIcon.appiconset` was removed). Old merged branches (`audit-fixes-and-test-isolation`, `calendar-integration-and-card-rework`, `final-sync-and-gregorian`, `final-sync-legacy-weeks`) still exist locally and on GitHub; delete them only when the user says so.
 
 There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/SYMONYM/Tasquel/Tasquel`, where work happens) and `/Volumes/T7/Design/SYMONYM/Tasquel/Tasquel` (fast-forwarded to `a6286ec` on 2026-10-19; it also holds an old stash from `7b0c956`). Pull before working in the second one.
 
@@ -38,24 +38,29 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `Tasquel/TasquelApp.swift` | ~15 | `@main` App struct, unchanged from template |
-| `Tasquel/Models.swift` | 206 | Data models and enums |
-| `Tasquel/ChecklistStore.swift` | 547 | `@Observable` store, persistence, CRUD, rollover, validation, load-error safeguards; `init(directory:defaults:)` injectable for tests |
-| `Tasquel/Theme.swift` | 140 | Theme functions and `ScanlineOverlay` |
-| `Tasquel/ContentView.swift` | 489 | Root view, week grid (order + expansion state), week paging (swipe/arrows), navigation, bottom bar |
-| `Tasquel/CategoryCard.swift` | 349 | `CategoryGridCard` (one card for both states: shared header, cross-faded content, context menu, deletion confirmations) + collapsed/expanded content views + `AnimatableFont` |
-| `Tasquel/CategoryGridLayout.swift` | 83 | Custom `Layout`: two-column grid where expanded cards take a full row |
-| `Tasquel/TaskRowCard.swift` | 563 | Task, subtask, and add-task rows; goal editing and confirmations |
-| `Tasquel/AddCategorySheet.swift` | 188 | Add Category and Date Picker sheets |
-| `Tasquel/SettingsSheet.swift` | 249 | Standard and retro settings layouts |
-| `Tasquel/HelpSheet.swift` | 137 | Help sheet and rows |
-| `Tasquel/RemoveCategorySheet.swift` | 52 | Legacy removal sheet (expanded card no longer presents it) |
-| `Tasquel/FeedbackSheet.swift` | 219 | Feedback UI/webhook code; currently not linked from Settings |
-| `Tasquel/OnboardingSheet.swift` | 303 | Onboarding flow + `#Preview("Onboarding")` (temp-directory store) |
-| `Tasquel/WeekCarryOverAnimation.swift` | 253 | Welcome carry-over animation (`KeyframeAnimator`) + `#Preview("Week carry-over")` |
-| `TasquelTests/TasquelTests.swift` | 374 | 19 tests: rollover, safety/persistence isolation, welcome-animation timeline, grid row rule |
-| `TasquelUITests/TasquelUITests.swift` | 111 | UI journey and category expansion tests |
-| `CLAUDE.md` / `AGENTS.md` | 89 | Architecture reference for Claude Code / Codex (keep in sync) |
+| `Tasquel/TasquelApp.swift` | 22 | `@main` App struct; owns the one `ChecklistStore` and `CalendarService` (shared by iPad windows) |
+| `Tasquel/Models.swift` | 469 | Data models and enums, lenient task decoding, `DayKey`, `GoalNumber` |
+| `Tasquel/ChecklistStore.swift` | 1103 | `@Observable` store: persistence, rollover, future-week previews and sync, validation, load/save error handling |
+| `Tasquel/Theme.swift` | 166 | Theme colors/fonts (retro palette with contrast-safe text colors) and `ScanlineOverlay` |
+| `Tasquel/ContentView.swift` | 1178 | Root view: header, week paging, card grid (order, expansion, drag), bottom bar, events panel, day changes, error screens |
+| `Tasquel/CategoryCard.swift` | 450 | `CategoryGridCard` (one card for both states), completion ring, collapsed/expanded content, `AnimatableFont` |
+| `Tasquel/CategoryGridLayout.swift` | 98 | Custom `Layout`: two-column grid, full-width rows for expanded cards (and every card at accessibility text sizes) |
+| `Tasquel/TaskRowCard.swift` | 909 | Task, sub-task and add-task rows, goal editing, expanded-card sizing, `touchTarget()` |
+| `Tasquel/TaskOptionsPicker.swift` | 165 | Type/mode picker and `OptionButtonLabel` |
+| `Tasquel/CategorySymbols.swift` | 38 | Category icons with names, `CategorySymbolMenu` |
+| `Tasquel/SavedCategoriesView.swift` | 152 | Settings ▸ Saved Categories editor |
+| `Tasquel/AddCategorySheet.swift` | 229 | Add Category and Date Picker sheets |
+| `Tasquel/SettingsSheet.swift` | 335 | Standard and retro settings layouts, `AppInfo` |
+| `Tasquel/HelpSheet.swift` | 137 | Help guide |
+| `Tasquel/OnboardingSheet.swift` | 340 | Onboarding flow |
+| `Tasquel/CalendarService.swift` | 314 | EventKit/fake providers, week event cache, `FeatureAccess` |
+| `Tasquel/CalendarSettings.swift` | 141 | Calendar settings rows and picker |
+| `Tasquel/CalendarEventsPanel.swift` | 155 | The week's events in the bottom bar |
+| `Tasquel/WeekCarryOverAnimation.swift` | 253 | Welcome carry-over animation (`KeyframeAnimator`) |
+| `Tasquel/AppIcon.icon` | — | Icon Composer app icon (glass layers) |
+| `TasquelTests/TasquelTests.swift` | 1778 | 94 unit tests |
+| `TasquelUITests/*.swift` | 556 | 11 UI tests (journey, calendar panel, goals) |
+| `CLAUDE.md` / `AGENTS.md` | 110 | Architecture reference for Claude Code / Codex (keep in sync) |
 
 ### Features Implemented
 
@@ -154,8 +159,8 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
     - The grid is `.disabled` during a horizontal swipe / week change so a swipe that starts on a card or checkbox doesn't tap it (see gotcha 36).
     - Side effects: changing weeks resets the grid's scroll position to the top (grid has `.id(week.startDate)`); a long sideways drag inside a text field could change weeks (not observed).
 47. **Task row and editing changes (2026-10-10, uncommitted)**: Expanded cards draw everything 15% larger (`expandedCardScale`, `Font.expandedCard`). Task rows show a mode icon (tap for Carry Over / Repeating / One-Time; highlighted for checkbox tasks), a goal icon that toggles goal ↔ checkbox, and a trash can in edit mode. A card's own edit button edits only its tasks; the bottom-bar edit mode is for categories, collapses all cards, and blocks opening them. Deleting a category removes it from the current and future weeks (past weeks keep history) and keeps its template; `RemoveCategorySheet.swift` was removed. "This Week Only" categories (`isThisWeekOnly`) don't roll forward.
-49. **Week start setting and header swap (2026-10-10, uncommitted)**: Settings ▸ Week Starts On (Sunday/Monday); switching moves every saved week by one day so tasks stay with their week. The header now shows today's date and the bottom bar shows "Week of …" (with Go to Today on other weeks).
 48. **Calendar integration (2026-10-10, uncommitted)**: See `docs/plans/2026-10-10-calendar-integration.md`. Settings toggle + calendar picker; a calendar toggle next to Settings expands the bottom bar to list the viewed week's events (tap opens the Calendar app at the event's date); refresh on calendar changes and foregrounding; `FeatureAccess.isCalendarUnlocked` for a future paywall. Launch arguments `-fakeCalendar` and `-isolatedData` for tests.
+49. **Week start setting and header swap (2026-10-10, uncommitted)**: Settings ▸ Week Starts On (Sunday/Monday); switching moves every saved week by one day so tasks stay with their week. The header now shows today's date and the bottom bar shows "Week of …" (with Go to Today on other weeks).
 
 50. **Task types and modes (2026-10-17/18)**: Type (Checkbox / Goal / List) and mode (One-Time / Carry Over / Repeating) are independent, picked in a two-column popover (`TaskOptionsPicker`). List tasks hold items as sub-tasks and check themselves off; repeating lists keep checked items. Goal units (quantity / time / custom) with Add Progress and an edit form with Delete.
 51. **Carry-over linking**: carried copies record `carriedFrom`; deleted copies are remembered in `Week.dismissedCarryOvers`; unlinked copies from older builds are adopted by title.
@@ -170,21 +175,25 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
     - Goal editor: red Delete and green Save Goal in the picker's button style (`OptionButtonLabel`); bottom bar is flat with only a top border.
     - Unused code removed (FeedbackSheet, dead store/model functions, Xcode's template UI tests that used real simulator data).
     - Help "Upcoming Features" removed; Settings has Support/Privacy links (`AppInfo`; pages live at jbfentner.com/tasquel, /support, /privacy), bundle version, and hides the calendar section when locked; VoiceOver labels for checkboxes and goal progress; `PrivacyInfo.xcprivacy` (UserDefaults CA92.1).
+54. **Audit fixes (2026-10-19, `e0a18d4`)**:
+    - Copies the user changed in a future week (`ChecklistTask.isUserEdited`) are never followed, removed or adopted by sync; a followed goal target or list re-decides completion.
+    - Deleting a category from a future week removes it from that week on (`Week.dismissedCategories` keeps sync from adding it back); this-week-only categories only from their week.
+    - One store per app (in `TasquelApp`), so iPad windows can't overwrite each other.
+    - Load-error screen has Start Fresh (`setAsideUnreadableData()` renames the bad file); task decoding is lenient; save failures show an alert (`saveError`); onboarding keeps categories that have tasks.
+    - Midnight while open: `significantTimeChangeNotification` refreshes today and moves to the new week; a week that became current on screen gets its final sync before the first edit. Week-start switch on a Sunday no longer revives deleted categories.
+    - Rename saved when finishing with the card checkmark / leaving edit mode; keyboard dismissed before changing week.
+    - Card drag: frames kept per week, no save without a move, gesture masks instead of `if` branches (stable card identity). Events panel resets after a cancelled drag (`@GestureState`). Previews keep their IDs (`lastPreviews`). Test launch arguments only in DEBUG.
+55. **Accessibility (2026-10-19, `3bb1081`)**: closed cards show done as a filled dot and not done as an outline; retro text colors keep 4.5:1 on a card (red/purple lightened, `retroRed`, black text on retro pills; `glow` only for the shadow); `touchTarget()` gives small controls a 44pt hit area without changing layout (and fixed the task checkbox's off-center area); category names wrap to two lines; every card full width at accessibility text sizes; Reduce Motion turns off the card spring and sliding transitions.
+56. **App icon (2026-10-21, `42b12bf`)**: the user's Icon Composer file `AppIcon.icon` replaces the empty asset catalog icon; `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` already matched.
+57. **Follow-ups (2026-10-21)**: bottom-bar date is localized (`ContentView.dateString`; ordinal suffix only in English when the day comes last) and shortens on narrow screens via `ViewThatFits`; `print` replaced by `os.Logger`; a preview added for a refused edit is dropped on the next navigation (`unsavedPreviewID`); deleted repeating tasks are remembered by source ID, so a new task with the same name still repeats (titles only for copies without `repeatsFrom`); deployment target 26.0.
 
-### UI Layout (Post-Redesign)
+### UI Layout (current)
 
-- **Root**: `ZStack` with `Theme.background()` adaptive background
-- **Title**: "Week of M/d/yy" centered, `.title.bold()` (monospaced with cursor in retro mode)
-- **Navigation capsule**: Centered `HStack` with `< calendar >` in theme-adaptive capsule
-- **Content**: `ScrollView` + `CategoryGridLayout` (2 columns, 8pt spacing)
-- **Expanded card**: Takes a full-width row; other expanded cards stay open. Grows from its grid slot with header text/icons resizing smoothly (title 20pt, icons 20pt)
-- **Bottom bar**: `HStack` — gear circle (left), date text (center), pencil/checkmark circle (right)
-- **Edit-done button**: Green-tinted `checkmark` with green background + ring when active
-- **Add Category**: Dashed-border card in grid during edit mode
-- **Card backgrounds**: Theme-adaptive fill in `RoundedRectangle(cornerRadius: 16)` with soft shadow (retro uses dark bg + colored border)
-- **Inline icons per task**:
-  - Normal mode: checkbox + goal type icons (switch task type)
-  - Edit mode: carry-over + repeating + one-time mode icons + trash (switch task mode, delete)
+- **Header**: "Week of M/d/yy" (monospaced with cursor in retro), expand/collapse-all button, week capsule `‹ calendar ›`
+- **Content**: `ScrollView` + `CategoryGridLayout` (2 columns, 8pt spacing; one column at accessibility text sizes). Closed cards: icon, name, completion ring, "Completed" line, task dots, ↗. Hold and drag a closed card to reorder. Expanded cards take a full row; several can be open.
+- **Card edit button** (beside the ring, open cards only): edits that card's tasks, name and icon.
+- **Bottom bar**: flat translucent bar with a top border — Settings and calendar toggle (left), today's date / Go to Today (center), grid-icon Edit (right; category management: add card, remove badges, all cards closed). Morphs into a keyboard Done button while typing.
+- **Task rows**: checkbox (or goal ring), title (tap to rename), add sub-task, type/mode capsule (opens the picker), trash in edit mode.
 
 ## Commit History
 
@@ -255,6 +264,10 @@ ed79dda Support and Privacy URLs confirmed live
 8e9982e Merge main into calendar-integration-and-card-rework
 031a91d Final sync when a saved week becomes current; Gregorian week dates
 a6286ec Final sync: leave weeks saved before the flag alone unless still future
+1a5e23d Update AI dev recap
+e0a18d4 Audit fixes: keep edits to future copies, scope category deletion, safer loading
+3bb1081 Accessibility: shape-coded dots, retro contrast, 44pt tap areas, Reduce Motion
+42b12bf App icon (Icon Composer), replacing the empty asset catalog icon
 ```
 
 ## Development Workflow
@@ -265,11 +278,6 @@ a6286ec Final sync: leave weeks saved before the flag alone unless still future
 - **Fresh-install checks** (e.g. onboarding): `xcrun simctl clone` the simulator, uninstall the app on the clone, test there, then delete the clone — never wipe the user's simulator data.
 - **Ask the user before running simulator tests/recordings** — they collide with Xcode previews (gotcha 33). Use the iPhone 17 Pro simulator (`6F2B8302-…`), not the iPhone 17 Pro Max the user runs the app on (`5CF3C145-…`).
 - New files in `Tasquel/` are auto-discovered (`PBXFileSystemSynchronizedRootGroup`)
-
-24. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
-25. **CarryOverAnimation v3**: Replaced `DispatchQueue.main.asyncAfter` chain with `async/await` + `.task(id: loopCount)`. Benefits: (a) SwiftUI cancels the task when view disappears, preventing multiple loops from stacking; (b) clean `guard !Task.isCancelled` gates prevent stale state updates; (c) added fade-out before loop restart so the instant state reset is invisible. Also fixed ring `rotationEffect` to always start at −90° (12 o'clock).
-26. **File split**: ContentView.swift was 2,270 lines. Split into 9 focused files (Theme.swift, CategoryCard.swift, TaskRowCard.swift, AddCategorySheet.swift, SettingsSheet.swift, HelpSheet.swift, RemoveCategorySheet.swift, OnboardingSheet.swift, FeedbackSheet.swift). ContentView.swift is now 372 lines. Works automatically via `PBXFileSystemSynchronizedRootGroup`.
-27. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., "feedback": ...}` JSON to a Google Apps Script webhook URL. Shows inline status (sending / success / failure). Auto-dismisses 1.5s after success. Webhook URL is a constant in FeedbackSheet.swift — replace with deployed Apps Script URL before shipping. The Settings entry point is currently removed, so the sheet is not reachable from the app UI.
 
 ## Key Decisions & Gotchas
 
@@ -322,7 +330,19 @@ a6286ec Final sync: leave weeks saved before the flag alone unless still future
 47. **Repeating tasks were matched by title**: renaming one added a second copy to a saved future week. They now link by `repeatsFrom`, and a copy also matches a source that repeats the same task (a week in between saved later). Carry-over copies use `carriedFrom`; each sync only handles copies of its own mode.
 48. **AppleDouble files inside `.git` on the exFAT T7**: `._pack-*.idx` files make git print "non-monotonic index" errors. They're macOS metadata, not git data: `find .git -name "._*" -type f -delete`.
 49. **Test relaunches need the same `UserDefaults`**: `makeIsolatedStore()` makes a new defaults suite each time, so the one-time starter migration runs again and re-adds deleted categories. Pass `defaults:` to reuse one across a simulated relaunch.
+50. **Sync must not undo the user's own edits to a copy**: anything that changes a task in its own week sets `isUserEdited`; sync skips those copies. Exception: progress on a repeating copy doesn't set it (the copy still follows its source's target).
+51. **`if`/`else` in a `ViewModifier` rebuilds the view**: switching branches gives the content a new identity (lost state, no resize animation). Keep one structure and switch gestures with `including:` masks.
+52. **Small tap targets**: use `.touchTarget()` inside a button's label; it adds an invisible centered hit area without changing layout. `Rectangle().size(...)` as a content shape starts at the view's top-left corner, not its center.
+53. **Refused edits on a preview**: `editableSelectedWeekIndex()` adds the preview to `weeks` before the edit is validated; `unsavedPreviewID` drops it again on the next navigation if nothing saved.
+54. **Icon Composer icons**: an `.icon` file in the synced `Tasquel/` folder is picked up automatically; its name must match `ASSETCATALOG_COMPILER_APPICON_NAME`, and there must be no `AppIcon.appiconset` with the same name.
 
+
+### Historical notes (files since removed or rewritten)
+
+H1. **`deleteCategoryEntirely` bug (fixed)**: Method looked up category by ID *after* calling `deleteCategory`, which removes it. The template removal never ran. Fix: capture `categoryName` before deletion. Same bug was present inline in `CategoryCard`, `ExpandedCategoryCard`, and `RemoveCategorySheet` context menus — all now route through `store.deleteCategoryEntirely`.
+H2. **CarryOverAnimation v3**: Replaced `DispatchQueue.main.asyncAfter` chain with `async/await` + `.task(id: loopCount)`. Benefits: (a) SwiftUI cancels the task when view disappears, preventing multiple loops from stacking; (b) clean `guard !Task.isCancelled` gates prevent stale state updates; (c) added fade-out before loop restart so the instant state reset is invisible. Also fixed ring `rotationEffect` to always start at −90° (12 o'clock).
+H3. **File split**: ContentView.swift was 2,270 lines. Split into 9 focused files (Theme.swift, CategoryCard.swift, TaskRowCard.swift, AddCategorySheet.swift, SettingsSheet.swift, HelpSheet.swift, RemoveCategorySheet.swift, OnboardingSheet.swift, FeedbackSheet.swift). ContentView.swift is now 372 lines. Works automatically via `PBXFileSystemSynchronizedRootGroup`.
+H4. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., "feedback": ...}` JSON to a Google Apps Script webhook URL. Shows inline status (sending / success / failure). Auto-dismisses 1.5s after success. Webhook URL is a constant in FeedbackSheet.swift — replace with deployed Apps Script URL before shipping. The Settings entry point is currently removed, so the sheet is not reachable from the app UI.
 
 ## Figma Reference
 
@@ -333,8 +353,9 @@ a6286ec Final sync: leave weeks saved before the flag alone unless still future
 
 ## Planned / Not Yet Implemented
 
-- **Not yet checked by hand**: the simulator checklist from the pre-submission pass (peek-then-edit flows, comma-decimal goals in a German region, Settings links/version, Help in dark/retro, VoiceOver on checkboxes and goals) and a full UI test run.
-- **Deferred from the pre-submission list**: item 3 (jump to the new week when the app stays open past midnight, `significantTimeChangeNotification`, header date refresh) and item 7 (keyboard toolbar Done; the floating Done button exists).
+- **Layout at extreme sizes (from the 2026-10-19 audit)**: events panel in landscape; goal editor at the largest text sizes; date picker on iPhone SE; no auto-scroll while dragging a card to the screen edge.
+- **Contrast left as Apple's**: dark mode's tertiary text and white on the blue Set/Add pills are below 4.5:1, matching system colors.
+- **Deferred**: keyboard toolbar Done (the floating Done button exists).
 - **iCloud sync** (user: later).
 - **Future / paid upgrade ideas (2026-10-14, not to be built yet)**:
   - Home and lock screen widgets that tick tasks off without opening the app (likely the most wanted)
@@ -349,15 +370,14 @@ a6286ec Final sync: leave weeks saved before the flag alone unless still future
 - iPad-specific layout optimizations
 - Data export/import
 
-## Last Session Summary (2026-10-17 → 2026-10-19, Claude Code)
+## Last Session Summary (2026-10-19 → 2026-10-21, Claude Code)
 
 **What was done**:
-- Many UX iterations tested on the user's iPhone: task type/mode picker, List type, carry-over linking, card drag reordering, card/task long-press menus removed, flat full-width bottom bar, one-tap rename, goal editor (Delete/Save Goal in the picker's style).
-- Pre-submission pass (items 1, 2, 4, 5, 6, 8–12): future weeks as previews, day-based week identity with migration, injectable clock, goal caps and locale parsing, App Review text fixes, Support/Privacy links (pages confirmed live), VoiceOver labels, privacy manifest.
-- Follow-up audit fixes: repeating tasks follow their source and keep order; one final sync when a saved week becomes current (plus the legacy-flag fix after it re-added a task on the user's phone; their data was restored from a backup and verified); Gregorian week dates.
-- Removed unused code, merged everything to `main` (keeping main's Swift 6 fixes, encryption key and upgrade ideas), and fast-forwarded the second T7 clone.
+- Reviewed this recap and audited the app (data logic, views, accessibility, release readiness).
+- Fixed the audit's data bugs and medium items (item 54), the accessibility items (item 55) and the follow-ups (item 57), with 16 new unit tests; lowered the deployment target to 26.0. Each build was installed on the user's iPhone; their data was backed up first and compared after the first launch (unchanged).
+- The user made the app icon in Icon Composer (item 56).
 
 **In progress / next**:
-- User to delete the leftover "Hands" goal from the week of 10/26 (Study), created before repeating tasks were linked.
-- Hand checks in the simulator and a UI test run before submission (ask first).
-- Items 3 and 7 still deferred; iCloud sync later.
+- Decide whether to delete the old merged branches (including `audit-fixes-2026-10-19`).
+- Hand checks on the phone: card open/close animation, rename via checkmark, drag after a week swipe, retro red/purple shades, the new dot outlines.
+- Layout items above when wanted; iCloud sync later.

@@ -310,7 +310,8 @@ struct Week: Codable, Identifiable, Equatable {
     /// week, so syncing with the week before doesn't bring them back.
     var dismissedCarryOvers: [UUID]? = nil
     /// Repeating tasks (by title) the user deleted from this week, so syncing with the
-    /// week before doesn't bring them back.
+    /// week before doesn't bring them back. Only for copies that don't know their source
+    /// (older files); others are recorded in `dismissedCarryOvers`.
     var dismissedRepeating: [String]? = nil
     /// Categories (by name) the user deleted from this future week while the week before
     /// still has them, so syncing doesn't add them back.

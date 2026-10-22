@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftUI
 
 @Observable
@@ -19,6 +20,10 @@ final class ChecklistStore {
     /// The last preview built for each week (kept when the cache is cleared), whose IDs a
     /// rebuilt preview takes over so its cards and rows keep their identity.
     @ObservationIgnored private var lastPreviews: [DayKey: Week] = [:]
+    /// A preview added to `weeks` for an edit that was then refused (a duplicate name,
+    /// say), so nothing was saved. Dropped when the user moves to another week.
+    @ObservationIgnored private var unsavedPreviewID: UUID?
+    private static let log = Logger(subsystem: "com.symonym.Tasquel", category: "Persistence")
     var appearanceMode: AppearanceMode = .system
     var retroColor: RetroColor = .green
     var hasSeenWelcome: Bool = false
@@ -177,7 +182,7 @@ final class ChecklistStore {
             if needsSave { save() }
         } catch {
             weekLoadError = "Your saved weeks could not be opened. The file has not been changed."
-            print("Failed to load: \(error)")
+            Self.log.error("Failed to load weeks: \(error)")
         }
     }
 
@@ -203,7 +208,7 @@ final class ChecklistStore {
 
     private func reportSave(_ error: Error?) {
         if let error {
-            print("Failed to save: \(error)")
+            Self.log.error("Failed to save: \(error)")
             saveError = "Your latest changes couldn't be saved. If your device is low on storage, free up some space; everything is saved again with your next change."
         } else if saveError != nil {
             saveError = nil
@@ -212,6 +217,7 @@ final class ChecklistStore {
 
     func save() {
         guard persistenceError == nil else { return }
+        unsavedPreviewID = nil
         do {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
@@ -257,7 +263,7 @@ final class ChecklistStore {
             settingsLoadError = nil
         } catch {
             settingsLoadError = "Your settings could not be opened. The file has not been changed."
-            print("Failed to load settings: \(error)")
+            Self.log.error("Failed to load settings: \(error)")
         }
     }
 
@@ -345,6 +351,7 @@ final class ChecklistStore {
         var saved = week
         saved.didFinalSync = !isFutureWeek(week)
         weeks.append(saved)
+        unsavedPreviewID = saved.id
         sortWeeks()
         return weeks.firstIndex { $0.id == week.id }
     }
@@ -548,6 +555,10 @@ final class ChecklistStore {
     /// so it keeps following the weeks before it.
     func navigateToDate(_ date: Date) {
         guard persistenceError == nil else { return }
+        if let id = unsavedPreviewID {
+            weeks.removeAll { $0.id == id }
+            unsavedPreviewID = nil
+        }
         selectedDate = date
         if let week = selectedWeek, isCurrentWeek(week) { ensureWeekExists(for: date) }
         syncWithPreviousWeek(for: date)
@@ -696,7 +707,12 @@ final class ChecklistStore {
         var changed = false
         let dismissedTitles = Set(week.dismissedRepeating ?? [])
         let dismissedIDs = Set(week.dismissedCarryOvers ?? [])
-        let isDismissed = { (task: ChecklistTask) in dismissedIDs.contains(task.id) || dismissedTitles.contains(task.title) }
+        // A source the user deleted a copy of, or a task repeating that source (a week in
+        // between was saved later). Titles only come from copies that never knew their source.
+        let isDismissed = { (task: ChecklistTask) in
+            dismissedIDs.contains(task.id) || task.repeatsFrom.map(dismissedIDs.contains) == true
+                || dismissedTitles.contains(task.title)
+        }
         let dismissedCategories = Set(week.dismissedCategories ?? [])
 
         for sourceCategory in sourceWeek.categories where !sourceCategory.isThisWeekOnly {
@@ -942,12 +958,13 @@ final class ChecklistStore {
                 weeks[wi].dismissCarryOver(sourceID)
             }
             // In a future week, a deleted repeating task must not be synced back in.
+            // Remembered by its source, so a different task given the same name still
+            // repeats into this week; by title only if the copy never knew its source.
             if task.mode == .repeating && isFutureWeek(weeks[wi]) {
-                if !(weeks[wi].dismissedRepeating ?? []).contains(task.title) {
-                    weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
-                }
                 if let sourceID = task.repeatsFrom {
                     weeks[wi].dismissCarryOver(sourceID)
+                } else if !(weeks[wi].dismissedRepeating ?? []).contains(task.title) {
+                    weeks[wi].dismissedRepeating = (weeks[wi].dismissedRepeating ?? []) + [task.title]
                 }
             }
         }
