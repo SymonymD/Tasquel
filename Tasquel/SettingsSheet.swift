@@ -43,10 +43,15 @@ struct SettingsSheet: View {
             .navigationTitle(retro ? "> SETTINGS_" : "Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(retro ? "[DONE]" : "Done") { dismiss() }
-                        .font(retro ? .system(.subheadline, design: .monospaced).bold() : .body)
-                        .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
+                // A plain glass capsule rather than the blue confirm button (user's choice).
+                ToolbarItem(placement: .topBarTrailing) {
+                    if retro {
+                        Button("[DONE]") { dismiss() }
+                            .font(.system(.subheadline, design: .monospaced).bold())
+                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                    } else {
+                        SheetDoneButton { dismiss() }
+                    }
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }

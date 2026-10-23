@@ -120,8 +120,9 @@ struct AddCategorySheet: View {
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                // A plain glass capsule rather than the blue confirm button (user's choice).
+                ToolbarItem(placement: .topBarTrailing) {
+                    SheetDoneButton { dismiss() }
                 }
             }
             .confirmationDialog("Remove saved category?", isPresented: Binding(
