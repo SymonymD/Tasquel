@@ -42,12 +42,13 @@ Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checkin
 | `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new) + `DatePickerSheet` |
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts); `AppInfo` holds the Support/Privacy URLs and reads the version |
 | `Tasquel/HelpSheet.swift` | Help guide |
-| `Tasquel/OnboardingSheet.swift` | Onboarding flow (welcome, how it works, name, categories) |
+| `Tasquel/OnboardingSheet.swift` | Onboarding: welcome, then one page each for task types, task modes, category cards and calendar events, each with an animation |
 | `Tasquel/CategoryGridLayout.swift` | Custom `Layout`: two-column card grid, expanded cards take a full row |
 | `Tasquel/CalendarService.swift` | Calendar integration: EventKit/fake providers, day grouping, permission, per-week event cache, `FeatureAccess` |
 | `Tasquel/CalendarSettings.swift` | Settings rows and calendar picker for calendar integration |
 | `Tasquel/CalendarEventsPanel.swift` | The week's events, shown inside the bottom bar when its calendar toggle is on |
 | `Tasquel/WeekCarryOverAnimation.swift` | Welcome illustration: `KeyframeAnimator` loop showing an unfinished task carrying into next week |
+| `Tasquel/FeatureAnimations.swift` | Onboarding feature animations (`TaskTypesAnimation`, `TaskModesAnimation`, `CategoryCardsAnimation`, `CalendarEventsAnimation`) and the shared `Illustration` parts / `IllustrationCheck` all the onboarding animations draw with |
 | `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest (no tracking or collected data; UserDefaults reason CA92.1) |
 
 ### Data Models (`Models.swift`)
@@ -67,13 +68,13 @@ Single `@Observable` store owns all app state. `init(directory:defaults:now:cale
 - **`checklist.json`** — array of `Week` objects (all task data)
 - **`settings.json`** — templates, appearance mode, retro color, onboarding flag
 - `UserDefaults` — `userName`, `didMigrateStarters_v1`
-- **Starter categories** are added to saved categories only on first launch; `offeredStarterNames` in settings remembers which were offered, so ones the user removes (even all of them, in onboarding) never come back.
+- **Starter categories** are added to saved categories only on first launch; `offeredStarterNames` in settings remembers which were offered, so ones the user removes (even all of them) never come back. Onboarding doesn't choose categories; a new user starts with the starters.
 
 Key behaviors:
 - **Weekly rollover**: a week is built by rolling forward categories from the most recent saved prior week. Repeating tasks always carry (reset). Carry-over tasks carry only if incomplete. One-time tasks never carry. Category UUIDs change every week.
 - **Future weeks are previews until edited**: only the current week is created by looking at it (`ensureWeekExists` at launch / navigation). Any other unsaved week is `previewWeek(for:)` (cached so IDs stay stable) and `selectedWeek` returns it. Every mutation goes through `editableSelectedWeekIndex()`, which saves the preview first. Saved future weeks keep syncing with the week before (`syncWithPreviousWeek`): untouched carried copies (`carriedFrom`) follow or leave with their source (a task the user added or changed in its week has `isUserEdited` and is never followed, removed or adopted), missing ones are added unless dismissed, and missing repeating tasks are added unless in `dismissedRepeating`. When a saved week becomes current it gets one final full sync (follow/remove untouched copies, no categories re-added) and is marked `didFinalSync`, so later edits to the current week are never undone.
 - **Load order** (`loadAndPrepare`, used by init and `retryLoadingData`): settings → seed starter templates → weeks → ensure current week → starter migration.
-- **Load-failure safety**: if either JSON file fails to decode, `persistenceError` is set, all saves are blocked (so defaults never overwrite the file), and `ContentView` shows a retry screen with Start Fresh (`setAsideUnreadableData()` renames the bad file, never deletes it). Task decoding is lenient (missing fields and unknown enum values get defaults). Save failures set `saveError`, shown as an alert.
+- **Load-failure safety**: if either JSON file fails to decode, `persistenceError` is set, all saves are blocked (so defaults never overwrite the file), and `ContentView` shows a retry screen with Start Fresh (`setAsideUnreadableData()` renames the bad file, never deletes it). Task decoding is lenient (missing fields and unknown enum values get defaults). Save failures set `saveError`, shown as an alert; failures are tracked per file, so it clears only when both files have saved, and a successful save retries the other file.
 - **One store per app**: `TasquelApp` owns the store and calendar service and passes them to `ContentView`, so iPad windows share them.
 - **Past weeks are read-only**: `editableSelectedWeekIndex()` returns nil for them.
 

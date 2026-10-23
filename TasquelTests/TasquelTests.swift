@@ -69,6 +69,39 @@ func welcomeAnimationRestingFrameMatchesReduceMotion() {
     #expect(resting.thisWeekFade < 0.01)
 }
 
+@Test("Onboarding feature animations loop every 6 seconds and rest on their Reduce Motion frame")
+func featureAnimationTimelines() {
+    let types = KeyframeTimeline(initialValue: TaskTypesAnimation.Values()) { TaskTypesAnimation.timeline }
+    #expect(abs(types.duration - 6) < 0.001)
+    let typesRest = types.value(time: 5.0), typesDone = TaskTypesAnimation.Values.finished
+    for path in [\TaskTypesAnimation.Values.check, \.goal, \.goalCheck, \.item1, \.item2, \.listCheck] {
+        #expect(abs(typesRest[keyPath: path] - typesDone[keyPath: path]) < 0.05)
+    }
+
+    let modes = KeyframeTimeline(initialValue: TaskModesAnimation.Values()) { TaskModesAnimation.timeline }
+    #expect(abs(modes.duration - 6) < 0.001)
+    let modesRest = modes.value(time: 5.0), modesDone = TaskModesAnimation.Values.finished
+    for path in [\TaskModesAnimation.Values.oneTimeCheck, \.repeatingCheck, \.pending, \.thisWeekFade,
+                 \.nextWeekFade, \.carriedIn, \.repeatedIn, \.reset] {
+        #expect(abs(modesRest[keyPath: path] - modesDone[keyPath: path]) < 0.05)
+    }
+    #expect(abs(modesRest.nextWeekX - modesDone.nextWeekX) < 0.5)
+
+    let cards = KeyframeTimeline(initialValue: CategoryCardsAnimation.Values()) { CategoryCardsAnimation.timeline }
+    #expect(abs(cards.duration - 6) < 0.001)
+    let cardsRest = cards.value(time: 5.0), cardsDone = CategoryCardsAnimation.Values.finished
+    for path in [\CategoryCardsAnimation.Values.tap, \.press, \.expand, \.check1, \.check2] {
+        #expect(abs(cardsRest[keyPath: path] - cardsDone[keyPath: path]) < 0.05)
+    }
+
+    let events = KeyframeTimeline(initialValue: CalendarEventsAnimation.Values()) { CalendarEventsAnimation.timeline }
+    #expect(abs(events.duration - 6) < 0.001)
+    let eventsRest = events.value(time: 5.0), eventsDone = CalendarEventsAnimation.Values.finished
+    for path in [\CalendarEventsAnimation.Values.tap, \.open, \.event1, \.event2, \.event3] {
+        #expect(abs(eventsRest[keyPath: path] - eventsDone[keyPath: path]) < 0.05)
+    }
+}
+
 // MARK: - Category Grid Layout
 
 @Test("Collapsed cards pair into two-column rows")
@@ -849,22 +882,6 @@ struct CategoryNameTests {
         #expect(!relaunched.savedCategories.contains { $0.name == "Fitness" })
         #expect(!relaunched.savedCategories.contains { $0.name == "Work" })
         #expect(relaunched.savedCategories.contains { $0.name == "Office" })
-    }
-
-    @Test("Removing every category in onboarding doesn't bring the starters back")
-    func removingAllStartersInOnboarding() {
-        let directory = makeTempDirectory()
-        let defaults = UserDefaults(suiteName: "starters-\(UUID().uuidString)")!
-        let first = ChecklistStore(directory: directory, defaults: defaults)
-        // What onboarding's Let's Go! does with nothing selected.
-        first.savedCategories = []
-        first.saveSettings()
-        first.replaceCurrentWeekCategories(with: [])
-        first.dismissWelcome()
-
-        let relaunched = ChecklistStore(directory: directory, defaults: defaults)
-        #expect(relaunched.savedCategories.isEmpty)
-        #expect(relaunched.selectedWeek?.categories.isEmpty == true)
     }
 }
 
@@ -1719,6 +1736,27 @@ func weekStartSwitchOnSunday() {
 struct DataRecoveryTests {
     private let clock = TestClock(2099, 3, 4)
 
+    @Test("A settings save doesn't clear a failed task save; it retries it")
+    func saveErrorsPerFile() throws {
+        let directory = makeTempDirectory()
+        let store = makeIsolatedStore(directory: directory)
+        // A folder where checklist.json should be: saving tasks fails, settings still save.
+        let weeksFile = directory.appending(path: "checklist.json")
+        try? FileManager.default.removeItem(at: weeksFile)
+        try FileManager.default.createDirectory(at: weeksFile.appending(path: "blocker"), withIntermediateDirectories: true)
+
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Unsaved")
+        #expect(store.saveError != nil)
+        store.setRetroColor(.amber)
+        #expect(store.saveError != nil, "tasks still aren't saved")
+
+        try FileManager.default.removeItem(at: weeksFile)
+        store.setRetroColor(.blue)
+        #expect(store.saveError == nil, "the settings save retried the tasks save")
+        let saved = try String(contentsOf: weeksFile, encoding: .utf8)
+        #expect(saved.contains("Unsaved"))
+    }
+
     @Test("A task with missing fields or an unknown mode still loads")
     func lenientTaskDecoding() throws {
         let directory = makeTempDirectory()
@@ -1748,17 +1786,6 @@ struct DataRecoveryTests {
             .filter { $0.hasPrefix("checklist-unreadable-") }
         #expect(kept.count == 1)
         #expect(try String(contentsOf: directory.appending(path: kept[0]), encoding: .utf8) == "not json")
-    }
-
-    @Test("Finishing onboarding keeps categories that already have tasks")
-    func onboardingKeepsTasks() {
-        let store = makeIsolatedStore(clock: clock)
-        let existing = store.selectedWeek!.categories[0]
-        store.addTask(categoryID: existing.id, title: "Keep me", mode: .oneTime)
-        store.replaceCurrentWeekCategories(with: [Tasquel.Category(name: "Garden", symbol: "leaf")])
-        let categories = store.selectedWeek!.categories
-        #expect(categories.map(\.name) == ["Garden", existing.name])
-        #expect(categories[1].tasks.map(\.title) == ["Keep me"])
     }
 }
 

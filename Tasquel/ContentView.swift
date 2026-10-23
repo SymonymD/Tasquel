@@ -28,6 +28,12 @@ struct ContentView: View {
     @State private var showStartFreshConfirmation = false
     /// The bottom bar's calendar toggle: expands the bar to show the week's events.
     @State private var showEventsPanel = false
+    /// The events panel is in the bar: from opening until its closing animation ends.
+    /// (SwiftUI doesn't clip or move a view while removing it, so the panel used to sit
+    /// in place over the grid while the bar shrank away from it.)
+    @State private var isEventsPanelMounted = false
+    /// The events panel is being dragged down; the grid ignores the bar's height meanwhile.
+    @State private var isEventsPanelDragged = false
     /// While the keyboard is up, the bottom bar turns into a Done button.
     @State private var isKeyboardVisible = false
     /// The bottom bar's height above the home indicator; the grid scrolls clear of it.
@@ -144,7 +150,11 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     bottomBar
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
+                        // Not while the events panel follows a finger: the grid would re-pad
+                        // itself on every frame of the drag.
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            if !isEventsPanelDragged { bottomBarHeight = height }
+                        }
                 }
                 .ignoresSafeArea(.container, edges: .bottom)
             }
@@ -498,7 +508,7 @@ struct ContentView: View {
                             .fill(Theme.navCapsule(theme))
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
                     )
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                     .transition(.opacity)
@@ -514,7 +524,7 @@ struct ContentView: View {
                     keyboardDoneButton
                         .glassEffect(.regular.interactive(), in: Capsule())
                         .glassEffectID("bottomBar", in: bottomBarGlass)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                 } else {
@@ -574,10 +584,14 @@ struct ContentView: View {
 
     /// The bar's row, with the events panel expanding above it when toggled on.
     private var bottomBarStack: some View {
-        VStack(spacing: 8) {
-            if showEventsPanel && showsEventsToggle {
-                eventsPanel
-                Divider()
+        VStack(spacing: 0) {
+            if isEventsPanelMounted && showsEventsToggle {
+                VStack(spacing: 8) {
+                    eventsPanel
+                    Divider()
+                }
+                .padding(.bottom, 8)
+                .modifier(EventsPanelCollapse(isCollapsed: !showEventsPanel))
             }
             bottomBarContent
         }
@@ -761,7 +775,8 @@ struct ContentView: View {
                             onExpand: { expandCard(entry.id, in: week) },
                             onCollapse: {
                                 withAnimation(cardAnimation) { collapseCategory(entry.id) }
-                            }
+                            },
+                            onRenamed: { renameCardKey(entry.id, to: $0) }
                         )
                         // The dragged card leaves a gap where it will land; a lifted copy
                         // follows the finger (see the overlay below).
@@ -959,7 +974,7 @@ struct ContentView: View {
             CategoryGridCard(
                 category: entry.category, store: store, isExpanded: false,
                 isEditing: isEditing, isEditingTasks: false, isPastWeek: false,
-                onToggleEdit: {}, onExpand: {}, onCollapse: {}
+                onToggleEdit: {}, onExpand: {}, onCollapse: {}, onRenamed: { _ in }
             )
             .frame(width: frame.width, height: frame.height)
             .scaleEffect(1.05)
@@ -994,6 +1009,17 @@ struct ContentView: View {
         }
     }
 
+    /// A renamed category gets a new layout key (keys follow names), so its open, editing
+    /// and order state moves to the new key; otherwise the card would close.
+    private func renameCardKey(_ old: CategoryLayoutKey, to name: String) {
+        let new = CategoryLayoutKey(name: name, occurrence: old.occurrence)
+        let move = { (key: CategoryLayoutKey) in key == old ? new : key }
+        if expandedCategoryKeys.remove(old) != nil { expandedCategoryKeys.insert(new) }
+        if editingCategoryKeys.remove(old) != nil { editingCategoryKeys.insert(new) }
+        categoryDisplayOrder = categoryDisplayOrder.map(move)
+        lastToggledCategory = lastToggledCategory.map(move)
+    }
+
     private func collapseCategory(_ key: CategoryLayoutKey) {
         editingCategoryKeys.remove(key)
         expandedCategoryKeys.remove(key)
@@ -1010,7 +1036,7 @@ struct ContentView: View {
 
     private var eventsToggle: some View {
         Button {
-            withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel.toggle() }
+            setEventsPanel(open: !showEventsPanel)
         } label: {
             Image(systemName: Theme.isRetro(theme) ? "calendar" : (showEventsPanel ? "calendar.circle.fill" : "calendar"))
                 .font(.system(size: Self.barIconSize))
@@ -1032,6 +1058,26 @@ struct ContentView: View {
         .task(id: eventsLoadKey) {
             guard let key = eventsLoadKey else { return }
             await calendarService.load(weekStarting: key.weekStart, calendarIDs: key.calendarIDs)
+        }
+    }
+
+    /// Opens or closes the events panel. It's added to the bar collapsed and then opened,
+    /// and closed before it's taken out, so the bar and the panel shrink together.
+    /// `velocity` (panel heights per second) continues a swipe down at the finger's speed.
+    private func setEventsPanel(open: Bool, velocity: Double = 0) {
+        if open {
+            isEventsPanelMounted = true
+            DispatchQueue.main.async {
+                withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = true }
+            }
+        } else {
+            // No bounce: overshooting a height of zero makes the bar dip and spring back.
+            let animation = Animation.interpolatingSpring(duration: 0.35, bounce: 0, initialVelocity: velocity)
+            withAnimation(animation, completionCriteria: .removed) {
+                showEventsPanel = false
+            } completion: {
+                if !showEventsPanel { isEventsPanelMounted = false }
+            }
         }
     }
 
@@ -1062,14 +1108,15 @@ struct ContentView: View {
                 store: store,
                 days: calendarService.days(forWeekStarting: week.startDate, calendarIDs: calendarIDs),
                 onOpen: openInCalendar,
-                onDismiss: {
-                    withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = false }
-                }
+                onDismiss: { velocity in
+                    isEventsPanelDragged = false
+                    setEventsPanel(open: false, velocity: velocity)
+                },
+                onDragChanged: { isEventsPanelDragged = $0 }
             )
             .task(id: EventsLoadKey(weekStart: week.startDate, calendarIDs: calendarIDs, generation: calendarService.generation)) {
                 await calendarService.load(weekStarting: week.startDate, calendarIDs: calendarIDs)
             }
-            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
         }
     }
 
@@ -1128,6 +1175,20 @@ private struct PagerTrack<Content: View>: View {
 
 #Preview {
     ContentView(store: .makeDefault(), calendarService: .makeDefault())
+}
+
+// MARK: - Events Panel Collapse
+
+/// The events panel opening and closing in the bottom bar: it fades while its height
+/// grows from, or shrinks to, nothing, clipped so it never covers the bar's buttons.
+private struct EventsPanelCollapse: ViewModifier {
+    let isCollapsed: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(CardContentCrossFade(isHidden: isCollapsed))
+            .clipped()
+    }
 }
 
 // MARK: - Card Drag Gesture

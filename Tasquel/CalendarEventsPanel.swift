@@ -10,15 +10,22 @@ struct CalendarEventsPanel: View {
     /// The week's events by day, or nil while loading.
     let days: [EventDay]?
     let onOpen: (CalendarEvent) -> Void
-    let onDismiss: () -> Void
+    /// Called with the swipe's downward speed, in panel heights per second (0 when not swiped),
+    /// so the close can carry on at the finger's speed.
+    let onDismiss: (_ velocity: Double) -> Void
+    /// Whether the panel is being dragged down (shrunk by the finger).
+    var onDragChanged: (Bool) -> Void = { _ in }
 
     @State private var listHeight: CGFloat = 0
+    @State private var panelHeight: CGFloat = 0
     /// How far the panel has been dragged down; it shrinks by this much.
     @State private var dragOffset: CGFloat = 0
     /// Resets on its own when iOS cancels the drag (onEnded isn't called then), so a
     /// cancelled drag can't leave the panel shrunk with its events disabled.
     @GestureState private var isDragging = false
     @State private var isDismissing = false
+    /// Set when a press on an event is held: letting go then doesn't open Calendar.
+    @State private var wasHeld = false
 
     private let maxListHeight: CGFloat = 280
     private var listScrolls: Bool { listHeight > maxListHeight }
@@ -75,7 +82,9 @@ struct CalendarEventsPanel: View {
         }
         .padding(.horizontal, 4)
         .padding(.top, 4)
-        .accessibilityAction(.escape, onDismiss)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
+        .accessibilityAction(.escape) { onDismiss(0) }
+        .onChange(of: dragOffset > 0) { _, dragged in onDragChanged(dragged) }
         .onChange(of: isDragging) { _, dragging in
             guard !dragging, !isDismissing, dragOffset > 0 else { return }
             withAnimation(.snappy(duration: 0.25)) { dragOffset = 0 }
@@ -88,7 +97,9 @@ struct CalendarEventsPanel: View {
     }
 
     private var dismissDrag: some Gesture {
-        DragGesture(minimumDistance: 8)
+        // Measured on the screen: the header moves as the panel shrinks, and measuring
+        // against it made the panel jump back and forth every frame of a slow drag.
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .updating($isDragging) { _, dragging, _ in dragging = true }
             .onChanged { value in
                 if isDismissing { isDismissing = false }
@@ -97,7 +108,8 @@ struct CalendarEventsPanel: View {
             .onEnded { value in
                 if value.translation.height > 60 || value.predictedEndTranslation.height > 160 {
                     isDismissing = true
-                    onDismiss()
+                    let speed = max(0, value.velocity.height) / max(panelHeight, 1)
+                    onDismiss(min(speed, 12))
                 } else {
                     withAnimation(.snappy(duration: 0.25)) { dragOffset = 0 }
                 }
@@ -120,7 +132,10 @@ struct CalendarEventsPanel: View {
                         .font(.system(.caption, design: design).weight(.semibold))
                         .foregroundStyle(Calendar.current.isDateInToday(day.date) ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     ForEach(day.events) { dayEvent in
-                        Button { onOpen(dayEvent.event) } label: {
+                        Button {
+                            guard !wasHeld else { wasHeld = false; return }
+                            onOpen(dayEvent.event)
+                        } label: {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Circle().fill(dayEvent.event.color).frame(width: 8, height: 8)
                                 Text(dayEvent.timeLabel)
@@ -138,7 +153,13 @@ struct CalendarEventsPanel: View {
                             }
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(EventButtonStyle())
+                        // Only a tap opens the event; holding (or pausing before a swipe) doesn't.
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.4)
+                                .onChanged { _ in wasHeld = false }
+                                .onEnded { _ in wasHeld = true }
+                        )
                         .accessibilityLabel("\(dayEvent.event.title), \(dayEvent.timeLabel)")
                         .accessibilityHint("Opens Calendar")
                     }
@@ -151,5 +172,13 @@ struct CalendarEventsPanel: View {
     private func dayTitle(_ date: Date) -> String {
         let title = date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
         return retro ? title.uppercased() : title
+    }
+}
+
+/// Like `.plain`, but doesn't dim while disabled: the list is disabled during a swipe
+/// down, and dimming then made the events flash gray as the panel closed.
+private struct EventButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.6 : 1)
     }
 }

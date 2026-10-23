@@ -134,13 +134,10 @@ struct WeekCarryOverAnimation: View {
         }
     }
 
-    private static let pendingColor = Color(hue: 0.07, saturation: 0.7, brightness: 0.85)
-    private static let doneColor = Color(hue: 0.33, saturation: 0.7, brightness: 0.75)
-
     private func content(_ v: Values) -> some View {
         ZStack {
             Circle()
-                .fill(Self.doneColor.opacity(0.2))
+                .fill(Illustration.doneColor.opacity(0.2))
                 .frame(width: 150, height: 150)
                 .blur(radius: 18)
                 .opacity(v.glow)
@@ -169,7 +166,7 @@ struct WeekCarryOverAnimation: View {
                 .background {
                     Capsule()
                         .fill(Color(.secondarySystemBackground))
-                        .shadow(color: Self.pendingColor.opacity(0.4), radius: 8, y: 3)
+                        .shadow(color: Illustration.pendingColor.opacity(0.4), radius: 8, y: 3)
                         .opacity(v.lift)
                 }
                 .scaleEffect(1 + 0.06 * v.lift)
@@ -194,16 +191,12 @@ struct WeekCarryOverAnimation: View {
         }
         .padding(Layout.padding)
         .frame(width: Layout.cardWidth, height: Layout.cardHeight, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-                .shadow(color: .black.opacity(0.1), radius: 6, y: 2)
-        )
+        .background(Illustration.cardBackground())
     }
 
     private func taskRow(check: Double, barWidth: CGFloat, faint: Bool = false) -> some View {
         HStack(spacing: 8) {
-            checkCircle(check: check, faint: faint)
+            IllustrationCheck(check: check, faint: faint)
             RoundedRectangle(cornerRadius: 3)
                 .fill(Color.primary.opacity(faint ? 0.08 : 0.22 - 0.12 * check))
                 .frame(width: barWidth, height: 6)
@@ -212,39 +205,22 @@ struct WeekCarryOverAnimation: View {
 
     private func carriedRow(_ v: Values) -> some View {
         HStack(spacing: 8) {
-            checkCircle(check: v.carriedCheck, pending: v.pending)
+            IllustrationCheck(check: v.carriedCheck, pending: v.pending)
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.22)).opacity(1 - v.pending)
-                RoundedRectangle(cornerRadius: 3).fill(Self.pendingColor.opacity(0.45))
+                RoundedRectangle(cornerRadius: 3).fill(Illustration.pendingColor.opacity(0.45))
                     .opacity(v.pending * max(0, 1 - v.carriedCheck))
-                RoundedRectangle(cornerRadius: 3).fill(Self.doneColor.opacity(0.4)).opacity(v.carriedCheck)
+                RoundedRectangle(cornerRadius: 3).fill(Illustration.doneColor.opacity(0.4)).opacity(v.carriedCheck)
             }
             .frame(width: 72, height: 6)
             ZStack {
-                Image(systemName: "arrow.uturn.forward").foregroundStyle(Self.pendingColor)
-                Image(systemName: "arrow.uturn.forward").foregroundStyle(Self.doneColor).opacity(v.carriedCheck)
+                Image(systemName: "arrow.uturn.forward").foregroundStyle(Illustration.pendingColor)
+                Image(systemName: "arrow.uturn.forward").foregroundStyle(Illustration.doneColor).opacity(v.carriedCheck)
             }
             .font(.system(size: 8, weight: .bold))
             .opacity(v.pending)
             .scaleEffect(0.6 + 0.4 * v.pending)
         }
-    }
-
-    /// `pending` cross-fades the gray ring to a thicker orange one.
-    private func checkCircle(check: Double, pending: Double = 0, faint: Bool = false) -> some View {
-        ZStack {
-            // Rings fade as the green fill grows so no outline shows around a finished check.
-            let ringOpacity = max(0, 1 - check)
-            Circle().stroke(Color.secondary.opacity(faint ? 0.35 : 0.6), lineWidth: 1.5)
-                .opacity((1 - pending) * ringOpacity)
-            Circle().stroke(Self.pendingColor, lineWidth: 2).opacity(pending * ringOpacity)
-            Circle().fill(Self.doneColor).scaleEffect(check)
-            Image(systemName: "checkmark")
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(.white)
-                .scaleEffect(check)
-        }
-        .frame(width: 15, height: 15)
     }
 }
 

@@ -13,8 +13,7 @@ final class CalendarUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
         let settings = app.buttons["Settings"]
@@ -108,8 +107,7 @@ final class CalendarUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
         app.buttons["Settings"].tap()

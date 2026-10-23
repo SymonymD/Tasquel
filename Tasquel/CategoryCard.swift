@@ -37,6 +37,8 @@ struct CategoryGridCard: View {
     let onToggleEdit: () -> Void
     let onExpand: () -> Void
     let onCollapse: () -> Void
+    /// Called with the new name after a rename, so the grid can keep the card open.
+    let onRenamed: (String) -> Void
 
     @State private var showDeleteConfirmation = false
     @State private var editedName = ""
@@ -217,6 +219,7 @@ struct CategoryGridCard: View {
             nameError = "A category needs a name."
         } else if store.renameCategory(category.id, newName: name) {
             nameError = nil
+            onRenamed(name)
             return
         } else {
             nameError = "Another category is already named \(name)."

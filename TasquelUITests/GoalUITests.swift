@@ -14,8 +14,7 @@ final class GoalUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
         return app

@@ -206,13 +206,23 @@ final class ChecklistStore {
         saveError = nil
     }
 
-    private func reportSave(_ error: Error?) {
+    private enum DataFile { case weeks, settings }
+
+    /// Files whose last save failed. The warning clears only when both have saved, so a
+    /// small settings save succeeding can't hide that tasks weren't saved.
+    @ObservationIgnored private var failedSaves: Set<DataFile> = []
+
+    private func reportSave(_ error: Error?, for file: DataFile) {
         if let error {
-            Self.log.error("Failed to save: \(error)")
+            Self.log.error("Failed to save \(file == .weeks ? "weeks" : "settings"): \(error)")
+            failedSaves.insert(file)
             saveError = "Your latest changes couldn't be saved. If your device is low on storage, free up some space; everything is saved again with your next change."
-        } else if saveError != nil {
-            saveError = nil
+            return
         }
+        guard failedSaves.remove(file) != nil || !failedSaves.isEmpty else { return }
+        // This file saved, so there may be room again: retry the other one.
+        if failedSaves.contains(.weeks) { save() } else if failedSaves.contains(.settings) { saveSettings() }
+        if failedSaves.isEmpty { saveError = nil }
     }
 
     func save() {
@@ -224,9 +234,9 @@ final class ChecklistStore {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(weeks)
             try data.write(to: fileURL, options: .atomic)
-            reportSave(nil)
+            reportSave(nil, for: .weeks)
         } catch {
-            reportSave(error)
+            reportSave(error, for: .weeks)
         }
     }
 
@@ -282,9 +292,9 @@ final class ChecklistStore {
             )
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsURL, options: .atomic)
-            reportSave(nil)
+            reportSave(nil, for: .settings)
         } catch {
-            reportSave(error)
+            reportSave(error, for: .settings)
         }
     }
 
@@ -810,21 +820,6 @@ final class ChecklistStore {
         newTask.goalUnitKind = task.goalUnitKind
         newTask.repeatsFrom = task.id
         return newTask
-    }
-
-    /// Onboarding's categories become the viewed week's. Categories that already have
-    /// tasks (data from before onboarding, say after unreadable settings were set aside)
-    /// are kept, so finishing onboarding never deletes tasks.
-    func replaceCurrentWeekCategories(with categories: [Category]) {
-        guard let wi = editableSelectedWeekIndex() else { return }
-        let existing = weeks[wi].categories.filter { !$0.tasks.isEmpty }
-        let chosen = Set(categories.map(\.name))
-        weeks[wi].categories = categories.map { new in
-            guard var kept = existing.first(where: { $0.name == new.name }) else { return new }
-            kept.symbol = new.symbol
-            return kept
-        } + existing.filter { !chosen.contains($0.name) }
-        save()
     }
 
     // MARK: - Category CRUD

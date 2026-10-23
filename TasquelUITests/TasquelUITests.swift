@@ -31,8 +31,7 @@ final class TasquelUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
 
@@ -64,8 +63,7 @@ final class TasquelUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
 
@@ -108,8 +106,7 @@ final class TasquelUITests: XCTestCase {
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
             app.buttons["Next"].tap()
-            app.buttons["Continue"].tap()
-            app.buttons["Skip"].tap()
+            app.buttons["Next"].tap()
             app.buttons["Let's Go!"].tap()
         }
 

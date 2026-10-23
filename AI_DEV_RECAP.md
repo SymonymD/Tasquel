@@ -28,9 +28,9 @@ Repo: https://github.com/SymonymD/Tasquel
 Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-10-21)
+## Current State (as of 2026-10-23)
 
-Everything is merged to `main` and pushed, including the branch `audit-fixes-2026-10-19` (audit fixes, accessibility, app icon, follow-ups). ~9,100 lines of Swift across app and tests; 94 unit tests (Swift Testing) and 11 UI tests (`TasquelUITests`, `CalendarUITests`, `GoalUITests`). The user's iPhone 16 Pro Max runs the branch (install via `devicectl`, see memory). The app icon is an Icon Composer file, `Tasquel/AppIcon.icon` (the empty `AppIcon.appiconset` was removed). Old merged branches (`audit-fixes-and-test-isolation`, `calendar-integration-and-card-rework`, `final-sync-and-gregorian`, `final-sync-legacy-weeks`) still exist locally and on GitHub; delete them only when the user says so.
+Everything is on `main` and pushed, including the branch `audit-fixes-2026-10-19` (audit fixes, accessibility, app icon, follow-ups) and the 2026-10-22 phone fixes and onboarding rework. The user is still editing the app icon; their uncommitted `AppIcon.icon` changes are left out of commits until they say it's done. ~9,600 lines of Swift across app and tests; 94 unit tests (Swift Testing) and 11 UI tests (`TasquelUITests`, `CalendarUITests`, `GoalUITests`). The user's iPhone 16 Pro Max runs the branch (install via `devicectl`, see memory). The app icon is an Icon Composer file, `Tasquel/AppIcon.icon` (the empty `AppIcon.appiconset` was removed). Old merged branches (`audit-fixes-and-test-isolation`, `calendar-integration-and-card-rework`, `final-sync-and-gregorian`, `final-sync-legacy-weeks`) still exist locally and on GitHub; delete them only when the user says so.
 
 There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/SYMONYM/Tasquel/Tasquel`, where work happens) and `/Volumes/T7/Design/SYMONYM/Tasquel/Tasquel` (fast-forwarded to `a6286ec` on 2026-10-19; it also holds an old stash from `7b0c956`). Pull before working in the second one.
 
@@ -52,13 +52,14 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
 | `Tasquel/AddCategorySheet.swift` | 229 | Add Category and Date Picker sheets |
 | `Tasquel/SettingsSheet.swift` | 335 | Standard and retro settings layouts, `AppInfo` |
 | `Tasquel/HelpSheet.swift` | 137 | Help guide |
-| `Tasquel/OnboardingSheet.swift` | 340 | Onboarding flow |
+| `Tasquel/OnboardingSheet.swift` | 145 | Onboarding: welcome + three animated feature pages |
 | `Tasquel/CalendarService.swift` | 314 | EventKit/fake providers, week event cache, `FeatureAccess` |
 | `Tasquel/CalendarSettings.swift` | 141 | Calendar settings rows and picker |
 | `Tasquel/CalendarEventsPanel.swift` | 155 | The week's events in the bottom bar |
-| `Tasquel/WeekCarryOverAnimation.swift` | 253 | Welcome carry-over animation (`KeyframeAnimator`) |
+| `Tasquel/WeekCarryOverAnimation.swift` | 229 | Welcome carry-over animation (`KeyframeAnimator`) |
+| `Tasquel/FeatureAnimations.swift` | 742 | Onboarding feature animations + shared `Illustration` parts |
 | `Tasquel/AppIcon.icon` | — | Icon Composer app icon (glass layers) |
-| `TasquelTests/TasquelTests.swift` | 1778 | 94 unit tests |
+| `TasquelTests/TasquelTests.swift` | 1805 | 94 unit tests |
 | `TasquelUITests/*.swift` | 556 | 11 UI tests (journey, calendar panel, goals) |
 | `CLAUDE.md` / `AGENTS.md` | 110 | Architecture reference for Claude Code / Codex (keep in sync) |
 
@@ -78,11 +79,13 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
    - Category removal via context menu (save, remove this week, delete entirely)
 7. **Saved category templates**: Categories saved for reuse. Add Category sheet shows "Create New" first, then saved.
 8. **Appearance system**: System / Light / Dark / Retro in Settings — fully reactive theme system
-9. **Four-step onboarding**:
-   - Screen 1: Brief Tasquel summary (auto carry-over focus)
-   - Screen 2: Granular feature breakdown (task modes, checkbox vs goal)
-   - Screen 3: Username input (1–20 chars, stored in UserDefaults)
-   - Screen 4: Category setup grid (2-column grid of defaults to accept/delete + add custom) with "Let's Go!" button
+9. **Onboarding** (since 2026-10-22): five pages, each with a looping `KeyframeAnimator` illustration:
+   - Welcome: `WeekCarryOverAnimation` (an unfinished task carries into next week)
+   - Three Kinds of Task: `TaskTypesAnimation` (checkbox ticked, goal ring fills to 50/50, list checks itself off after its items)
+   - You Decide What Happens Next: `TaskModesAnimation` (one-time stays behind, carry-over moves on, repeating comes back unchecked)
+   - Organized by Category: `CategoryCardsAnimation` (a card is tapped and opens to a full row, tasks get checked)
+   - Your Calendar, Alongside: `CalendarEventsAnimation` (the bottom bar's calendar button is tapped, the bar grows into the events panel, events drop in by day) with "Let's Go!"
+   - The name and category-setup pages were removed; new users start with the starter categories.
 10. **Help sheet**: Detailed instructions on all features including task types and card grid, accessed from Settings
 11. **Context menus**: On category cards (save, remove, delete) and task rows (mode, type, edit, subtasks, delete)
 12. **iOS 26 Liquid Glass**: Auto-adopted via Xcode 26 (controls, sheets, materials)
@@ -94,7 +97,7 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
     - Inline goal setup: Target/Unit text fields when no target set (not a popup)
     - Auto-completion when progress >= target
     - Task type picker via inline icons and context menu
-14. **Username**: Persisted via UserDefaults, editable in Settings, collected during onboarding
+14. **Username**: Persisted via UserDefaults, editable in Settings (no longer asked for in onboarding; not shown anywhere else yet)
 15. **Double-tap editing**: Double-tap task title to edit inline
 16. **Date banner**: Shows today's date with ordinal suffix (e.g. "Monday, Feb 16th"), "Go to Today" button on non-current weeks
 17. **Past week read-only**: Past weeks hide AddTaskRow, AddCategory, and edit button
@@ -179,13 +182,15 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
     - Copies the user changed in a future week (`ChecklistTask.isUserEdited`) are never followed, removed or adopted by sync; a followed goal target or list re-decides completion.
     - Deleting a category from a future week removes it from that week on (`Week.dismissedCategories` keeps sync from adding it back); this-week-only categories only from their week.
     - One store per app (in `TasquelApp`), so iPad windows can't overwrite each other.
-    - Load-error screen has Start Fresh (`setAsideUnreadableData()` renames the bad file); task decoding is lenient; save failures show an alert (`saveError`); onboarding keeps categories that have tasks.
+    - Load-error screen has Start Fresh (`setAsideUnreadableData()` renames the bad file); task decoding is lenient; save failures show an alert (`saveError`).
     - Midnight while open: `significantTimeChangeNotification` refreshes today and moves to the new week; a week that became current on screen gets its final sync before the first edit. Week-start switch on a Sunday no longer revives deleted categories.
     - Rename saved when finishing with the card checkmark / leaving edit mode; keyboard dismissed before changing week.
     - Card drag: frames kept per week, no save without a move, gesture masks instead of `if` branches (stable card identity). Events panel resets after a cancelled drag (`@GestureState`). Previews keep their IDs (`lastPreviews`). Test launch arguments only in DEBUG.
 55. **Accessibility (2026-10-19, `3bb1081`)**: closed cards show done as a filled dot and not done as an outline; retro text colors keep 4.5:1 on a card (red/purple lightened, `retroRed`, black text on retro pills; `glow` only for the shadow); `touchTarget()` gives small controls a 44pt hit area without changing layout (and fixed the task checkbox's off-center area); category names wrap to two lines; every card full width at accessibility text sizes; Reduce Motion turns off the card spring and sliding transitions.
 56. **App icon (2026-10-21, `42b12bf`)**: the user's Icon Composer file `AppIcon.icon` replaces the empty asset catalog icon; `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` already matched.
 57. **Follow-ups (2026-10-21)**: bottom-bar date is localized (`ContentView.dateString`; ordinal suffix only in English when the day comes last) and shortens on narrow screens via `ViewThatFits`; `print` replaced by `os.Logger`; a preview added for a refused edit is dropped on the next navigation (`unsavedPreviewID`); deleted repeating tasks are remembered by source ID, so a new task with the same name still repeats (titles only for copies without `repeatsFrom`); deployment target 26.0.
+58. **Phone feedback fixes (2026-10-22)**: renaming a category keeps its card open (`renameCardKey` moves the layout state to the new name); the keyboard's Done button is centered; holding an event no longer opens Calendar; save failures are tracked per file (a settings save can't clear a tasks failure, and a successful save retries the other file); the events panel stays mounted while it collapses, so closing or swiping it down no longer flickers.
+59. **Onboarding rework (2026-10-22)**: see item 9. Shared drawing parts (`Illustration`, `IllustrationCheck`) live in `FeatureAnimations.swift`; `replaceCurrentWeekCategories` and its tests were removed with the category page. Unit test checks each animation's 6s loop and that it comes to rest on its Reduce Motion frame.
 
 ### UI Layout (current)
 
@@ -335,6 +340,12 @@ e0a18d4 Audit fixes: keep edits to future copies, scope category deletion, safer
 52. **Small tap targets**: use `.touchTarget()` inside a button's label; it adds an invisible centered hit area without changing layout. `Rectangle().size(...)` as a content shape starts at the view's top-left corner, not its center.
 53. **Refused edits on a preview**: `editableSelectedWeekIndex()` adds the preview to `weeks` before the edit is validated; `unsavedPreviewID` drops it again on the next navigation if nothing saved.
 54. **Icon Composer icons**: an `.icon` file in the synced `Tasquel/` folder is picked up automatically; its name must match `ASSETCATALOG_COMPILER_APPICON_NAME`, and there must be no `AppIcon.appiconset` with the same name.
+55. **A view being removed isn't clipped or moved with its container** (seen frame by frame, 2026-10-22): the events panel stayed in place over the grid while the bar shrank away from it, then faded, which looked like a flicker. A transition built from a modifier didn't help. Keep the view in the hierarchy, animate its own collapse (`CardContentCrossFade` + `.clipped()`), and remove it in the animation's completion (`isEventsPanelMounted`).
+56. **Recording UI tests**: pass `-parallel-testing-enabled NO`, or the test runs on a clone and the recorded simulator shows nothing. The video's clock starts with `recordVideo`; log timestamps from the test (`print`) to find the frames.
+57. **`.frame(maxHeight: .infinity)` never shrinks below its content**: without `minHeight: 0` a flexible frame is at least as tall as its child, so a fixed outer frame can't clip it (the closed cards in `CategoryCardsAnimation` drew at full height). Use `minWidth: 0, minHeight: 0` when the content should be clipped.
+58. **Checking animation frames without a simulator recording**: a temporary unit test can render `content(values)` at `KeyframeTimeline.value(time:)` points with `ImageRenderer` into the scratchpad (the content function must be non-private while it runs). Run it with `-only-testing:TasquelTests/name()` (Swift Testing needs the parentheses), then delete it.
+60. **A drag that resizes the view it's attached to must use `coordinateSpace: .global`**: the events panel's swipe-down measured its translation against the header, which moves as the panel shrinks, so each frame corrected the last and the panel jumped back and forth (seen at 60fps: 62, 66, 63, 68, 65…). Measured on the screen, it follows the finger. The earlier "flicker" fixes (keeping the panel mounted, no dimming) were real but secondary.
+59. **`.disabled` dims `.plain` buttons**: the events list is disabled during a swipe down (so the drag can't open an event), and the plain style grayed every event the moment the swipe started, which read as a flicker. `EventButtonStyle` keeps the pressed effect but never dims. The close also carries the swipe's speed (`interpolatingSpring(initialVelocity:)`) and has no bounce, since overshooting a zero height made the bar dip.
 
 
 ### Historical notes (files since removed or rewritten)
@@ -370,14 +381,18 @@ H4. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., 
 - iPad-specific layout optimizations
 - Data export/import
 
-## Last Session Summary (2026-10-19 → 2026-10-21, Claude Code)
+## Last Session Summary (2026-10-19 → 2026-10-23, Claude Code)
 
 **What was done**:
 - Reviewed this recap and audited the app (data logic, views, accessibility, release readiness).
-- Fixed the audit's data bugs and medium items (item 54), the accessibility items (item 55) and the follow-ups (item 57), with 16 new unit tests; lowered the deployment target to 26.0. Each build was installed on the user's iPhone; their data was backed up first and compared after the first launch (unchanged).
-- The user made the app icon in Icon Composer (item 56).
+- Fixed the audit's data bugs and medium items (item 54), the accessibility items (item 55) and the follow-ups (item 57); lowered the deployment target to 26.0.
+- The user made the app icon in Icon Composer (item 56) and is still refining it.
+- Phone feedback fixes (item 58), including the events panel's swipe-down jitter (gotcha 60).
+- Onboarding reworked to five animated pages (items 9, 59).
+- The user deleted the app from their phone while checking the icon, so its data is gone; a backup from 2026-10-19 13:27 is in the session scratchpad (`phone-backup-20261019-132717`) if they want it restored.
 
 **In progress / next**:
+- Decide whether onboarding needs a closing page before entering the app.
 - Decide whether to delete the old merged branches (including `audit-fixes-2026-10-19`).
-- Hand checks on the phone: card open/close animation, rename via checkmark, drag after a week swipe, retro red/purple shades, the new dot outlines.
+- Commit the app icon when the user says it's finished.
 - Layout items above when wanted; iCloud sync later.
