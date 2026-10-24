@@ -20,10 +20,11 @@ final class TextSizeSetting {
 }
 
 extension Font {
-    /// A text style enlarged for expanded cards; follows the user's text size.
-    static func expandedCard(_ style: UIFont.TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+    /// A text style enlarged for expanded cards (and by `scale`); follows the user's text size.
+    static func expandedCard(_ style: UIFont.TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default,
+                             scale: CGFloat = 1) -> Font {
         let size = UIFont.preferredFont(forTextStyle: style, compatibleWith: TextSizeSetting.shared.traits).pointSize
-        return .system(size: size * expandedCardScale, weight: weight, design: design)
+        return .system(size: size * expandedCardScale * scale, weight: weight, design: design)
     }
 
     /// A point size (at the default text size) enlarged for expanded cards; grows and
@@ -550,10 +551,11 @@ struct TaskRowCard: View {
         }
     }
 
+    /// Set and Add, 15% larger than caption text so they aren't missed beside the keyboard's Done.
     private func actionPill(_ title: String) -> some View {
         Text(title)
-            .font(.expandedCard(.caption1, weight: .bold))
-            .padding(.horizontal, 12).padding(.vertical, 6)
+            .font(.expandedCard(.caption1, weight: .bold, scale: 1.15))
+            .padding(.horizontal, 14).padding(.vertical, 7)
             .background(Theme.accent(theme, rc: rc), in: Capsule())
             // Retro's accent is a bright phosphor color: dark text stays readable on it.
             .foregroundStyle(Theme.isRetro(theme) ? .black : .white)

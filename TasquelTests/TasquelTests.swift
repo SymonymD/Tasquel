@@ -859,11 +859,25 @@ struct CategoryNameTests {
         #expect(store.updateSavedCategory(errands.id, name: "Shopping", symbol: "bag"))
         #expect(store.savedCategories[1].name == "Shopping")
         #expect(store.savedCategories[1].symbol == "bag")
-        #expect(names(store, thisMonday) == ["Work", "Home"], "weeks aren't changed")
+        #expect(names(store, thisMonday) == ["Work", "Home"], "a category not in the weeks adds nothing")
         store.moveSavedCategories(fromOffsets: [1], toOffset: 0)
         #expect(store.savedCategories.map(\.name) == ["Shopping", "Work"])
         store.addSavedCategory(name: "SHOPPING", symbol: "cart")
         #expect(store.savedCategories.count == 2, "a duplicate isn't added")
+    }
+
+    @Test("Editing a saved category changes its category in this and future weeks, not past weeks")
+    func editTemplateUpdatesWeeks() {
+        let store = makeStore()
+        let work = store.savedCategories[0]
+        store.weeks[2].dismissedCategories = ["Work"]
+        #expect(store.isSavedCategoryNameTaken("home", excluding: work.id), "taken by a category in the weeks")
+        #expect(!store.updateSavedCategory(work.id, name: "Home", symbol: "briefcase"))
+        #expect(store.updateSavedCategory(work.id, name: "Office", symbol: "🏢"))
+        #expect(names(store, thisMonday) == ["Office", "Home"])
+        #expect(store.selectedWeek!.categories[0].symbol == "🏢")
+        #expect(names(store, lastMonday) == ["Work", "Home"])
+        #expect(store.weeks[2].dismissedCategories == ["Office"], "a deleted category stays deleted after the rename")
     }
 
     @Test("A removed starter category isn't added back on the next launch")
@@ -1802,4 +1816,16 @@ func previewKeepsIDs() {
     #expect(after.id == before.id)
     #expect(after.categories.map(\.id) == before.categories.map(\.id))
     #expect(after.categories[0].tasks.map(\.id) == before.categories[0].tasks.map(\.id))
+}
+
+/// A category icon is an emoji only when it's one emoji; SF Symbol names never are.
+@Test func categoryIconEmojiDetection() {
+    for emoji in ["😀", "❤️", "👍🏽", "🇺🇸", "👨‍👩‍👧", "1️⃣"] {
+        #expect(CategorySymbols.isEmoji(emoji), "\(emoji)")
+    }
+    for other in ["folder", "figure.run", "calendar.badge.clock", "a", "1", "#", "", "😀😀"] {
+        #expect(!CategorySymbols.isEmoji(other), "\(other)")
+    }
+    #expect(CategorySymbols.name(for: "🎸") == "🎸")
+    #expect(CategorySymbols.name(for: "cart") == "Shopping")
 }

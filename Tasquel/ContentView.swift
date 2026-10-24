@@ -440,7 +440,7 @@ struct ContentView: View {
                         Text(anyExpanded ? "[-]" : "[+]")
                             .font(.system(.body, design: .monospaced).bold())
                     } else {
-                        Image(systemName: anyExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                        Image(systemName: anyExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .font(.title3)
                             .contentTransition(.symbolEffect(.replace))
                     }

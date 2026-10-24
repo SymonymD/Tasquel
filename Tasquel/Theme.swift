@@ -167,15 +167,14 @@ struct ScanlineOverlay: View {
 
 // MARK: - Sheet Done Button
 
-/// A sheet's Done button. With Button Shapes on, iOS 26.6 draws a text toolbar button
-/// as a small circle with no room around the word, so it gets padding of its own then.
+/// A sheet's Done button: a checkmark in a plain glass circle, still read as "Done".
+/// A text button gets squeezed into a small circle on iOS 26.6 when Button Shapes is on.
 struct SheetDoneButton: View {
     let action: () -> Void
-    @Environment(\.accessibilityShowButtonShapes) private var showsButtonShapes
 
     var body: some View {
-        Button(action: action) {
-            Text("Done").padding(.horizontal, showsButtonShapes ? 8 : 0)
-        }
+        Button("Done", systemImage: "checkmark", action: action)
+            .labelStyle(.iconOnly)
     }
 }
+

@@ -416,17 +416,28 @@ final class ChecklistStore {
         saveSettings()
     }
 
-    /// Renames a saved category and changes its icon. Only the template changes, not
-    /// categories already in weeks. Fails if another saved category has the name.
+    /// Renames a saved category and changes its icon, and its category in this week and
+    /// every future week, so they stay linked like renaming a card does. Past weeks keep
+    /// the old name. Fails if another saved category, or another category in those weeks,
+    /// has the name.
     @discardableResult
     func updateSavedCategory(_ templateID: UUID, name: String, symbol: String) -> Bool {
         let name = Self.cleanName(name)
         guard !name.isEmpty,
               let index = savedCategories.firstIndex(where: { $0.id == templateID }),
-              !Self.containsName(name, in: savedCategories.filter { $0.id != templateID }.map(\.name)) else { return false }
+              !isSavedCategoryNameTaken(name, excluding: templateID) else { return false }
+        let old = savedCategories[index]
         savedCategories[index].name = name
         savedCategories[index].symbol = symbol
         saveSettings()
+        if old.name != name || old.symbol != symbol,
+           weeks.contains(where: { !isPastWeek($0) && $0.categories.contains { $0.name == old.name } }) {
+            updateCategories(named: old.name) {
+                $0.name = name
+                $0.symbol = symbol
+            }
+        }
+        renameDismissedCategory(old.name, to: name)
         return true
     }
 
@@ -454,9 +465,16 @@ final class ChecklistStore {
         Self.containsName(name, in: (selectedWeek?.categories.map(\.name) ?? []) + savedCategories.map(\.name))
     }
 
-    /// Whether a saved category other than `templateID` has `name`.
+    /// Whether a saved category other than `templateID` has `name`. Renaming one also
+    /// renames its category in this and future weeks, so their other categories count too.
     func isSavedCategoryNameTaken(_ name: String, excluding templateID: UUID?) -> Bool {
-        Self.containsName(name, in: savedCategories.filter { $0.id != templateID }.map(\.name))
+        var names = savedCategories.filter { $0.id != templateID }.map(\.name)
+        if let oldName = savedCategories.first(where: { $0.id == templateID })?.name {
+            for week in weeks where !isPastWeek(week) && week.categories.contains(where: { $0.name == oldName }) {
+                names += week.categories.map(\.name).filter { $0 != oldName }
+            }
+        }
+        return Self.containsName(name, in: names)
     }
 
     // MARK: - Week Management
@@ -878,6 +896,7 @@ final class ChecklistStore {
             + savedCategories.filter { $0.name != oldName }.map(\.name)
         guard !Self.containsName(newName, in: otherNames) else { return false }
         updateCategories(named: oldName) { $0.name = newName }
+        renameDismissedCategory(oldName, to: newName)
         if let ti = savedCategories.firstIndex(where: { $0.name == oldName }) {
             savedCategories[ti].name = newName
             saveSettings()
@@ -910,6 +929,19 @@ final class ChecklistStore {
                 weeks[wi].categories = sorted
                 changed = true
             }
+        }
+        if changed { save() }
+    }
+
+    /// A future week remembers categories deleted from it by name; after a rename it must
+    /// remember the new name, or syncing would add the category back under it.
+    private func renameDismissedCategory(_ oldName: String, to newName: String) {
+        guard oldName != newName else { return }
+        var changed = false
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
+            guard let dismissed = weeks[wi].dismissedCategories, dismissed.contains(oldName) else { continue }
+            weeks[wi].dismissedCategories = dismissed.map { $0 == oldName ? newName : $0 }
+            changed = true
         }
         if changed { save() }
     }

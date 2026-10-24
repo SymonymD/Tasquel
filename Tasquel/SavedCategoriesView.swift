@@ -2,12 +2,14 @@ import SwiftUI
 
 // MARK: - Saved Categories (Settings)
 
-/// Edit the saved categories offered in Add Category: rename, change icons, reorder,
-/// add and delete. Changes here don't touch categories already in your weeks.
+/// Edit the saved categories offered in Add Category: rename and change icons in place,
+/// reorder, add and delete. Renaming or re-iconing one also changes its card in this
+/// week and later weeks.
 struct SavedCategoriesView: View {
     let store: ChecklistStore
     @State private var editing: TemplateDraft?
     @State private var templateToDelete: CategoryTemplate?
+    @State private var editMode: EditMode = .inactive
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -24,27 +26,11 @@ struct SavedCategoriesView: View {
         List {
             Section {
                 ForEach(store.savedCategories) { template in
-                    Button {
-                        editing = TemplateDraft(id: template.id, name: template.name, symbol: template.symbol)
-                    } label: {
-                        HStack {
-                            Label(template.name, systemImage: template.symbol)
-                                .font(retro ? Theme.bodyFont(theme) : .body)
-                                .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.bold())
-                                .foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                        }
-                    }
-                    .accessibilityHint("Edit name and icon")
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            templateToDelete = template
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
+                    SavedCategoryRow(store: store, template: template)
+                }
+                // Gives both the swipe and, in edit mode, a visible delete button on each row.
+                .onDelete { offsets in
+                    templateToDelete = offsets.first.map { store.savedCategories[$0] }
                 }
                 .onMove { store.moveSavedCategories(fromOffsets: $0, toOffset: $1) }
                 .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
@@ -58,16 +44,25 @@ struct SavedCategoriesView: View {
                 }
                 .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
             } footer: {
-                Text("These are offered in Add Category. Editing one here doesn't change categories already in your weeks. To rename a category in your weeks, open its card and tap its edit button.")
+                Text("Tap a name to rename it, or an icon to change it. Tap the pencil to remove or reorder. These are offered in Add Category. A new name or icon also applies to the category's card this week and in later weeks.")
             }
         }
+        .environment(\.editMode, $editMode)
         .scrollContentBackground(Theme.isCustomDark(theme) ? .hidden : .automatic)
         .background(Theme.isCustomDark(theme) ? Theme.background(theme) : Color.clear)
         .navigationTitle(retro ? "> SAVED_CATEGORIES" : "Saved Categories")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !store.savedCategories.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
+            // An icon rather than EditButton's text, which iOS 26.6 squeezes into a small
+            // circle when Button Shapes is on (see SheetDoneButton).
+            if !store.savedCategories.isEmpty || editMode.isEditing {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(editMode.isEditing ? "Done" : "Edit",
+                           systemImage: editMode.isEditing ? "checkmark" : "pencil") {
+                        withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                    }
+                    .labelStyle(.iconOnly)
+                }
             }
         }
         .sheet(item: $editing) { draft in
@@ -89,6 +84,89 @@ struct SavedCategoriesView: View {
     }
 }
 
+// MARK: - Saved Category Row
+
+/// A saved category's icon menu and name, both edited in place. The name is saved when
+/// editing ends; an empty name, or one another saved category has, goes back to the old one.
+/// With `onRemove`, a remove button leads the row.
+struct SavedCategoryRow: View {
+    let store: ChecklistStore
+    let template: CategoryTemplate
+    var onRemove: (() -> Void)? = nil
+    @State private var name: String
+    @FocusState private var isFocused: Bool
+
+    init(store: ChecklistStore, template: CategoryTemplate, onRemove: (() -> Void)? = nil) {
+        self.store = store
+        self.template = template
+        self.onRemove = onRemove
+        _name = State(initialValue: template.name)
+    }
+
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+    private var isTaken: Bool { store.isSavedCategoryNameTaken(name, excluding: template.id) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                if let onRemove {
+                    Button(action: onRemove) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .red)
+                            .touchTarget()
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Remove \(template.name)")
+                }
+                CategorySymbolMenu(symbol: Binding(
+                    get: { template.symbol },
+                    set: { store.updateSavedCategory(template.id, name: template.name, symbol: $0) }
+                )) {
+                    CategoryIcon(symbol: template.symbol)
+                        .foregroundStyle(Theme.accent(theme, rc: rc))
+                        .frame(width: 28)
+                        .touchTarget()
+                }
+                TextField("Category name", text: $name)
+                    .font(Theme.isRetro(theme) ? Theme.bodyFont(theme) : .body)
+                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                    .focused($isFocused)
+                    .submitLabel(.done)
+                    .onSubmit(commit)
+            }
+            if isFocused && isTaken {
+                Text("Another category is already named \(ChecklistStore.cleanName(name)).")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .onChange(of: isFocused) { _, focused in
+            if !focused { commit() }
+        }
+        .onChange(of: template.name) { _, newName in
+            if !isFocused { name = newName }
+        }
+        // Leaving editing (Add Category's Done Editing) removes the row while it may still
+        // have focus, so focus never changes; save what was typed here instead.
+        .onDisappear(perform: commit)
+    }
+
+    private func commit() {
+        guard ChecklistStore.cleanName(name) != template.name else {
+            name = template.name
+            return
+        }
+        if store.updateSavedCategory(template.id, name: name, symbol: template.symbol) {
+            name = ChecklistStore.cleanName(name)
+        } else {
+            name = template.name
+        }
+    }
+}
+
 // MARK: - Template Editor
 
 private struct TemplateEditor: View {
@@ -106,7 +184,7 @@ private struct TemplateEditor: View {
                 Section {
                     HStack(spacing: 12) {
                         CategorySymbolMenu(symbol: $draft.symbol) {
-                            Image(systemName: draft.symbol)
+                            CategoryIcon(symbol: draft.symbol)
                                 .font(.title2)
                                 .frame(width: 44, height: 44)
                                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
@@ -118,7 +196,7 @@ private struct TemplateEditor: View {
                     }
                 } footer: {
                     if isTaken {
-                        Text("Another saved category is already named \(ChecklistStore.cleanName(draft.name)).")
+                        Text("Another category is already named \(ChecklistStore.cleanName(draft.name)).")
                             .foregroundStyle(.red)
                     } else {
                         Text("Tap the icon to change it.")

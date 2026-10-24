@@ -12,6 +12,7 @@ struct AddCategorySheet: View {
     @State private var newSymbol = "folder"
     @State private var templateToRemove: CategoryTemplate?
     @State private var pendingAdd: PendingCategory?
+    @State private var isEditingSaved = false
 
     /// A category waiting for the user to choose "every week" or "this week only".
     private struct PendingCategory {
@@ -26,16 +27,8 @@ struct AddCategorySheet: View {
                 Section("Create New") {
                     if isCreatingNew {
                         HStack {
-                            Menu {
-                                ForEach(CategorySymbols.options.map(\.symbol), id: \.self) { symbol in
-                                    Button {
-                                        newSymbol = symbol
-                                    } label: {
-                                        Label(CategorySymbols.name(for: symbol), systemImage: symbol)
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: newSymbol)
+                            CategorySymbolMenu(symbol: $newSymbol) {
+                                CategoryIcon(symbol: newSymbol)
                                     .font(.title3)
                                     .frame(width: 32, height: 32)
                                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
@@ -75,33 +68,28 @@ struct AddCategorySheet: View {
                 if !store.savedCategories.isEmpty {
                     Section("Saved Categories") {
                         ForEach(store.savedCategories) { template in
-                            let alreadyAdded = store.selectedWeek?.categories.contains(where: { $0.name == template.name }) ?? false
-                            Button {
-                                addFromTemplate(template)
-                            } label: {
-                                HStack {
-                                    Label(template.name, systemImage: template.symbol)
-                                        .foregroundStyle(alreadyAdded ? .secondary : .primary)
-                                    Spacer()
-                                    if alreadyAdded {
-                                        Text("Added")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .disabled(alreadyAdded)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
+                            if isEditingSaved {
+                                SavedCategoryRow(store: store, template: template) {
                                     templateToRemove = template
-                                } label: {
-                                    Label("Remove", systemImage: "trash")
                                 }
+                            } else {
+                                savedCategoryButton(template)
                             }
+                        }
+                        Button {
+                            withAnimation { isEditingSaved.toggle() }
+                        } label: {
+                            Label(isEditingSaved ? "Done Editing" : "Edit Saved Categories",
+                                  systemImage: isEditingSaved ? "checkmark" : "pencil")
                         }
                     }
                 }
             }
+            .onChange(of: store.savedCategories.isEmpty) { _, isEmpty in
+                if isEmpty { isEditingSaved = false }
+            }
+            // Room below the last row, so it isn't lost under the sheet's rounded bottom edge.
+            .contentMargins(.bottom, 24, for: .scrollContent)
             .scrollContentBackground(Theme.isDark(store.appearanceMode) ? .hidden : .automatic)
             .background(Theme.isDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
             .confirmationDialog(
@@ -137,6 +125,33 @@ struct AddCategorySheet: View {
                 }
             } message: {
                 Text("You can create this category again later.")
+            }
+        }
+    }
+
+    /// A saved category to add; swipe to remove it.
+    private func savedCategoryButton(_ template: CategoryTemplate) -> some View {
+        let alreadyAdded = store.selectedWeek?.categories.contains(where: { $0.name == template.name }) ?? false
+        return Button {
+            addFromTemplate(template)
+        } label: {
+            HStack {
+                Label { Text(template.name) } icon: { CategoryIcon(symbol: template.symbol) }
+                    .foregroundStyle(alreadyAdded ? .secondary : .primary)
+                Spacer()
+                if alreadyAdded {
+                    Text("Added")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(alreadyAdded)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                templateToRemove = template
+            } label: {
+                Label("Remove", systemImage: "trash")
             }
         }
     }

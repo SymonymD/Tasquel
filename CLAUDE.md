@@ -37,9 +37,9 @@ Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checkin
 | `Tasquel/CategoryCard.swift` | `CategoryCard` (collapsed) + `ExpandedCategoryCard`, deletion confirmations |
 | `Tasquel/TaskRowCard.swift` | `TaskRowCard`, `SubTaskRowCard`, `AddTaskRowCard`, goal editing |
 | `Tasquel/TaskOptionsPicker.swift` | Two-column type/mode picker (popover) and the task row's type+mode icon capsule |
-| `Tasquel/CategorySymbols.swift` | Category icon list with readable names, `CategorySymbolMenu` |
-| `Tasquel/SavedCategoriesView.swift` | Settings ▸ Saved Categories: rename, re-icon, reorder, add, delete templates |
-| `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new) + `DatePickerSheet` |
+| `Tasquel/CategorySymbols.swift` | Category icon list with readable names, `CategorySymbolMenu` (icons plus Choose Emoji…), `CategoryIcon` (draws a `symbol` that is an SF Symbol name or a single emoji; always use it, never `Image(systemName:)`, for category icons) |
+| `Tasquel/SavedCategoriesView.swift` | Settings ▸ Saved Categories: rename and re-icon in place, reorder, add, delete templates; `SavedCategoryRow` (the in-place editing row, also used by Add Category) |
+| `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new; Edit Saved Categories edits and removes them in place) + `DatePickerSheet` |
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts); `AppInfo` holds the Support/Privacy URLs and reads the version |
 | `Tasquel/HelpSheet.swift` | Help guide |
 | `Tasquel/OnboardingSheet.swift` | Onboarding: welcome, then one page each for task types, task modes, category cards and calendar events, each with an animation |

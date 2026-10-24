@@ -153,14 +153,14 @@ struct CategoryGridCard: View {
                     get: { category.symbol },
                     set: { store.setCategorySymbol(category.id, symbol: $0) }
                 )) {
-                    Image(systemName: category.symbol)
+                    CategoryIcon(symbol: category.symbol)
                         .modifier(AnimatableFont(size: expandedTitleSize * 0.95))
                         .padding(6)
                         .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
             } else if !Theme.isRetro(theme) {
-                Image(systemName: category.symbol)
+                CategoryIcon(symbol: category.symbol)
                     .modifier(AnimatableFont(size: isExpanded ? expandedTitleSize * 0.95 : collapsedTitleSize))
             }
             if isRenaming {
@@ -337,7 +337,7 @@ private struct CollapsedCategoryContent: View {
                     Text("[OPEN]").font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 } else {
-                    Image(systemName: "arrow.up.forward")
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.caption).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
             }
@@ -384,7 +384,7 @@ private struct ExpandedCategoryContent: View {
                             Text("[CLOSE]").font(.expandedCard(.caption1, design: .monospaced))
                                 .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                         } else {
-                            Image(systemName: "rectangle.compress.vertical")
+                            Image(systemName: "arrow.down.right.and.arrow.up.left")
                                 .font(.expandedCard(size: 20))
                                 .foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
                         }
