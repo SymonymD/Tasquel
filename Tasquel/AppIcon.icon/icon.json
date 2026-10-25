@@ -23,6 +23,9 @@
         {
           "blend-mode-specializations" : [
             {
+              "value" : "plus-lighter"
+            },
+            {
               "appearance" : "dark",
               "value" : "normal"
             }
@@ -52,8 +55,8 @@
           "position" : {
             "scale" : 1,
             "translation-in-points" : [
-              20.76930147058846,
-              7.231535575239832
+              16.987132352941387,
+              -0.005096074850428067
             ]
           }
         },
@@ -73,7 +76,7 @@
             {
               "appearance" : "dark",
               "value" : {
-                "solid" : "extended-gray:0.50000,1.00000"
+                "solid" : "display-p3:0.69104,0.69104,0.69104,1.00000"
               }
             }
           ],

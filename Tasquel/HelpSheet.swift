@@ -15,7 +15,8 @@ struct HelpSheet: View {
             ("calendar", "Navigate Weeks", "Swipe left or right, use the arrows, or tap the calendar icon to jump to any week. Future weeks can be filled in ahead of time. Past weeks are view only, as the line under the week bar says. Tasquel opens on the current week."),
             ("calendar.day.timeline.left", "Week Start", "Weeks start on Monday. Choose Sunday in Settings ▸ Week."),
             ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings, then tap the calendar button next to Settings to see the week's events. Tap an event to see that day in Calendar. Choose which calendars to include in Settings; events stay on your device."),
-            ("square.grid.2x2", "Category Cards", "Tap a card to open it; tap its name or the close button to close it. The button at the top right opens or closes all cards, and pulling the cards down from the top and letting go closes them all. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to open it; tap its name or the close button to close it. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
+            ("arrow.down.right.and.arrow.up.left", "Close All Cards", "Pull the cards down from the top, like refreshing a page, and let go to close every open card. The button at the top right also opens or closes them all."),
             ("arrow.up.arrow.down", "Sort Cards", "In Settings ▸ Categories, Sort Cards can put recently or least recently edited cards first. Sorted cards rearrange only when you open Tasquel, change week or close every card, and can't be dragged. Choose Manual to move them yourself."),
         ]),
         ("Tasks", [
