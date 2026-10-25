@@ -45,7 +45,7 @@ final class CalendarUITests: XCTestCase {
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Sam's Birthday")).firstMatch.exists)
 
         // With the events open, the grid still scrolls its last card clear of the bar.
-        let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open "))
+        let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label != %@", "Open ", "Open all cards"))
         let lastCard = cards.element(boundBy: cards.count - 1)
         let grid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         for _ in 0..<3 { grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: -400))) }

@@ -18,7 +18,18 @@ struct ContentView: View {
     @State private var liveCardOrder: [CategoryLayoutKey]?
     /// Each card's place in its week's grid, for finding the card under the finger.
     /// Kept for every page, so a week that slides in already has its cards' places.
-    @State private var weekCardFrames: [DayKey: [CategoryLayoutKey: CGRect]] = [:]
+    /// Not observed (a plain class): frames change on every frame of a card opening or
+    /// closing, and redrawing the whole screen for each made scrolling and expanding janky.
+    /// They're only read while a card is dragged, which redraws anyway.
+    @State private var cardFrameStore = CardFrameStore()
+    /// Category names in the chosen sort order (empty for manual). Refreshed only at calm
+    /// moments (opening, changing week or the setting, all cards closed), never while
+    /// tasks are ticked, so a card doesn't jump from under the finger.
+    @State private var sortedNames: [String] = []
+
+    private final class CardFrameStore {
+        var frames: [DayKey: [CategoryLayoutKey: CGRect]] = [:]
+    }
     /// The order when the card was lifted, to tell whether dropping it changed anything.
     @State private var liftedCardOrder: [CategoryLayoutKey]?
     @State private var lastCardDrop = Date.distantPast
@@ -45,6 +56,7 @@ struct ContentView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// When the app last went to the background, to decide whether reopening it
     /// should jump back to the current week.
     @State private var backgroundedAt: Date?
@@ -63,7 +75,10 @@ struct ContentView: View {
     @State private var weekDragOrigin: CGFloat = 0  // translation when the swipe was recognized
     @State private var isChangingWeek = false
     @State private var weekPageWidth: CGFloat = 400
+    /// Whether the window is wider than tall (an iPad in landscape, or a wide window).
+    @State private var isLandscape = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -123,7 +138,7 @@ struct ContentView: View {
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                             .padding(.bottom, -4)
                     } else if isEditing {
-                        Text(Theme.isRetro(theme) ? "> hold + drag a card to move it" : "Hold and drag a card to move it")
+                        Text(editModeHint)
                             .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                             .padding(.bottom, -4)
@@ -148,6 +163,7 @@ struct ContentView: View {
                         }
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekPageWidth = $0 }
+                    .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
                     .simultaneousGesture(weekSwipeGesture)
                     .onChange(of: isWeekSwiping) { _, swiping in
                         // Cancelled rather than ended: put the page back.
@@ -190,6 +206,19 @@ struct ContentView: View {
                 }
             }
 
+            // "Deleted … · Undo", just above the bottom bar (or the keyboard).
+            if store.persistenceError == nil, let deletion = store.lastDelete {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    undoDeleteMessage(deletion)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, isKeyboardVisible
+                                 ? Self.keyboardDoneClearance + 8
+                                 : max(8, bottomBarHeight - homeIndicatorInset + 8))
+                }
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+            }
+
             // Retro scanline overlay
             if Theme.isRetro(theme) {
                 ScanlineOverlay()
@@ -204,6 +233,7 @@ struct ContentView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { homeIndicatorInset = $0 }
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: store.lastDelete)
         .preferredColorScheme(store.colorScheme)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = true }
@@ -254,6 +284,9 @@ struct ContentView: View {
                 dismissKeyboard()
             }
             guard scenePhase == .active else { return }
+            // Only after a real trip away: Notification Center or Control Center (inactive)
+            // mustn't re-sort cards that are in use.
+            if backgroundedAt != nil { refreshSortOrder() }
             today = Date()
             returnToCurrentWeekIfAway()
             // Calendars may have changed (or access revoked) while away.
@@ -280,6 +313,7 @@ struct ContentView: View {
         .onChange(of: store.selectedDate) {
             if isPastWeek { isEditing = false }
         }
+        .background { sortOrderWatcher }
         // Midnight (or a time zone change) while the app is open.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
             handleDayChange()
@@ -456,6 +490,49 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Undo
+
+    /// Shown for five seconds after a delete; deleting no longer asks first, so this is
+    /// how a mistaken delete is taken back.
+    private func undoDeleteMessage(_ deletion: ChecklistStore.UndoableDelete) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "trash")
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+            Text(Theme.isRetro(theme) ? "deleted \(deletion.description)" : "Deleted \(deletion.description)")
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Button(Theme.isRetro(theme) ? "[UNDO]" : "Undo") {
+                withAnimation(cardAnimation) { store.undoLastDelete() }
+            }
+            .buttonStyle(.plain)
+            .fontWeight(.semibold)
+            .foregroundStyle(Theme.accent(theme, rc: rc))
+            .touchTarget()
+            .accessibilityLabel("Undo delete")
+        }
+        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background {
+            if Theme.isRetro(theme) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.navCapsule(theme))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+            } else {
+                Capsule().fill(.clear).glassEffect(.regular, in: Capsule())
+            }
+        }
+        .task(id: deletion.token) {
+            // With VoiceOver it stays until the next change: five seconds isn't enough to
+            // move to it, and deleting no longer asks first.
+            guard !voiceOverEnabled else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, store.lastDelete?.token == deletion.token else { return }
+            store.clearUndo()
+        }
+    }
+
     // MARK: - Problems Saving or Loading
 
     /// What Start Fresh leaves behind, named for the file that couldn't be read.
@@ -484,16 +561,14 @@ struct ContentView: View {
         if store.persistenceError == nil, !isEditing, let week = store.selectedWeek, !gridEntries(for: week).isEmpty {
             let anyExpanded = gridEntries(for: week).contains { expandedCategoryKeys.contains($0.id) }
             Button {
-                if anyExpanded { dismissKeyboard() }  // see collapseCategory
-                withAnimation(cardAnimation) {
-                    if anyExpanded {
-                        expandedCategoryKeys.removeAll()
-                        editingCategoryKeys.removeAll()
-                    } else {
+                if anyExpanded {
+                    collapseAllCards()
+                } else {
+                    withAnimation(cardAnimation) {
                         expandedCategoryKeys = Set(gridEntries(for: week).map(\.id))
+                        categoryDisplayOrder.removeAll()
+                        lastToggledCategory = nil
                     }
-                    categoryDisplayOrder.removeAll()
-                    lastToggledCategory = nil
                 }
             } label: {
                 Group {
@@ -512,7 +587,17 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 12)
-            .accessibilityLabel(anyExpanded ? "Collapse all categories" : "Expand all categories")
+            .accessibilityLabel(anyExpanded ? "Close all cards" : "Open all cards")
+        }
+    }
+
+    private func collapseAllCards() {
+        dismissKeyboard()  // see collapseCategory
+        withAnimation(cardAnimation) {
+            expandedCategoryKeys.removeAll()
+            editingCategoryKeys.removeAll()
+            categoryDisplayOrder.removeAll()
+            lastToggledCategory = nil
         }
     }
 
@@ -789,6 +874,8 @@ struct ContentView: View {
     /// Bottom bar icons: 20% larger than the original .title3 (20pt), with matching tap areas.
     private static let barIconSize: CGFloat = 24
     private static let barButtonSize: CGFloat = 52
+    /// Room below the grid for the Undo message while it shows.
+    private static let undoMessageClearance: CGFloat = 64
     /// Room above the keyboard taken by the Done button.
     private static let keyboardDoneClearance: CGFloat = 56
 
@@ -801,6 +888,14 @@ struct ContentView: View {
     /// At accessibility text sizes every card takes a full row, so names and tasks fit.
     private var usesSingleColumn: Bool { dynamicTypeSize.isAccessibilitySize }
 
+    /// Three columns of closed cards on iPad (a full-width window), two on iPhone.
+    /// Columns of closed cards: 2 on iPhone (portrait only), 3 on iPad in portrait and 4 in
+    /// landscape. A narrow iPad window (compact width) gets 2 like an iPhone.
+    private var gridColumns: Int {
+        guard horizontalSizeClass == .regular else { return 2 }
+        return isLandscape ? 4 : 3
+    }
+
     @ViewBuilder
     private func weekContent(_ week: Week) -> some View {
         let categories = week.categories
@@ -809,7 +904,7 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 8) {
                 // Expanded cards take a full row; other open cards remain open.
-                CategoryGridLayout(spacing: 8) {
+                CategoryGridLayout(spacing: 8, columns: gridColumns) {
                     ForEach(gridEntries(for: week)) { entry in
                         let isExpanded = expandedCategoryKeys.contains(entry.id)
                         CategoryGridCard(
@@ -845,13 +940,14 @@ struct ContentView: View {
                         // follows the finger (see the overlay below).
                         .opacity(cardDrag?.key == entry.id ? 0 : 1)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
-                            weekCardFrames[week.startDay, default: [:]][entry.id] = frame
+                            cardFrameStore.frames[week.startDay, default: [:]][entry.id] = frame
                         }
                         // Closed cards can be held and dragged to a new place. (Holding inside an
                         // open card is for its tasks.)
                         .modifier(CardDragGesture(
                             isCollapsed: !isExpanded,
-                            canDrag: !store.isPastWeek(week),
+                            // Sorted by last edit, cards stay where the sort puts them.
+                            canDrag: !store.isPastWeek(week) && store.categorySort == .manual,
                             onTap: {
                                 // A hold that's released without moving isn't a tap.
                                 guard cardDrag == nil, Date().timeIntervalSince(lastCardDrop) > 0.5 else { return }
@@ -862,7 +958,7 @@ struct ContentView: View {
                             onDrop: { dropCard(in: week) }
                         ))
                         .accessibilityActions {
-                            if !store.isPastWeek(week) && !isExpanded { cardMoveActions(entry.id, in: week) }
+                            if !store.isPastWeek(week) && !isExpanded && store.categorySort == .manual { cardMoveActions(entry.id, in: week) }
                         }
                         // Outside the modifiers above, where the grid layout can read it.
                         .categoryGridFullWidth(isExpanded || usesSingleColumn)
@@ -891,11 +987,22 @@ struct ContentView: View {
             // Clear of the bottom bar, which grows when the events panel is open.
             // (The bar is hidden while the keyboard is up; the Done button is covered by
             // keyboardDoneClearance below.)
-            .padding(.bottom, isKeyboardVisible ? 80 : max(80, bottomBarHeight - homeIndicatorInset + 16))
+            .padding(.bottom, (isKeyboardVisible ? 80 : max(80, bottomBarHeight - homeIndicatorInset + 16))
+                     // Room for the Undo message, so it never sits over the last row.
+                     + (store.lastDelete != nil ? Self.undoMessageClearance : 0))
         }
         // Dragging down into the keyboard closes it; scrolling up keeps it open.
         .scrollDismissesKeyboard(.interactively)
+        // Pull down past the top and let go to close every card (like pull to refresh).
+        // Off while typing: dragging down to put the keyboard away mustn't also close cards.
+        .modifier(PullToCloseAll(isEnabled: !expandedCategoryKeys.isEmpty && !isEditing && !isKeyboardVisible,
+                                 theme: theme, rc: rc, onClose: collapseAllCards))
         .scrollDisabled(cardDrag != nil)
+        .accessibilityActions {
+            if store.lastDelete != nil {
+                Button("Undo delete") { withAnimation(cardAnimation) { store.undoLastDelete() } }
+            }
+        }
         .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
         .sensoryFeedback(.selection, trigger: liveCardOrder)
         // Keeps the field being edited (and its options) clear of the Done button.
@@ -932,8 +1039,15 @@ struct ContentView: View {
     /// Cards in display order: any reordering from expansion first, then the rest.
     private func gridEntries(for week: Week) -> [CategoryGridEntry] {
         let keysByID = categoryKeys(for: week.categories)
-        let entries = week.categories.compactMap { category in
+        var entries = week.categories.compactMap { category in
             keysByID[category.id].map { CategoryGridEntry(id: $0, category: category) }
+        }
+        if !sortedNames.isEmpty {
+            // Names not in the snapshot (added since) go last, in their arranged order.
+            let rank = Dictionary(sortedNames.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            entries = entries.enumerated()
+                .sorted { (rank[$0.element.id.name] ?? Int.max, $0.offset) < (rank[$1.element.id.name] ?? Int.max, $1.offset) }
+                .map(\.element)
         }
         let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let order = week.id == store.selectedWeek?.id ? (liveCardOrder ?? categoryDisplayOrder) : categoryDisplayOrder
@@ -942,7 +1056,44 @@ struct ContentView: View {
         return ordered + entries.filter { !orderedKeys.contains($0.id) }
     }
 
-    /// Expanding the right-hand card of a row moves it into its left neighbor's
+    /// Re-sorts at the calm moments `sortedNames` describes.
+    private var sortOrderWatcher: some View {
+        Color.clear
+            // Categories added or deleted while editing take their sorted places.
+            .onChange(of: isEditing) { _, editing in
+                if !editing { refreshSortOrder() }
+            }
+            .onChange(of: store.lastDelete) { _, deletion in
+                if let deletion {
+                    AccessibilityNotification.Announcement("Deleted \(deletion.description). Undo is available.").post()
+                }
+            }
+            .onChange(of: store.selectedWeek?.startDay, initial: true) { refreshSortOrder() }
+            .onChange(of: store.categorySort) { withAnimation(cardAnimation) { refreshSortOrder() } }
+            .onChange(of: expandedCategoryKeys.isEmpty) { _, allClosed in
+                if allClosed { withAnimation(cardAnimation) { refreshSortOrder() } }
+            }
+    }
+
+    private var editModeHint: String {
+        switch (store.categorySort == .manual, Theme.isRetro(theme)) {
+        case (true, true): "> hold + drag a card to move it"
+        case (true, false): "Hold and drag a card to move it"
+        case (false, true): "> sorted by last edit // manual in settings to move"
+        case (false, false): "Sorted by last edit · Choose Manual in Settings to move cards"
+        }
+    }
+
+    /// Takes the current sort order (see `sortedNames`).
+    private func refreshSortOrder() {
+        guard store.categorySort != .manual, let week = store.selectedWeek else {
+            sortedNames = []
+            return
+        }
+        sortedNames = store.sortedCategories(week.categories).map(\.name)
+    }
+
+    /// Expanding a card that isn't first in its row moves it into the row's first
     /// slot, so it opens in place instead of dropping below an already-open card.
     private func expandCard(_ key: CategoryLayoutKey, in week: Week) {
         guard !isEditing else { return }  // edit mode keeps cards collapsed
@@ -951,9 +1102,11 @@ struct ContentView: View {
 
     private func expandCategory(_ key: CategoryLayoutKey, in week: Week) {
         var order = gridEntries(for: week).map(\.id)
-        let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || expandedCategoryKeys.contains($0) })
-        if let row = rows.first(where: { $0.count == 2 && order[$0[1]] == key }) {
-            order.remove(at: row[1])
+        let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || expandedCategoryKeys.contains($0) },
+                                           columns: gridColumns)
+        if let row = rows.first(where: { $0.dropFirst().contains { order[$0] == key } }),
+           let index = row.first(where: { order[$0] == key }) {
+            order.remove(at: index)
             order.insert(key, at: row[0])
             categoryDisplayOrder = order
         }
@@ -977,7 +1130,7 @@ struct ContentView: View {
 
     /// Card places in the week being viewed.
     private var cardFrames: [CategoryLayoutKey: CGRect] {
-        store.selectedWeek.flatMap { weekCardFrames[$0.startDay] } ?? [:]
+        store.selectedWeek.flatMap { cardFrameStore.frames[$0.startDay] } ?? [:]
     }
 
     private func liftCard(_ key: CategoryLayoutKey, in week: Week) {
@@ -1083,6 +1236,8 @@ struct ContentView: View {
         if editingCategoryKeys.remove(old) != nil { editingCategoryKeys.insert(new) }
         categoryDisplayOrder = categoryDisplayOrder.map(move)
         lastToggledCategory = lastToggledCategory.map(move)
+        // A renamed card keeps its place in a sorted order.
+        sortedNames = sortedNames.map { $0 == old.name ? name : $0 }
     }
 
     private func collapseCategory(_ key: CategoryLayoutKey) {
@@ -1275,35 +1430,115 @@ private struct CardDragGesture: ViewModifier {
     let onMove: (_ start: CGPoint, _ location: CGPoint) -> Void
     let onDrop: () -> Void
 
-    @GestureState private var isHolding = false
-
-    // The gestures are always attached and switched on or off with masks: different
-    // view branches for open and closed cards would rebuild the card (losing its state
-    // and its resize animation) every time it opened or closed.
+    // The gestures are always attached and switched on or off (mask, isEnabled):
+    // different view branches for open and closed cards would rebuild the card (losing
+    // its state and its resize animation) every time it opened or closed.
     func body(content: Content) -> some View {
         content
             .contentShape(Rectangle())
             .gesture(TapGesture().onEnded(onTap), including: isCollapsed ? .all : .subviews)
-            .simultaneousGesture(
-                // Half a second, like iOS's own hold-to-move: shorter caught fingers that
-                // only paused before scrolling, reordering cards by accident.
-                LongPressGesture(minimumDuration: 0.5)
-                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(ContentView.cardGridSpace)))
-                    .updating($isHolding) { value, state, _ in
-                        if case .second(true, _) = value { state = true }
-                    }
-                    .onChanged { value in
-                        guard case .second(true, let drag) = value else { return }
-                        onLift()
-                        if let drag { onMove(drag.startLocation, drag.location) }
-                    },
-                including: isCollapsed && canDrag ? .all : .subviews
-            )
-            // Ends, or is cancelled: either way the card drops.
-            .onChange(of: isHolding) { _, holding in
-                if !holding { onDrop() }
-            }
+            // UIKit's long press, not a SwiftUI LongPress-then-Drag: that drag claimed every
+            // touch on a card, so a screen full of cards couldn't be scrolled. This one gives
+            // up when the finger moves before the hold, leaving the touch to the scroll view.
+            .gesture(CardHoldRecognizer(isEnabled: isCollapsed && canDrag,
+                                        onLift: onLift, onMove: onMove, onDrop: onDrop))
             // A card that goes away mid-drag must not leave the grid locked.
             .onDisappear(perform: onDrop)
+    }
+}
+
+/// Hold a closed card half a second (like iOS's own hold-to-move), then drag it.
+private struct CardHoldRecognizer: UIGestureRecognizerRepresentable {
+    let isEnabled: Bool
+    let onLift: () -> Void
+    let onMove: (_ start: CGPoint, _ location: CGPoint) -> Void
+    let onDrop: () -> Void
+
+    final class Coordinator {
+        /// Where the finger was when the hold began, in the grid's coordinates.
+        var start: CGPoint?
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.5
+        recognizer.isEnabled = isEnabled
+        return recognizer
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        recognizer.isEnabled = isEnabled
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        let location = context.converter.location(in: .named(ContentView.cardGridSpace))
+        switch recognizer.state {
+        case .began:
+            context.coordinator.start = location
+            onLift()
+            onMove(location, location)
+        case .changed:
+            onMove(context.coordinator.start ?? location, location)
+        case .ended, .cancelled, .failed:
+            guard context.coordinator.start != nil else { return }
+            context.coordinator.start = nil
+            onDrop()
+        default:
+            break
+        }
+    }
+}
+
+// MARK: - Pull to Close All
+
+/// Pulling the grid down past its top and letting go closes every open card. Only a pull
+/// the finger is holding counts, never the bounce of a fast scroll to the top, and it acts
+/// on release. Its state lives here, not in ContentView: scrolling then redraws only this
+/// (and only while pulled past the top), not the whole screen on every frame.
+private struct PullToCloseAll: ViewModifier {
+    let isEnabled: Bool
+    let theme: AppearanceMode
+    let rc: RetroColor
+    let onClose: () -> Void
+
+    static let distance: CGFloat = 90
+    @State private var pull: CGFloat = 0
+    @State private var isTouching = false
+
+    private var isArmed: Bool { isEnabled && isTouching && pull >= Self.distance }
+
+    func body(content: Content) -> some View {
+        content
+            // Zero whenever the grid isn't pulled past its top, so ordinary scrolling
+            // changes nothing here; whole points, capped, while it is.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                min(max(0, -(geometry.contentOffset.y + geometry.contentInsets.top)), Self.distance * 1.5).rounded()
+            } action: { _, overscroll in
+                pull = overscroll
+            }
+            .onScrollPhaseChange { _, phase in
+                let wasArmed = isArmed
+                isTouching = phase == .interacting
+                if wasArmed && phase != .interacting { onClose() }
+            }
+            .overlay(alignment: .top) { hint }
+            .sensoryFeedback(.impact(weight: .light), trigger: isArmed) { _, armed in armed }
+    }
+
+    /// In the gap a pull opens above the cards: what letting go will do.
+    @ViewBuilder
+    private var hint: some View {
+        if isEnabled && isTouching && pull > 12 {
+            Label(isArmed ? "Release to close all" : "Pull to close all",
+                  systemImage: "arrow.down.right.and.arrow.up.left")
+                .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption.weight(.medium))
+                .foregroundStyle(isArmed ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                .opacity(min(1, pull / Self.distance))
+                .padding(.top, 6)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)  // VoiceOver uses the Collapse All button
+        }
     }
 }

@@ -33,7 +33,7 @@ struct CalendarSettingsRows: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(calendar.authorization == .restricted
                      ? "Calendar access is restricted on this device."
-                     : "Tasquel doesn't have access to your calendars. Turn on Full Access in Settings to show your events.")
+                     : "Tasquel doesn't have access to your calendars. Turn on Full Access for Tasquel in the Settings app to show your events.")
                     .font(retro ? Theme.captionFont(theme) : .footnote)
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 if calendar.authorization != .restricted {

@@ -74,7 +74,7 @@ final class TasquelUITests: XCTestCase {
         work.tap()
         // Let Work finish opening: Errands slides to a new row, and tapping it
         // mid-slide can land where it used to be.
-        XCTAssertTrue(app.buttons["Collapse Work"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Close Work"].waitForExistence(timeout: 5))
         let settled = expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: errands)
         wait(for: [settled], timeout: 5)
         errands.tap()
@@ -120,5 +120,58 @@ final class TasquelUITests: XCTestCase {
         XCTAssertTrue(editButton.waitForExistence(timeout: 3))
         editButton.tap()
         XCTAssertTrue(app.staticTexts["Add Category"].waitForExistence(timeout: 3), "Edit mode should show Add Category")
+    }
+
+    /// Pulling the grid down past its top and letting go closes every open card; a short
+    /// tug doesn't.
+    @MainActor
+    func testPullDownClosesAllCards() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-isolatedData"]
+        app.launch()
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { app.buttons["Skip"].tap() }
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        XCTAssertTrue(app.buttons["Close Errands"].waitForExistence(timeout: 3))
+        work.tap()
+        XCTAssertTrue(app.buttons["Close Work"].waitForExistence(timeout: 3))
+
+        // Ordinary scrolling, flicking up and back down to the top, leaves them open.
+        app.swipeUp()
+        app.swipeDown()
+        app.swipeDown()
+        XCTAssertTrue(app.buttons["Close Errands"].waitForExistence(timeout: 2), "scrolling back to the top doesn't close cards")
+
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 40)),
+                    withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(app.buttons["Close Errands"].exists, "a short tug leaves the cards open")
+
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 420)),
+                    withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(app.buttons["Close Errands"].waitForNonExistence(timeout: 3), "a long pull closes them all")
+        XCTAssertFalse(app.buttons["Close Work"].exists)
+    }
+    /// When cards fill the screen, a swipe that starts on a card still scrolls (holding a
+    /// card still lifts it to move).
+    @MainActor
+    func testSwipeOnCardsScrolls() throws {
+        let app = XCUIApplication()
+        // Accessibility text: one card per row, so the cards overfill the screen.
+        app.launchArguments = ["-isolatedData", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
+            let skip = app.buttons["Skip"]
+            while !skip.isHittable { app.swipeUp() }
+            skip.tap()
+        }
+        let first = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label != %@", "Open ", "Open all cards")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        let before = first.frame.minY
+        first.swipeUp(velocity: .slow)
+        let scrolled = NSPredicate { _, _ in first.frame.minY < before - 40 }
+        wait(for: [XCTNSPredicateExpectation(predicate: scrolled, object: nil)], timeout: 3)
     }
 }

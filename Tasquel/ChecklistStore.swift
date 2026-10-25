@@ -22,6 +22,23 @@ final class ChecklistStore {
     /// A list or goal just created from the add-task row, whose first field (a list's item,
     /// a goal's target) should take the keyboard when it appears. Not saved.
     var taskAwaitingFirstInput: UUID?
+    /// How category cards are ordered (Settings ▸ Categories).
+    var categorySort: CategorySortOrder = .manual
+    /// When each category (by name) last had a task added, changed or removed, for the
+    /// recently-edited sort. Kept on the device (UserDefaults), not in the task data.
+    private(set) var categoryEditTimes: [String: Date] = [:]
+
+    /// The last delete, offered as "Deleted … · Undo" for a few seconds. Not saved.
+    struct UndoableDelete: Equatable {
+        let description: String
+        let token = UUID()
+    }
+    private(set) var lastDelete: UndoableDelete?
+    /// Everything as it was just before `lastDelete`, which Undo puts back.
+    @ObservationIgnored private var weeksBeforeDelete: [Week]?
+    @ObservationIgnored private var savedCategoriesBeforeDelete: [CategoryTemplate]?
+    /// Set while a delete saves, so that save doesn't end the chance to undo it.
+    @ObservationIgnored private var isSavingDelete = false
     /// Counts taps on the keyboard's Done button. Rows with something typed but not yet
     /// added (a task, a goal amount) watch it and save what's typed. Not saved.
     var keyboardDoneRequests = 0
@@ -97,6 +114,9 @@ final class ChecklistStore {
         self.now = now
         calendarProvider = calendar
         selectedDate = now()
+        if let stored = defaults.dictionary(forKey: Self.editTimesKey) as? [String: Double] {
+            categoryEditTimes = stored.mapValues { Date(timeIntervalSince1970: $0) }
+        }
         loadAndPrepare()
     }
 
@@ -126,6 +146,7 @@ final class ChecklistStore {
         load()
         guard weekLoadError == nil else { return }
         inferWeekStartIfSettingsMissing()
+        pruneEditTimes()
         let currentWeek = ensureWeekExists(for: now())
         migrateStartersIfNeeded(into: currentWeek)
         syncWithPreviousWeek(for: now())
@@ -261,6 +282,9 @@ final class ChecklistStore {
 
     func save() {
         guard persistenceError == nil else { return }
+        // Any other change ends the chance to undo the last delete: putting the old
+        // weeks back would undo that change too.
+        if !isSavingDelete { clearUndo() }
         unsavedPreviewID = nil
         do {
             let encoder = JSONEncoder()
@@ -287,6 +311,9 @@ final class ChecklistStore {
         var weekStartsOnSunday: Bool?
         var offeredStarterNames: [String]?
         var removedSavedCategoryNames: [String]?
+        /// A raw string, so a value from a newer version reads as Manual instead of
+        /// making the whole settings file unreadable.
+        var categorySort: String?
     }
 
     func loadSettings() {
@@ -307,6 +334,7 @@ final class ChecklistStore {
             weekStartsOnSunday = settings.weekStartsOnSunday ?? false
             offeredStarterNames = settings.offeredStarterNames
             removedSavedCategoryNames = settings.removedSavedCategoryNames ?? []
+            categorySort = settings.categorySort.flatMap(CategorySortOrder.init(rawValue:)) ?? .manual
             settingsLoadError = nil
         } catch {
             settingsLoadError = "Your settings could not be opened. The file has not been changed."
@@ -326,7 +354,8 @@ final class ChecklistStore {
                 selectedCalendarIDs: selectedCalendarIDs,
                 weekStartsOnSunday: weekStartsOnSunday,
                 offeredStarterNames: offeredStarterNames,
-                removedSavedCategoryNames: removedSavedCategoryNames
+                removedSavedCategoryNames: removedSavedCategoryNames,
+                categorySort: categorySort.rawValue
             )
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsURL, options: .atomic)
@@ -440,12 +469,14 @@ final class ChecklistStore {
         let name = Self.cleanName(name)
         guard !name.isEmpty, !Self.containsName(name, in: savedCategories.map(\.name)) else { return }
         let template = CategoryTemplate(name: name, symbol: symbol)
+        clearUndo()  // Undo puts saved categories back too; it mustn't undo this
         savedCategories.append(template)
         removedSavedCategoryNames.removeAll { Self.cleanName($0).caseInsensitiveCompare(name) == .orderedSame }
         saveSettings()
     }
 
     func removeSavedCategory(_ templateID: UUID) {
+        clearUndo()
         if let name = savedCategories.first(where: { $0.id == templateID })?.name,
            !Self.containsName(name, in: removedSavedCategoryNames) {
             removedSavedCategoryNames.append(name)
@@ -465,6 +496,7 @@ final class ChecklistStore {
               let index = savedCategories.firstIndex(where: { $0.id == templateID }),
               !isSavedCategoryNameTaken(name, excluding: templateID) else { return false }
         let old = savedCategories[index]
+        clearUndo()
         savedCategories[index].name = name
         savedCategories[index].symbol = symbol
         saveSettings()
@@ -476,10 +508,12 @@ final class ChecklistStore {
             }
         }
         renameDismissedCategory(old.name, to: name)
+        moveEditTime(from: old.name, to: name)
         return true
     }
 
     func moveSavedCategories(fromOffsets source: IndexSet, toOffset destination: Int) {
+        clearUndo()
         savedCategories.move(fromOffsets: source, toOffset: destination)
         saveSettings()
     }
@@ -720,7 +754,8 @@ final class ChecklistStore {
                 week.categories[ci].tasks.append(carriedCopy(of: task))
                 changed = true
             }
-            if followsSource, orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
+            if followsSource, !(week.userOrderedCategories ?? []).contains(sourceCategory.name),
+               orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
         }
         return changed
     }
@@ -747,6 +782,7 @@ final class ChecklistStore {
         newTask.goalProgress = task.goalProgress
         newTask.goalUnit = task.goalUnit
         newTask.goalUnitKind = task.goalUnitKind
+        newTask.goalStep = task.goalStep
         newTask.carriedFrom = task.id
         return newTask
     }
@@ -762,6 +798,7 @@ final class ChecklistStore {
         copy.goalProgress = task.goalProgress
         copy.goalUnit = task.goalUnit
         copy.goalUnitKind = task.goalUnitKind
+        copy.goalStep = task.goalStep
         let checked = Set(task.subtasks.filter(\.isCompleted).map(\.title))
         copy.subtasks.removeAll { checked.contains($0.title) }
         let present = Set(copy.subtasks.map(\.title))
@@ -840,7 +877,8 @@ final class ChecklistStore {
                 week.categories[ci].tasks.append(resetRecurringTask(task))
                 changed = true
             }
-            if orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
+            if !(week.userOrderedCategories ?? []).contains(sourceCategory.name),
+               orderLikeSource(&week.categories[ci].tasks, source: sourceCategory.tasks) { changed = true }
         }
         return changed
     }
@@ -855,6 +893,7 @@ final class ChecklistStore {
         copy.goalTarget = task.goalTarget
         copy.goalUnit = task.goalUnit
         copy.goalUnitKind = task.goalUnitKind
+        copy.goalStep = task.goalStep
         if task.taskType != .goal { copy.goalProgress = nil }
         if task.taskType == .list {
             let sourceTitles = Set(task.subtasks.map(\.title))
@@ -885,6 +924,7 @@ final class ChecklistStore {
         newTask.goalProgress = 0
         newTask.goalUnit = task.goalUnit
         newTask.goalUnitKind = task.goalUnitKind
+        newTask.goalStep = task.goalStep
         newTask.repeatsFrom = task.id
         return newTask
     }
@@ -902,6 +942,7 @@ final class ChecklistStore {
         category.isThisWeekOnly = thisWeekOnly
         weeks[wi].categories.append(category)
         weeks[wi].dismissedCategories?.removeAll { $0 == name }
+        noteEdit(named: name)
         save()
     }
 
@@ -912,6 +953,7 @@ final class ChecklistStore {
     func deleteCategory(_ categoryID: UUID) {
         guard let wi = editableSelectedWeekIndex(),
               let category = weeks[wi].categories.first(where: { $0.id == categoryID }) else { return }
+        rememberForUndo("“\(category.name)”")
         let fromDay = weeks[wi].startDay
         if category.isThisWeekOnly {
             weeks[wi].categories.removeAll { $0.id == categoryID }
@@ -931,7 +973,7 @@ final class ChecklistStore {
                 weeks[wi].dismissedCategories = (weeks[wi].dismissedCategories ?? []) + [category.name]
             }
         }
-        save()
+        saveDelete()
         if !category.isThisWeekOnly && !savedCategories.contains(where: { $0.name == category.name })
             && !Self.containsName(category.name, in: removedSavedCategoryNames) {
             addSavedCategory(name: category.name, symbol: category.symbol)
@@ -959,6 +1001,7 @@ final class ChecklistStore {
         guard !Self.containsName(newName, in: otherNames) else { return false }
         updateCategories(named: oldName) { $0.name = newName }
         renameDismissedCategory(oldName, to: newName)
+        moveEditTime(from: oldName, to: newName)
         if let ti = savedCategories.firstIndex(where: { $0.name == oldName }) {
             savedCategories[ti].name = newName
             saveSettings()
@@ -1001,6 +1044,10 @@ final class ChecklistStore {
         guard oldName != newName else { return }
         var changed = false
         for wi in weeks.indices where !isPastWeek(weeks[wi]) {
+            if let ordered = weeks[wi].userOrderedCategories, ordered.contains(oldName) {
+                weeks[wi].userOrderedCategories = ordered.map { $0 == oldName ? newName : $0 }
+                changed = true
+            }
             guard let dismissed = weeks[wi].dismissedCategories, dismissed.contains(oldName) else { continue }
             weeks[wi].dismissedCategories = dismissed.map { $0 == oldName ? newName : $0 }
             changed = true
@@ -1027,8 +1074,35 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return nil }
         let task = ChecklistTask(title: title, mode: mode, taskType: type, isUserEdited: true)
         weeks[wi].categories[ci].tasks.append(task)
+        noteEdit(categoryID)
         save()
         return task.id
+    }
+
+    /// Moves a task within its category to where `targetID` is. Later weeks' copies take
+    /// the new order when they next sync with this week.
+    func moveTask(categoryID: UUID, taskID: UUID, to targetID: UUID) {
+        guard taskID != targetID,
+              let wi = editableSelectedWeekIndex(),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let from = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
+              let to = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == targetID }) else { return }
+        weeks[wi].categories[ci].tasks.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+        // Syncing with the week before must not put the old order back.
+        let name = weeks[wi].categories[ci].name
+        if !(weeks[wi].userOrderedCategories ?? []).contains(name) {
+            weeks[wi].userOrderedCategories = (weeks[wi].userOrderedCategories ?? []) + [name]
+        }
+        noteEdit(categoryID)
+        save()
+    }
+
+    /// Moves a task one place up (-1) or down (+1) in its category.
+    func moveTask(categoryID: UUID, taskID: UUID, by offset: Int) {
+        guard let tasks = selectedWeek?.categories.first(where: { $0.id == categoryID })?.tasks,
+              let index = tasks.firstIndex(where: { $0.id == taskID }),
+              tasks.indices.contains(index + offset) else { return }
+        moveTask(categoryID: categoryID, taskID: taskID, to: tasks[index + offset].id)
     }
 
     /// Adds a fully built task (a parsed one, with its goal or items) in one save.
@@ -1039,6 +1113,7 @@ final class ChecklistStore {
         var task = task
         task.isUserEdited = true
         weeks[wi].categories[ci].tasks.append(task)
+        noteEdit(categoryID)
         save()
         return task.id
     }
@@ -1060,13 +1135,17 @@ final class ChecklistStore {
         for si in subtasks.indices {
             weeks[wi].categories[ci].tasks[ti].subtasks[si].isCompleted = isCompleted || (before?[subtasks[si].id] ?? false)
         }
+        noteEdit(categoryID)
         save()
     }
 
-    func deleteTask(categoryID: UUID, taskID: UUID) {
+    /// With `undoable` false (taking back a Smart Add) there's no Undo message and the
+    /// category's edit time isn't touched.
+    func deleteTask(categoryID: UUID, taskID: UUID, undoable: Bool = true) {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return }
         if let task = weeks[wi].categories[ci].tasks.first(where: { $0.id == taskID }) {
+            if undoable { rememberForUndo("“\(task.title)”") }
             if let sourceID = task.carriedFrom {
                 weeks[wi].dismissCarryOver(sourceID)
             }
@@ -1084,7 +1163,9 @@ final class ChecklistStore {
             }
         }
         weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
-        save()
+        guard undoable else { return save() }
+        noteEdit(categoryID)
+        saveDelete()
     }
 
     /// A task in the viewed week, read without saving a preview week.
@@ -1102,6 +1183,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        noteEdit(categoryID)
         save()
     }
 
@@ -1112,6 +1194,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].title = newTitle
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        noteEdit(categoryID)
         save()
     }
 
@@ -1129,7 +1212,9 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
             weeks[wi].categories[ci].tasks[ti].goalUnit = nil
             weeks[wi].categories[ci].tasks[ti].goalUnitKind = nil
+            weeks[wi].categories[ci].tasks[ti].goalStep = nil
         }
+        noteEdit(categoryID)
         save()
     }
 
@@ -1150,6 +1235,20 @@ final class ChecklistStore {
         // Auto-update completion
         let progress = weeks[wi].categories[ci].tasks[ti].goalProgress ?? 0
         weeks[wi].categories[ci].tasks[ti].isCompleted = progress >= target
+        noteEdit(categoryID)
+        save()
+    }
+
+    /// Sets the step for a goal's + and − buttons; nil (or not above zero) means automatic.
+    func setGoalStep(categoryID: UUID, taskID: UUID, step: Double?) {
+        let step = step.flatMap { $0.isFinite && $0 > 0 ? min($0, GoalUnitKind.maxValue) : nil }
+        guard viewedTask(categoryID, taskID).map({ $0.goalStep != step }) == true,
+              let wi = editableSelectedWeekIndex(),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].goalStep = step
+        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        noteEdit(categoryID)
         save()
     }
 
@@ -1167,6 +1266,7 @@ final class ChecklistStore {
         }
         let target = weeks[wi].categories[ci].tasks[ti].goalTarget ?? 0
         weeks[wi].categories[ci].tasks[ti].isCompleted = target > 0 && progress >= target
+        noteEdit(categoryID)
         save()
     }
 
@@ -1180,6 +1280,7 @@ final class ChecklistStore {
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // A new unchecked item means the task isn't done yet.
         weeks[wi].categories[ci].tasks[ti].isCompleted = false
+        noteEdit(categoryID)
         save()
     }
 
@@ -1194,6 +1295,7 @@ final class ChecklistStore {
         if !task.subtasks.isEmpty {
             weeks[wi].categories[ci].tasks[ti].isCompleted = task.subtasks.allSatisfy(\.isCompleted)
         }
+        noteEdit(categoryID)
         save()
     }
 
@@ -1201,6 +1303,9 @@ final class ChecklistStore {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        if let subtask = weeks[wi].categories[ci].tasks[ti].subtasks.first(where: { $0.id == subtaskID }) {
+            rememberForUndo("“\(subtask.title)”")
+        }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // Deleting the last unchecked item completes the task, as checking it would.
@@ -1208,7 +1313,8 @@ final class ChecklistStore {
         if !task.subtasks.isEmpty {
             weeks[wi].categories[ci].tasks[ti].isCompleted = task.subtasks.allSatisfy(\.isCompleted)
         }
-        save()
+        noteEdit(categoryID)
+        saveDelete()
     }
 
     func renameSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, newTitle: String) {
@@ -1219,7 +1325,98 @@ final class ChecklistStore {
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks[si].title = newTitle
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        noteEdit(categoryID)
         save()
+    }
+
+    // MARK: - Category Order
+
+    private static let editTimesKey = "categoryEditTimes"
+
+    func setCategorySort(_ order: CategorySortOrder) {
+        guard order != categorySort else { return }
+        categorySort = order
+        saveSettings()
+    }
+
+    /// Drops edit times of names no week or saved category has any more, so a deleted
+    /// category's time can't attach to a new one with its name.
+    private func pruneEditTimes() {
+        let names = Set(weeks.flatMap { $0.categories.map(\.name) } + savedCategories.map(\.name))
+        let kept = categoryEditTimes.filter { names.contains($0.key) }
+        guard kept.count != categoryEditTimes.count else { return }
+        categoryEditTimes = kept
+        defaults.set(categoryEditTimes.mapValues(\.timeIntervalSince1970), forKey: Self.editTimesKey)
+    }
+
+    /// Records that a category in the viewed week was just edited.
+    private func noteEdit(_ categoryID: UUID) {
+        guard let name = selectedWeek?.categories.first(where: { $0.id == categoryID })?.name else { return }
+        noteEdit(named: name)
+    }
+
+    private func noteEdit(named name: String) {
+        categoryEditTimes[name] = now()
+        defaults.set(categoryEditTimes.mapValues(\.timeIntervalSince1970), forKey: Self.editTimesKey)
+    }
+
+    /// A renamed category keeps its place in the recently-edited order.
+    private func moveEditTime(from oldName: String, to newName: String) {
+        guard oldName != newName else { return }
+        // The new name takes the old one's time, or none (not a deleted category's old time).
+        categoryEditTimes[newName] = categoryEditTimes.removeValue(forKey: oldName)
+        defaults.set(categoryEditTimes.mapValues(\.timeIntervalSince1970), forKey: Self.editTimesKey)
+    }
+
+    /// `categories` in the chosen order: as arranged (manual), or by when they were last
+    /// edited. Ones never edited keep their arranged order, after the edited ones.
+    func sortedCategories(_ categories: [Category]) -> [Category] {
+        guard categorySort != .manual else { return categories }
+        let newestFirst = categorySort == .recentFirst
+        return categories.enumerated().sorted { a, b in
+            switch (categoryEditTimes[a.element.name], categoryEditTimes[b.element.name]) {
+            case let (x?, y?) where x != y: return newestFirst ? x > y : x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
+    // MARK: - Undo
+
+    /// Called by a delete just before it changes anything.
+    private func rememberForUndo(_ description: String) {
+        weeksBeforeDelete = weeks
+        savedCategoriesBeforeDelete = savedCategories
+        lastDelete = UndoableDelete(description: description)
+    }
+
+    /// Saves a delete without ending its undo.
+    private func saveDelete() {
+        isSavingDelete = true
+        save()
+        isSavingDelete = false
+    }
+
+    /// Puts back everything as it was before the last delete.
+    func undoLastDelete() {
+        guard let weeksBeforeDelete else { return }
+        weeks = weeksBeforeDelete
+        if let savedCategoriesBeforeDelete, savedCategoriesBeforeDelete != savedCategories {
+            savedCategories = savedCategoriesBeforeDelete
+            saveSettings()
+        }
+        clearUndo()
+        save()
+    }
+
+    /// Ends the chance to undo (the message timed out, or something else changed).
+    func clearUndo() {
+        guard lastDelete != nil || weeksBeforeDelete != nil else { return }
+        lastDelete = nil
+        weeksBeforeDelete = nil
+        savedCategoriesBeforeDelete = nil
     }
 
     // MARK: - Helpers

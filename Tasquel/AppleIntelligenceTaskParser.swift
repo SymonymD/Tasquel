@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import UIKit
 
 // MARK: - Apple Intelligence Task Parser
 
@@ -37,7 +38,61 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
             generating: TaskDraft.self,
             options: GenerationOptions(sampling: .greedy)
         )
-        return TaskTextHints.refine(response.content.parsedTask(fallbackTitle: text), from: text)
+        let parsed = TaskTextHints.dropInvented(response.content.parsedTask(fallbackTitle: text), from: text)
+        return Self.fixingTypos(TaskTextHints.refine(parsed, from: text), typed: text)
+    }
+
+    // MARK: Spelling
+
+    /// A backstop for the model: the system spell checker corrects a word in the title or
+    /// unit when its first suggestion is a close match ("pishups" → "pushups"). Words the
+    /// user capitalised (names) and short words are left alone.
+    static func fixingTypos(_ parsed: ParsedTask, typed: String) -> ParsedTask {
+        var task = parsed
+        // Words typed with a capital (names, or the first word) are kept as typed.
+        let capitalised = Set(typed.split(separator: " ").filter { $0.first?.isUppercase == true }
+            .map { $0.trimmingCharacters(in: .punctuationCharacters).lowercased() })
+        let fix = { (text: String) in
+            text.split(separator: " ", omittingEmptySubsequences: false).map { word -> String in
+                let word = String(word)
+                let key = word.trimmingCharacters(in: .punctuationCharacters).lowercased()
+                return capitalised.contains(key) ? word : corrected(word)
+            }.joined(separator: " ")
+        }
+        task.title = fix(task.title)
+        task.goalUnit = fix(task.goalUnit)
+        return task
+    }
+
+    private static func corrected(_ word: String) -> String {
+        let letters = word.trimmingCharacters(in: .punctuationCharacters)
+        guard letters.count >= 4, letters.allSatisfy(\.isLetter) else { return word }
+        let checker = UITextChecker()
+        let language = UITextChecker.availableLanguages.first { $0.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en") } ?? "en_US"
+        let range = NSRange(location: 0, length: (letters as NSString).length)
+        let miss = checker.rangeOfMisspelledWord(in: letters, range: range, startingAt: 0, wrap: false, language: language)
+        guard miss.location != NSNotFound,
+              let guess = checker.guesses(forWordRange: miss, in: letters, language: language)?.first,
+              !guess.contains(" "), guess.lowercased().first == letters.lowercased().first,
+              editDistance(guess.lowercased(), letters.lowercased()) <= 2 else { return word }
+        // Keep the typed capitalisation of the first letter.
+        let fixed = letters.first?.isUppercase == true ? guess.prefix(1).uppercased() + guess.dropFirst() : guess
+        return word.replacingOccurrences(of: letters, with: fixed)
+    }
+
+    private static func editDistance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        var row = Array(0...b.count)
+        for i in 1...max(a.count, 1) where !a.isEmpty {
+            var previous = row[0]
+            row[0] = i
+            for j in 1...max(b.count, 1) where !b.isEmpty {
+                let current = row[j]
+                row[j] = min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] == b[j - 1] ? 0 : 1))
+                previous = current
+            }
+        }
+        return row[b.count]
     }
 
     private static func makeSession() -> LanguageModelSession {
@@ -50,12 +105,15 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
             Recurrence: repeating when the note says how often, like "3x per week", "weekly" or "every Monday"; \
             carryOver when it should stay until done; otherwise oneTime.
             Never add amounts or items that aren't in the note.
+            Fix obvious spelling mistakes in the title and unit, but keep names as written.
             Examples:
             "gym 3x per week" -> Gym, goal, repeating, amount 3, unit count.
             "Read 20 pages" -> Read, goal, oneTime, amount 20, unit named, unitName pages.
             "Practice piano 2 hours" -> Practice piano, goal, oneTime, amount 120, unit minutes.
             "Groceries: milk, eggs" -> Groceries, list, oneTime, items milk and eggs.
             "Water plants weekly" -> Water plants, checkbox, repeating.
+            "Meditate daily" -> Meditate, goal, repeating, amount 7, unit count.
+            "Stretch every weekday" -> Stretch, goal, repeating, amount 5, unit count.
             "Paint the fence until done" -> Paint the fence, checkbox, carryOver.
             """)
     }

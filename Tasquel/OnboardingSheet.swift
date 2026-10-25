@@ -98,19 +98,27 @@ struct OnboardingSheet: View {
                 VStack(spacing: 12) {
                     Text("Your weekly task planner that keeps you on track.")
                         .font(.headline).multilineTextAlignment(.center)
-                    Text("Tasquel organizes your tasks into weekly checklists. For each task, you choose what happens when the week ends: it's done, it carries over if it's unfinished, or it comes back every week.")
+                    Text("Tasquel organizes your tasks into weekly checklists. For each task, you choose what happens when the week ends: it stays behind, it carries over if it's unfinished, or it comes back every week.")
                         .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 32)
             case .types:
                 featureText("Three Kinds of Task",
                             "Tick off a checkbox, work toward a goal like 50 push-ups, or fill a list like Groceries. Goals and lists check themselves off when they're done.")
+                // Smart Add, only where it can run (Apple Intelligence on).
+                if AppleIntelligenceTaskParser.shared.isAvailable {
+                    Text("\(Image(systemName: "sparkles")) Or type it in your own words, like “Gym 3x per week”, and tap the sparkles to set it up for you.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
             case .modes:
                 featureText("You Decide What Happens Next",
                             "When the week ends, one-time tasks stay behind, carry-over tasks move on if they're unfinished, and repeating tasks come back unchecked. New tasks start as one-time; tap the icons at the end of a task to choose.")
             case .categories:
                 featureText("Organized by Category",
-                            "Your tasks live in category cards. Tap a card to open it, and hold and drag one to move it. Tap Edit at the bottom to add or remove categories.")
+                            "Your tasks live in category cards. Tap a card to open it, and hold and drag a closed card to move it. Tap Edit at the bottom to add or delete categories. Deleted something by mistake? Tap Undo.")
             case .calendar:
                 featureText("Your Calendar, Alongside",
                             "See the week's events next to your tasks: tap the calendar button at the bottom. You can turn this on now, or later in Settings.")
@@ -141,7 +149,9 @@ struct OnboardingSheet: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(.green)
         } else if calendar.authorization == .denied || calendar.authorization == .restricted {
-            Text("Calendar access is off for Tasquel. You can allow it in the Settings app.")
+            Text(calendar.authorization == .restricted
+                 ? "Calendar access is restricted on this device."
+                 : "Tasquel doesn't have access to your calendars. Turn on Full Access for Tasquel in the Settings app.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         } else {

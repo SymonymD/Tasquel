@@ -29,9 +29,9 @@ enum TaskMode: String, Codable, CaseIterable {
 
     var hint: String {
         switch self {
-        case .carryOver: "Rolls to next week if incomplete"
-        case .repeating: "Appears every week automatically"
-        case .oneTime: "This week only, doesn't come back"
+        case .carryOver: "Moves to next week if unfinished"
+        case .repeating: "Comes back every week, unchecked"
+        case .oneTime: "This week only"
         }
     }
 }
@@ -62,6 +62,24 @@ enum TaskType: String, Codable, CaseIterable {
 }
 
 // MARK: - Goal Unit
+
+/// How category cards are ordered on the main screen.
+enum CategorySortOrder: String, Codable, CaseIterable {
+    /// As the user arranged them (hold and drag).
+    case manual
+    /// Most recently edited first.
+    case recentFirst
+    /// Least recently edited first.
+    case oldestFirst
+
+    var label: String {
+        switch self {
+        case .manual: "Manual"
+        case .recentFirst: "Recently Edited First"
+        case .oldestFirst: "Least Recently Edited First"
+        }
+    }
+}
 
 /// What a goal counts. Time goals store their target and progress in minutes.
 enum GoalUnitKind: String, Codable, CaseIterable {
@@ -140,6 +158,9 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     var goalUnit: String? = nil
     /// What the goal counts. `nil` for goals saved before units had a kind; see `goalKind`.
     var goalUnitKind: GoalUnitKind? = nil
+    /// How much the goal's + and − buttons add or take away (minutes for time goals).
+    /// `nil` picks one from the target.
+    var goalStep: Double? = nil
     /// For a task carried over from the week before: the task it was copied from.
     var carriedFrom: UUID? = nil
     /// For a repeating task's copy in a later week: the task it repeats, so renames and
@@ -197,6 +218,7 @@ extension ChecklistTask {
         goalProgress = try container.decodeIfPresent(Double.self, forKey: .goalProgress)
         goalUnit = try container.decodeIfPresent(String.self, forKey: .goalUnit)
         goalUnitKind = try? container.decodeIfPresent(GoalUnitKind.self, forKey: .goalUnitKind)
+        goalStep = try? container.decodeIfPresent(Double.self, forKey: .goalStep)
         carriedFrom = try container.decodeIfPresent(UUID.self, forKey: .carriedFrom)
         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
@@ -321,6 +343,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// full sync with the week before (see `ChecklistStore.syncWithPreviousWeek`).
     /// Nil only in files from before this existed; loading fills it in.
     var didFinalSync: Bool? = nil
+    /// Categories whose tasks the user reordered in this week; syncing with the week
+    /// before then leaves their order alone.
+    var userOrderedCategories: [String]? = nil
 
     init(id: UUID = UUID(), startDay: DayKey, categories: [Category] = []) {
         self.id = id
@@ -342,12 +367,21 @@ struct Week: Codable, Identifiable, Equatable {
         dismissedCarryOvers = (dismissedCarryOvers ?? []) + [sourceID]
     }
 
-    var displayTitle: String {
-        "Week of \(startDay.month)/\(startDay.day)/\(String(format: "%02d", startDay.year % 100))"
+    /// "Week of Oct 5" in the user's language and region ("Week of 5 Oct" in the UK), with
+    /// the year when it isn't this year. (A numeric "10/5/26" reads as 10 May outside the US.)
+    var displayTitle: String { displayTitle() }
+
+    /// The year is compared in the calendar the date is shown in, so a Hebrew or Islamic
+    /// device calendar shows it exactly when its own year differs.
+    func displayTitle(now: Date = Date(), locale: Locale = .current, calendar: Calendar = .current) -> String {
+        var style = Date.FormatStyle(locale: locale, calendar: calendar).month(.abbreviated).day()
+        if calendar.component(.year, from: now) != calendar.component(.year, from: startDate) { style = style.year() }
+        return "Week of \(startDate.formatted(style))"
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, startDay, startDate, categories, dismissedCarryOvers, dismissedRepeating, dismissedCategories, didFinalSync
+        case userOrderedCategories
     }
 
     /// Weeks saved before `startDay` existed only have `startDate`, a moment; their day
@@ -366,6 +400,7 @@ struct Week: Codable, Identifiable, Equatable {
         dismissedRepeating = try container.decodeIfPresent([String].self, forKey: .dismissedRepeating)
         dismissedCategories = try container.decodeIfPresent([String].self, forKey: .dismissedCategories)
         didFinalSync = try container.decodeIfPresent(Bool.self, forKey: .didFinalSync)
+        userOrderedCategories = try? container.decodeIfPresent([String].self, forKey: .userOrderedCategories)
     }
 
     /// Also writes `startDate`, so an older build of the app can still open the file.
@@ -379,6 +414,7 @@ struct Week: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(dismissedRepeating, forKey: .dismissedRepeating)
         try container.encodeIfPresent(dismissedCategories, forKey: .dismissedCategories)
         try container.encodeIfPresent(didFinalSync, forKey: .didFinalSync)
+        try container.encodeIfPresent(userOrderedCategories, forKey: .userOrderedCategories)
     }
 
     // Whether a week is past, current or future depends on today, so the store answers

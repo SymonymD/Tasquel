@@ -77,12 +77,17 @@ struct SettingsSheet: View {
                 weekStartRow
             }
             .listRowBackground(darkCardBg)
-            Section("Categories") {
+            Section {
                 NavigationLink {
                     SavedCategoriesView(store: store)
                 } label: {
                     Label("Saved Categories", systemImage: "square.stack")
                 }
+                sortPicker
+            } header: {
+                Text("Categories")
+            } footer: {
+                Text("Manual: hold and drag cards to move them. Sorted cards rearrange only when you open the app, change week, or close every card, never while you're using them.")
             }
             .listRowBackground(darkCardBg)
             // Hidden entirely while calendar integration is turned off.
@@ -147,6 +152,7 @@ struct SettingsSheet: View {
                         retroLinkLabel("> Saved Categories")
                     }
                     .buttonStyle(.plain)
+                    sortPicker
                 }
                 if FeatureAccess.isCalendarUnlocked {
                     retroSection("CALENDAR") {
@@ -279,6 +285,24 @@ struct SettingsSheet: View {
                 .accessibilityAddTraits(store.retroColor == color ? .isSelected : [])
             }
         }
+    }
+
+    /// Manual (hold and drag) or by when each category was last edited.
+    private var sortPicker: some View {
+        Picker(selection: Binding(get: { store.categorySort }, set: { store.setCategorySort($0) })) {
+            ForEach(CategorySortOrder.allCases, id: \.self) { order in
+                Text(retro ? order.label.uppercased() : order.label).tag(order)
+            }
+        } label: {
+            if retro {
+                Text("> Sort Cards").font(Theme.bodyFont(theme))
+            } else {
+                Label("Sort Cards", systemImage: "arrow.up.arrow.down")
+            }
+        }
+        .pickerStyle(.menu)
+        .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+        .frame(minHeight: retro ? 44 : nil)
     }
 
     /// Sunday or Monday. Changing it moves saved weeks by a day so tasks stay with their week.

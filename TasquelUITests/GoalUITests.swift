@@ -88,6 +88,12 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "keyboard closes after Add")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2), "bottom bar returns")
 
+        // − takes one step back (15 minutes toward a 2-hour goal), + adds it again.
+        app.buttons["Remove 15 minutes"].tap()
+        XCTAssertTrue(app.staticTexts["30m / 2h"].waitForExistence(timeout: 2))
+        app.buttons["Add 15 minutes"].tap()
+        XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 2))
+
         // Swiping down into the keyboard also closes it.
         app.buttons["Add progress"].tap()
         let keyboard = app.keyboards.firstMatch
@@ -187,12 +193,39 @@ final class GoalUITests: XCTestCase {
         app.buttons["Edit Errands"].tap()
         XCTAssertFalse(addTask.exists, "no adding while editing")
         app.buttons["Delete Return library books"].tap()
-        app.buttons["Delete Task"].firstMatch.tap()
 
         XCTAssertTrue(addTask.waitForExistence(timeout: 3), "the Add task row is back")
         XCTAssertTrue(app.buttons["Edit Errands"].exists, "the card left edit mode")
         addTask.tap()
         XCTAssertTrue(app.buttons["New task options: Checkbox, One-Time"].waitForExistence(timeout: 2))
+    }
+
+    /// In a card's edit mode a task can be dragged by its handle to a new place.
+    @MainActor
+    func testReorderTasksByHandle() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        for name in ["Alpha", "Bravo", "Charlie"] {
+            addTask.typeText(name + "\n")
+            usleep(400_000)
+        }
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Edit Errands"].tap()
+
+        let alpha = app.buttons["Complete Alpha"]
+        let charlie = app.buttons["Complete Charlie"]
+        XCTAssertTrue(alpha.waitForExistence(timeout: 2))
+        XCTAssertLessThan(alpha.frame.minY, charlie.frame.minY)
+        let handle = app.images.matching(identifier: "line.3.horizontal").firstMatch
+        XCTAssertTrue(handle.exists, "a drag handle shows in edit mode")
+        handle.press(forDuration: 1.0, thenDragTo: charlie)
+        let moved = NSPredicate { _, _ in alpha.frame.minY > charlie.frame.minY }
+        wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
     }
 
     /// Return adds exactly what was typed; Smart Add (where it shows) works out a schedule,
@@ -223,6 +256,13 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Run"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Task options: Goal, Repeating"].exists, "3x per week is a repeating goal")
         XCTAssertTrue(app.staticTexts["0/3"].exists)
+        // It says what it did, with Undo, which takes the task back entirely: no
+        // "Deleted … · Undo" of its own, and nothing left in the field.
+        let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Added Run")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 2))
+        app.buttons["Undo Smart Add"].tap()
+        XCTAssertTrue(app.staticTexts["Run"].waitForNonExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Undo delete"].exists)
 
         addTask.tap()
         addTask.typeText("Groceries: milk, eggs")
@@ -258,7 +298,7 @@ final class GoalUITests: XCTestCase {
                        "a sideways card drag doesn't change week")
 
         study.tap()
-        XCTAssertTrue(app.buttons["Collapse Study"].waitForExistence(timeout: 3), "the moved card still opens")
+        XCTAssertTrue(app.buttons["Close Study"].waitForExistence(timeout: 3), "the moved card still opens")
     }
 
     /// In a card's edit mode nothing can be added, and a sub-task's delete button sits on
@@ -286,9 +326,11 @@ final class GoalUITests: XCTestCase {
         XCTAssertLessThan(deleteSubtask.frame.maxX, deleteTask.frame.minX - 100, "the two deletes are far apart")
 
         deleteSubtask.tap()
-        app.buttons["Delete Sub-Task"].tap()
         XCTAssertFalse(app.staticTexts["Refill"].waitForExistence(timeout: 1))
         XCTAssertTrue(app.staticTexts["Pharmacy"].exists, "the task stays")
+        // No confirmation: Undo brings it back.
+        app.buttons["Undo delete"].tap()
+        XCTAssertTrue(app.staticTexts["Refill"].waitForExistence(timeout: 2), "undo restores the sub-task")
 
         // One tap on a task's name in edit mode opens the keyboard on it.
         app.staticTexts["Pharmacy"].firstMatch.tap()
@@ -344,12 +386,21 @@ final class GoalUITests: XCTestCase {
         target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
         XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
-        // Delete sits left of Save Goal and asks first.
+        // Delete sits left of Save Goal; it can be undone instead of asking first.
         let delete = app.buttons["Delete task"]
         let save = app.buttons["Save Goal"]
         XCTAssertLessThan(delete.frame.maxX, save.frame.minX)
         delete.tap()
-        app.buttons["Delete Task"].tap()
+        XCTAssertTrue(app.buttons["Undo delete"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Read more"].waitForExistence(timeout: 1), "the goal is deleted")
+    }
+}
+
+private extension XCUIElement {
+    /// Deletes the field's text, then types `text`.
+    func clearAndType(_ text: String) {
+        tap()
+        let current = (value as? String) ?? ""
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
     }
 }

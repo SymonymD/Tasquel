@@ -2,32 +2,35 @@ import SwiftUI
 
 // MARK: - Category Grid Layout
 
-/// Two-column card grid where expanded cards take a full-width row.
+/// Card grid (two columns on iPhone, three on iPad) where expanded cards take a full-width row.
 ///
 /// Every card is a direct subview, so each keeps a stable identity and SwiftUI
 /// animates its position and size when cards expand, collapse, or reflow.
 /// Mark full-width subviews with `.categoryGridFullWidth(true)`.
 struct CategoryGridLayout: Layout {
     var spacing: CGFloat = 8
+    var columns = 2
 
-    /// Groups subview indices into rows. A full-width item gets its own row; a
-    /// half-width item waiting for a partner stays alone if a full-width item follows.
-    nonisolated static func rows(fullWidth: [Bool]) -> [[Int]] {
+    /// Groups subview indices into rows of up to `columns`. A full-width item gets its
+    /// own row; a partly filled row ends early if a full-width item follows.
+    nonisolated static func rows(fullWidth: [Bool], columns: Int = 2) -> [[Int]] {
         var rows: [[Int]] = []
-        var pending: Int?
+        var pending: [Int] = []
         for (index, isFull) in fullWidth.enumerated() {
             if isFull {
-                if let left = pending { rows.append([left]); pending = nil }
+                if !pending.isEmpty { rows.append(pending); pending = [] }
                 rows.append([index])
-            } else if let left = pending {
-                rows.append([left, index])
-                pending = nil
             } else {
-                pending = index
+                pending.append(index)
+                if pending.count == max(columns, 1) { rows.append(pending); pending = [] }
             }
         }
-        if let left = pending { rows.append([left]) }
+        if !pending.isEmpty { rows.append(pending) }
         return rows
+    }
+
+    private func columnWidth(in width: CGFloat) -> CGFloat {
+        (width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
     }
 
     /// Row grouping and heights for one width, so a layout pass measures each card once.
@@ -52,7 +55,7 @@ struct CategoryGridLayout: Layout {
         measure(subviews: subviews, width: bounds.width, cache: &cache)
         let rows = cache.rows
         let heights = cache.heights
-        let columnWidth = (bounds.width - spacing) / 2
+        let columnWidth = columnWidth(in: bounds.width)
         var y = bounds.minY
         for (row, height) in zip(rows, heights) {
             for (column, index) in row.enumerated() {
@@ -71,8 +74,8 @@ struct CategoryGridLayout: Layout {
     /// Cards in the same row share the taller card's height.
     private func measure(subviews: Subviews, width: CGFloat, cache: inout Cache) {
         guard cache.width != width else { return }
-        let rows = Self.rows(fullWidth: subviews.map { $0[CategoryGridFullWidthKey.self] })
-        let columnWidth = (width - spacing) / 2
+        let rows = Self.rows(fullWidth: subviews.map { $0[CategoryGridFullWidthKey.self] }, columns: columns)
+        let columnWidth = columnWidth(in: width)
         cache.width = width
         cache.rows = rows
         cache.heights = rows.map { row in

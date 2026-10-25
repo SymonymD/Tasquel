@@ -13,7 +13,7 @@ private extension View {
         } message: {
             Text(category.isThisWeekOnly
                  ? "This removes the category and its tasks from this week."
-                 : "This removes the category and its tasks from this week and all upcoming weeks. Past weeks keep their history. You can add the category back from Add Category, but its tasks won't return.")
+                 : "This removes the category and its tasks from this week and later weeks. Past weeks keep their history. You can add the category back from Add Category, but its tasks won't return.")
         }
     }
 }
@@ -81,7 +81,7 @@ struct CategoryGridCard: View {
             // visible one takes up space.
             ZStack(alignment: .topLeading) {
                 // Never read by VoiceOver: a collapsed card is announced by its Open button.
-                CollapsedCategoryContent(category: category, store: store)
+                CollapsedCategoryContent(category: category, store: store, isPastWeek: isPastWeek, isEditing: isEditing)
                     .accessibilityHidden(true)
                     .modifier(CardContentCrossFade(isHidden: isExpanded))
                 ExpandedCategoryContent(
@@ -125,12 +125,16 @@ struct CategoryGridCard: View {
                 .buttonStyle(.plain)
                 .offset(x: 8, y: -8)
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                .accessibilityLabel("Remove \(category.name)")
+                .accessibilityLabel("Delete \(category.name)")
             }
         }
         // No long-press menu: in edit mode holding a card starts a drag, and deleting
         // goes through the remove badge.
         .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
+        // A success when the card's last task is done. Keyed by the category's ID: paging
+        // to a finished week shows the same card with another week's category, silently.
+        // Only for checking off the last task: not for deleting the last unfinished one.
+        .sensoryFeedback(trigger: completion, CardCompletion.finishedFeedback)
         .onChange(of: isRenaming, initial: true) { wasRenaming, renaming in
             // Finishing with the card's checkmark removes the field before it loses
             // focus, so the typed name is saved here.
@@ -219,6 +223,11 @@ struct CategoryGridCard: View {
         }
     }
 
+    private var completion: CardCompletion {
+        CardCompletion(id: category.id, total: category.totalCount,
+                       isDone: category.totalCount > 0 && category.completedCount == category.totalCount)
+    }
+
     /// Hidden during global edit mode, which already covers every card.
     private var showsEditButton: Bool { isExpanded && !isPastWeek && !isEditing }
 
@@ -242,8 +251,8 @@ struct CategoryGridCard: View {
     private var completionIcon: some View {
         let total = category.totalCount
         let completed = category.completedCount
-        let color: Color = total == 0 ? .gray
-            : completed == 0 ? Theme.completionNone(theme)
+        // Nothing done yet is neutral, not red: every week starts there.
+        let color: Color = total == 0 || completed == 0 ? (Theme.isRetro(theme) ? Theme.textSecondary(theme, rc: rc) : .gray)
             : completed == total ? Theme.completionAll(theme, rc: rc)
             : Theme.completionPartial(theme)
         return Group {
@@ -308,12 +317,27 @@ struct GridCardBackground: View {
     }
 }
 
+nonisolated private struct CardCompletion: Equatable {
+    let id: UUID
+    let total: Int
+    let isDone: Bool
+
+    /// Success when the same card's last task was just checked off (same total, so not
+    /// a delete of its last unfinished task).
+    static func finishedFeedback(_ old: CardCompletion, _ new: CardCompletion) -> SensoryFeedback? {
+        old.id == new.id && old.total == new.total && !old.isDone && new.isDone ? .success : nil
+    }
+}
+
 // MARK: - Collapsed Content
 
 /// Task preview dots and the open arrow, shown below the header when collapsed.
 private struct CollapsedCategoryContent: View {
     let category: Category
     let store: ChecklistStore
+    let isPastWeek: Bool
+    /// Edit mode: cards don't open, so the empty hint doesn't say "Tap to add".
+    let isEditing: Bool
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -323,6 +347,15 @@ private struct CollapsedCategoryContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 3) {
+                // An empty card says what to do rather than looking blank.
+                if category.tasks.isEmpty {
+                    let quiet = isPastWeek || isEditing
+                    Text(Theme.isRetro(theme)
+                         ? (quiet ? "no_tasks" : "no_tasks // tap_to_add")
+                         : (isPastWeek ? "No tasks" : isEditing ? "No tasks yet" : "No tasks yet · Tap to add"))
+                        .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
+                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                }
                 ForEach(category.tasks.prefix(Self.previewCount)) { task in
                     HStack(spacing: 6) {
                         if Theme.isRetro(theme) {
@@ -393,6 +426,9 @@ private struct ExpandedCategoryContent: View {
             // Adding is off while the card is in edit mode.
             if !isPastWeek && !isEditing {
                 AddTaskRowCard(categoryID: category.id, store: store)
+                    // Clear of the sub-task or item rows above: the field's fill reaches past
+                    // its text (see cardField), which crowded the last row.
+                    .padding(.top, 8 * expandedCardScale)
             }
 
             HStack {
@@ -411,7 +447,7 @@ private struct ExpandedCategoryContent: View {
                     .touchTarget()
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Collapse \(category.name)")
+                .accessibilityLabel("Close \(category.name)")
             }
         }
     }

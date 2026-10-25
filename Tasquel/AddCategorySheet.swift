@@ -11,20 +11,23 @@ struct AddCategorySheet: View {
     @State private var newName = ""
     @State private var newSymbol = "folder"
     @State private var templateToRemove: CategoryTemplate?
-    @State private var pendingAdd: PendingCategory?
     @State private var isEditingSaved = false
+    /// Off: the category carries into future weeks. On: it's for the viewed week only.
+    @State private var thisWeekOnly = false
     @FocusState private var isNameFocused: Bool
-
-    /// A category waiting for the user to choose "every week" or "this week only".
-    private struct PendingCategory {
-        let name: String
-        let symbol: String
-        let isNew: Bool  // created here, rather than picked from Saved Categories
-    }
 
     var body: some View {
         NavigationStack {
             List {
+                // Set before choosing, so a category is added in one tap (no second
+                // "every week or this week?" question).
+                Section {
+                    Toggle("This week only", isOn: $thisWeekOnly)
+                } footer: {
+                    Text(thisWeekOnly
+                         ? "The category is added to this week only and won't come back next week."
+                         : "The category is added to this week and later weeks.")
+                }
                 createSection
                 savedSection
             }
@@ -35,19 +38,6 @@ struct AddCategorySheet: View {
             .contentMargins(.bottom, 24, for: .scrollContent)
             .scrollContentBackground(Theme.isDark(store.appearanceMode) ? .hidden : .automatic)
             .background(Theme.isDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
-            .confirmationDialog(
-                pendingAdd.map { "Add \($0.name)" } ?? "",
-                isPresented: Binding(
-                    get: { pendingAdd != nil },
-                    set: { if !$0 { pendingAdd = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Every Week") { confirmAdd(thisWeekOnly: false) }
-                Button("This Week Only") { confirmAdd(thisWeekOnly: true) }
-            } message: {
-                Text("Every week: it carries into future weeks. This week only: it won't come back next week.")
-            }
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -184,7 +174,7 @@ struct AddCategorySheet: View {
             dismiss()
             return
         }
-        pendingAdd = PendingCategory(name: template.name, symbol: template.symbol, isNew: false)
+        add(name: template.name, symbol: template.symbol, isNew: false)
     }
 
     private var isNewNameTaken: Bool { store.isCategoryNameTaken(newName) }
@@ -201,18 +191,16 @@ struct AddCategorySheet: View {
     private func createNew() {
         let name = ChecklistStore.cleanName(newName)
         guard !name.isEmpty, !isNewNameTaken else { return }
-        pendingAdd = PendingCategory(name: name, symbol: newSymbol, isNew: true)
+        add(name: name, symbol: newSymbol, isNew: true)
     }
 
     /// A new category added for every week is also kept in Saved Categories;
     /// one added for this week only isn't, since it's meant to be temporary.
-    private func confirmAdd(thisWeekOnly: Bool) {
-        guard let pendingAdd else { return }
-        if pendingAdd.isNew && !thisWeekOnly {
-            store.addSavedCategory(name: pendingAdd.name, symbol: pendingAdd.symbol)
+    private func add(name: String, symbol: String, isNew: Bool) {
+        if isNew && !thisWeekOnly {
+            store.addSavedCategory(name: name, symbol: symbol)
         }
-        onAdd?(pendingAdd.name, pendingAdd.symbol, thisWeekOnly)
-        self.pendingAdd = nil
+        onAdd?(name, symbol, thisWeekOnly)
         dismiss()
     }
 }

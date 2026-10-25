@@ -1914,7 +1914,10 @@ func previewKeepsIDs() {
     ("Weekly report this week only", "Weekly report", .checkbox, .oneTime, nil),
     ("Plan a week of meals", "Plan a week of meals", .checkbox, .oneTime, nil),
     ("run 3x", "Run", .goal, .oneTime, 3),
-    ("Take pill twice a day", "Take pill", .checkbox, .repeating, nil),
+    ("Take pill twice a day", "Take pill", .goal, .repeating, 14),
+    ("Meditate daily", "Meditate", .goal, .repeating, 7),
+    ("stretch every weekday", "Stretch", .goal, .repeating, 5),
+    ("walk the dog every morning", "Walk the dog", .goal, .repeating, 7),
     // Ordinary words that only look like schedules are left alone.
     ("Measure twice, cut once", "Measure twice, cut once", .checkbox, .oneTime, nil),
     ("Print 4 x 6 photos", "Print 4 x 6 photos", .checkbox, .oneTime, nil),
@@ -1922,8 +1925,8 @@ func previewKeepsIDs() {
     ("Carry over boxes to garage", "Carry over boxes to garage", .checkbox, .oneTime, nil),
     ("Dentist every other Tuesday", "Dentist every other Tuesday", .checkbox, .oneTime, nil),
     ("Pay one-time fee", "Pay one-time fee", .checkbox, .oneTime, nil),
-    ("Daily standup notes", "Daily standup notes", .checkbox, .repeating, nil),
-    ("Study C# daily", "Study C#", .checkbox, .repeating, nil),
+    ("Daily standup notes", "Daily standup notes", .goal, .repeating, 7),
+    ("Study C# daily", "Study C#", .goal, .repeating, 7),
 ] as [(String, String, TaskType, TaskMode, Double?)])
 func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, target: Double?) {
     let refined = TaskTextHints.refine(ParsedTask(title: text), from: text)
@@ -2069,4 +2072,226 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     let task = store.selectedWeek!.categories[0].tasks.first { $0.id == id }
     #expect(task?.goalTarget == nil)
     #expect(task?.goalUnitLabel == "pages")
+}
+
+/// On iPad cards sit three to a row; an open card still takes its own row.
+@Test func threeColumnRows() {
+    #expect(CategoryGridLayout.rows(fullWidth: [false, false, false, false, false], columns: 3) == [[0, 1, 2], [3, 4]])
+    #expect(CategoryGridLayout.rows(fullWidth: [false, true, false, false, false, false], columns: 3) == [[0], [1], [2, 3, 4], [5]])
+}
+
+// MARK: - Polish Batch
+
+/// Deleting can be undone; any other change ends the chance.
+@Test func undoDeletes() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let taskID = store.addTask(categoryID: categoryID, title: "Milk")!
+    store.addTask(categoryID: categoryID, title: "Eggs")
+    store.deleteTask(categoryID: categoryID, taskID: taskID)
+    #expect(store.lastDelete?.description == "“Milk”")
+    store.undoLastDelete()
+    #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Milk", "Eggs"])
+    #expect(store.lastDelete == nil)
+
+    store.deleteTask(categoryID: categoryID, taskID: taskID)
+    store.addTask(categoryID: categoryID, title: "Bread")
+    #expect(store.lastDelete == nil, "another change ends the undo")
+
+    let category = store.selectedWeek!.categories[0]
+    store.deleteCategory(category.id)
+    store.undoLastDelete()
+    #expect(store.selectedWeek!.categories.contains { $0.name == category.name })
+}
+
+/// Tasks move within their card.
+@Test func movingTasks() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let a = store.addTask(categoryID: categoryID, title: "A")!
+    store.addTask(categoryID: categoryID, title: "B")
+    let c = store.addTask(categoryID: categoryID, title: "C")!
+    func titles() -> [String] { store.selectedWeek!.categories[0].tasks.map(\.title) }
+    store.moveTask(categoryID: categoryID, taskID: a, to: c)
+    #expect(titles() == ["B", "C", "A"])
+    store.moveTask(categoryID: categoryID, taskID: a, by: -1)
+    #expect(titles() == ["B", "A", "C"])
+    store.moveTask(categoryID: categoryID, taskID: c, to: store.selectedWeek!.categories[0].tasks[0].id)
+    #expect(titles() == ["C", "B", "A"])
+}
+
+/// The header reads "Week of Oct 5" in the user's region, with the year only when needed.
+@Test func weekTitleFollowsRegion() {
+    let week = Week(startDate: Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 5))!, categories: [])
+    let now = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 7))!
+    let gregorian = Calendar(identifier: .gregorian)
+    #expect(week.displayTitle(now: now, locale: Locale(identifier: "en_US"), calendar: gregorian) == "Week of Oct 5")
+    #expect(week.displayTitle(now: now, locale: Locale(identifier: "en_GB"), calendar: gregorian) == "Week of 5 Oct")
+    let nextYear = gregorian.date(from: DateComponents(year: 2027, month: 1, day: 4))!
+    #expect(week.displayTitle(now: nextYear, locale: Locale(identifier: "en_US"), calendar: gregorian) == "Week of Oct 5, 2026")
+}
+
+/// Cards can be sorted by when each category was last edited, either way round; ones never
+/// edited keep their arranged order after the rest. The choice is saved.
+@Test func sortingCardsByLastEdit() {
+    let clock = TestClock(2099, 3, 4)
+    let directory = makeTempDirectory()
+    let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+    let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    let names = store.selectedWeek!.categories.map(\.name)
+    #expect(names.count >= 3)
+    func id(_ name: String) -> UUID { store.selectedWeek!.categories.first { $0.name == name }!.id }
+
+    store.addTask(categoryID: id(names[2]), title: "First")
+    clock.now = clock.now.addingTimeInterval(60)
+    store.addTask(categoryID: id(names[0]), title: "Second")
+
+    #expect(store.sortedCategories(store.selectedWeek!.categories).map(\.name) == names, "manual keeps the arranged order")
+    store.setCategorySort(.recentFirst)
+    #expect(store.sortedCategories(store.selectedWeek!.categories).map(\.name).prefix(2) == [names[0], names[2]])
+    store.setCategorySort(.oldestFirst)
+    let oldest = store.sortedCategories(store.selectedWeek!.categories).map(\.name)
+    #expect(oldest.prefix(2) == [names[2], names[0]])
+    #expect(oldest[2] == names[1], "never-edited ones follow in their arranged order")
+
+    let reopened = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    #expect(reopened.categorySort == .oldestFirst)
+    #expect(reopened.sortedCategories(reopened.selectedWeek!.categories).map(\.name) == oldest, "edit times are kept")
+}
+
+/// A model's made-up amounts and items are dropped; ones in the words stay.
+@Test func inventedAmountsAreDropped() {
+    let rhythm = TaskTextHints.dropInvented(ParsedTask(title: "Rhythm", type: .goal, goalTarget: 10, goalKind: .time), from: "Rhythm")
+    #expect(rhythm.type == .checkbox)
+    #expect(rhythm.goalTarget == nil)
+    let piano = ParsedTask(title: "Practice piano", type: .goal, goalTarget: 120, goalKind: .time)
+    #expect(TaskTextHints.dropInvented(piano, from: "Practice piano 2 hours") == piano)
+    let daily = ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 7)
+    #expect(TaskTextHints.dropInvented(daily, from: "Meditate daily") == daily)
+    let list = ParsedTask(title: "Groceries", type: .list, items: ["milk", "eggs", "butter"])
+    #expect(TaskTextHints.dropInvented(list, from: "Groceries: milk, eggs").items == ["milk", "eggs"])
+}
+
+
+// MARK: - Third Audit Fixes
+
+/// Tasks reordered in a future week keep that order when the week syncs again.
+@Test func futureWeekReorderSticks() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    store.addTask(categoryID: category().id, title: "A", mode: .repeating)
+    store.addTask(categoryID: category().id, title: "B", mode: .repeating)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let tasks = category().tasks
+    store.moveTask(categoryID: category().id, taskID: tasks[1].id, to: tasks[0].id)
+    #expect(category().tasks.map(\.title) == ["B", "A"])
+    store.navigateToDate(clock.now)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(category().tasks.map(\.title) == ["B", "A"], "the sync doesn't put the old order back")
+}
+
+/// Taking back a Smart Add removes the task without offering an Undo of its own.
+@Test func quietDeleteHasNoUndo() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let id = store.addTask(categoryID: categoryID, title: "Gym")!
+    store.deleteTask(categoryID: categoryID, taskID: id, undoable: false)
+    #expect(store.lastDelete == nil)
+    #expect(store.selectedWeek!.categories[0].tasks.isEmpty)
+}
+
+/// "Twice daily" counts per day; a "Name: a, b" list beats "daily".
+@Test func dailyPhrasesAndLists() {
+    func refine(_ text: String) -> ParsedTask { TaskTextHints.refine(ParsedTask(title: text), from: text) }
+    #expect(refine("Brush teeth twice daily").goalTarget == 14)
+    #expect(refine("Brush teeth twice daily").title == "Brush teeth")
+    #expect(refine("Take meds 3 times daily").goalTarget == 21)
+    #expect(refine("Stretch daily 2x").goalTarget == 14)
+    let habits = refine("Daily habits: water, walk, read")
+    #expect(habits.type == .list)
+    #expect(habits.items == ["water", "walk", "read"])
+}
+
+/// Amounts written in words count as amounts; loose matching keeps the model's items.
+@Test func amountsInWordsAreKept() {
+    for (text, target) in [("Meditate fifteen minutes", 15.0), ("Twenty pushups", 20), ("Run a mile", 1), ("Read a dozen pages", 12)] {
+        #expect(TaskTextHints.dropInvented(ParsedTask(title: text, type: .goal, goalTarget: target), from: text).goalTarget == target, "\(text)")
+    }
+    let pack = TaskTextHints.dropInvented(ParsedTask(title: "Pack", type: .list, items: ["Mom's charger", "sock", "butter"]),
+                                          from: "Pack: Mom’s charger, socks")
+    #expect(pack.items == ["Mom's charger", "sock"])
+    // "Groceries" with made-up items: the items go, but it stays a list to fill in.
+    let groceries = TaskTextHints.dropInvented(ParsedTask(title: "Groceries", type: .list, items: ["milk", "eggs"]), from: "groceries")
+    #expect(groceries.type == .list)
+    #expect(groceries.items.isEmpty)
+}
+
+/// A sort value this version doesn't know reads as Manual instead of breaking settings.
+@Test func unknownSortReadsAsManual() throws {
+    let directory = makeTempDirectory()
+    let first = makeIsolatedStore(directory: directory)
+    first.setCategorySort(.recentFirst)
+    let url = directory.appending(path: "settings.json")
+    let text = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "recentFirst", with: "someFutureOrder")
+    try text.write(to: url, atomically: true, encoding: .utf8)
+    let reopened = makeIsolatedStore(directory: directory)
+    #expect(reopened.settingsLoadError == nil)
+    #expect(reopened.categorySort == .manual)
+}
+
+/// Smart Add's spelling backstop fixes a close typo but leaves names and real words.
+@Test func smartAddFixesTypos() {
+    let fixed = AppleIntelligenceTaskParser.fixingTypos(
+        ParsedTask(title: "Do pishups", type: .goal, goalTarget: 50, goalKind: .custom, goalUnit: "pishups"),
+        typed: "Do 50 pishups")
+    #expect(fixed.title.lowercased().hasPrefix("do p"))
+    #expect(fixed.title != "Do pishups", "the typo is corrected")
+    #expect(fixed.goalUnit != "pishups")
+    let name = AppleIntelligenceTaskParser.fixingTypos(ParsedTask(title: "Call Siobhan"), typed: "Call Siobhan")
+    #expect(name.title == "Call Siobhan", "names typed with a capital stay")
+    let fine = AppleIntelligenceTaskParser.fixingTypos(ParsedTask(title: "Water plants"), typed: "water plants")
+    #expect(fine.title == "Water plants")
+}
+
+/// A goal's step, when set, is what + and − use; it carries into the next week.
+@Test func goalStepIsKept() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let id = store.addParsedTask(ParsedTask(title: "Push-ups", type: .goal, mode: .repeating, goalTarget: 500), categoryID: category().id)!
+    store.setGoalStep(categoryID: category().id, taskID: id, step: 20)
+    #expect(category().tasks[0].goalStep == 20)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(category().tasks.first { $0.title == "Push-ups" }?.goalStep == 20, "the repeating copy keeps the step")
+    store.navigateToDate(clock.now)
+    store.setGoalStep(categoryID: category().id, taskID: id, step: nil)
+    #expect(category().tasks[0].goalStep == nil, "cleared back to automatic")
+}
+
+/// Smart Add's rules read an amount with its unit, for when the model can't run; dates,
+/// sizes and labels aren't amounts.
+@Test(arguments: [
+    ("read 90 pages", "Read", 90.0, GoalUnitKind.custom, "pages"),
+    ("Practice piano 2 hours", "Practice piano", 120, .time, ""),
+    ("meditate 15 min", "Meditate", 15, .time, ""),
+    ("Do 50 pushups", "Pushups", 50, .custom, "pushups"),
+    ("Drink 8 glasses of water", "Drink water", 8, .custom, "glasses"),
+    ("run 5 km", "Run", 5, .custom, "km"),
+] as [(String, String, Double, GoalUnitKind, String)])
+func smartAddReadsAmounts(text: String, title: String, target: Double, kind: GoalUnitKind, unit: String) {
+    let refined = TaskTextHints.refine(ParsedTask(title: text), from: text)
+    #expect(refined.type == .goal)
+    #expect(refined.title == title)
+    #expect(refined.goalTarget == target)
+    #expect(refined.goalKind == kind)
+    #expect(refined.goalUnit == unit)
+}
+
+@Test func smartAddIgnoresNonAmounts() {
+    for text in ["Dentist at 3 today", "Renew passport in 2 days", "Read chapter 3", "Print 4 x 6 photos", "Room 101 cleanup"] {
+        #expect(TaskTextHints.refine(ParsedTask(title: text), from: text).type == .checkbox, "\(text)")
+    }
 }

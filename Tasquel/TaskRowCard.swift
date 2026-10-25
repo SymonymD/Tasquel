@@ -1,5 +1,6 @@
 import SwiftUI
 import OSLog
+import UniformTypeIdentifiers
 import UIKit
 
 // MARK: - Expanded Card Sizing
@@ -83,17 +84,20 @@ struct TaskRowCard: View {
     @State private var goalTargetInput = GoalAmountInput()
     @State private var goalUnitText = ""
     @State private var editedProgressInput = GoalAmountInput()
+    /// The goal editor's Step; empty means automatic.
+    @State private var goalStepInput = GoalAmountInput()
     @State private var addProgressInput = GoalAmountInput()
     @State private var isEditingGoal = false
     @State private var isAddingProgress = false
     @FocusState private var focusedGoalField: GoalFocus?
-    @State private var showDeleteConfirmation = false
     @State private var showOptions = false
+    /// Another task is being dragged over this one (reordering in edit mode).
+    @State private var isDropTarget = false
     /// The add-sub-task field is open (a list's add-item field is always shown).
     @State private var isAddingSubtask = false
 
     /// The goal text fields, for moving the keyboard between them.
-    nonisolated private enum GoalField: Hashable { case target, editProgress, addProgress, unitName }
+    nonisolated private enum GoalField: Hashable { case target, editProgress, step, addProgress, unitName }
     nonisolated private enum GoalFieldPart: Hashable { case number, hours, minutes }
     nonisolated private struct GoalFocus: Hashable {
         let field: GoalField
@@ -152,9 +156,11 @@ struct TaskRowCard: View {
                         }
                 } else {
                     // One tap renames. The whole width up to the icons is the target, not just the letters.
+                    // Done tasks are struck through, like done sub-tasks.
                     Text(task.title)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
-                        .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                        .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+                        .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture { startEditingTitle() }
@@ -167,7 +173,10 @@ struct TaskRowCard: View {
                     HStack(spacing: 0) {
                         if task.taskType == .checkbox && !isEditing { addSubtaskButton }
                         taskOptionsButton
-                        if isEditing { deleteButton }
+                        if isEditing {
+                            deleteButton
+                            reorderHandle
+                        }
                     }
                 }
             }
@@ -222,21 +231,36 @@ struct TaskRowCard: View {
             }
         }
         .onChange(of: store.keyboardDoneRequests) { saveTypedOnDone() }
-        .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("Delete Task", role: .destructive) {
-                store.deleteTask(categoryID: categoryID, taskID: task.id)
+        // A task dragged by its handle (edit mode) and dropped here takes this place.
+        .dropDestination(for: TaskDragItem.self) { items, _ in
+            // Only within this card, and only while it's being edited.
+            guard isEditing, !isPastWeek, let item = items.first, item.categoryID == categoryID else { return false }
+            withAnimation(.snappy(duration: 0.25)) {
+                store.moveTask(categoryID: categoryID, taskID: item.taskID, to: task.id)
             }
-        } message: {
-            Text(deleteTaskMessage)
+            return true
+        } isTargeted: { isDropTarget = $0 && isEditing }
+        .background {
+            if isDropTarget {
+                RoundedRectangle(cornerRadius: 8).fill(Theme.accent(theme, rc: rc).opacity(0.12)).padding(-4)
+            }
         }
+        .accessibilityActions {
+            if isEditing && !isPastWeek {
+                Button("Move Up") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: -1) } }
+                Button("Move Down") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: 1) } }
+            }
+        }
+        // A light tap for ticking off; a success for reaching a goal.
+        .sensoryFeedback(trigger: task.isCompleted) { _, done in done && task.taskType != .goal ? .impact(weight: .light) : nil }
+        .sensoryFeedback(.success, trigger: task.goalIsComplete) { wasDone, done in !wasDone && done }
     }
 
-    private var deleteTaskMessage: String {
-        let count = task.subtasks.count
-        let what = task.taskType == .list ? "list" : "task"
-        guard count > 0 else { return "This removes the \(what) from this week." }
-        let items = task.taskType == .list ? (count == 1 ? "item" : "items") : (count == 1 ? "sub-task" : "sub-tasks")
-        return "This removes the whole \(what), including its \(count) \(items), from this week."
+    /// No confirmation: the delete can be undone from the message that follows.
+    private func deleteTask() {
+        withAnimation(.snappy(duration: 0.2)) {
+            store.deleteTask(categoryID: categoryID, taskID: task.id)
+        }
     }
 
     /// Row icons are 10% larger than the other expanded-card elements.
@@ -279,10 +303,20 @@ struct TaskRowCard: View {
         isSubtaskFieldFocused = true
     }
 
+    /// In edit mode: hold and drag to move the task within its card.
+    private var reorderHandle: some View {
+        rowIcon("line.3.horizontal", color: Theme.textTertiary(theme, rc: rc))
+            .draggable(TaskDragItem(taskID: task.id, categoryID: categoryID)) {
+                Text(task.title)
+                    .font(.expandedCard(size: 16))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Theme.cardFill(theme), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityHidden(true)  // VoiceOver uses Move Up / Move Down on the task
+    }
+
     private var deleteButton: some View {
-        Button {
-            showDeleteConfirmation = true
-        } label: {
+        Button(action: deleteTask) {
             rowIcon("trash", color: Theme.destructive(theme))
         }
         .buttonStyle(.plain)
@@ -365,13 +399,30 @@ struct TaskRowCard: View {
                             }
                             .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
                         }
-                        // The most common update, in one tap.
-                        if !task.goalIsComplete && !isAddingProgress {
-                            Button(action: addQuickProgress) {
-                                actionPill(task.goalKind == .time ? "+15m" : "+1")
+                        // The most common update, in one tap, and its undo: − takes a step
+                        // back (also after the goal is reached, to take back the last tap).
+                        HStack(spacing: 6) {
+                            if (task.goalProgress ?? 0) > 0 && !isAddingProgress {
+                                Button { addQuickProgress(sign: -1) } label: {
+                                    Text("−")
+                                        .font(.expandedCard(.caption1, weight: .bold, scale: 1.15))
+                                        .frame(minWidth: 14)
+                                        .padding(.horizontal, 10).padding(.vertical, 6)
+                                        .foregroundStyle(Theme.accent(theme, rc: rc))
+                                        .overlay(Capsule().stroke(Theme.accent(theme, rc: rc).opacity(0.6), lineWidth: 1))
+                                        .contentShape(Capsule())
+                                        .touchTarget()
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(task.goalKind == .time ? "Remove \(Int(quickStep)) minutes" : "Remove \(task.goalKind.format(quickStep))")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(task.goalKind == .time ? "Add 15 minutes" : "Add 1")
+                            if !task.goalIsComplete && !isAddingProgress {
+                                Button { addQuickProgress(sign: 1) } label: {
+                                    actionPill("+" + task.goalKind.format(quickStep))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(task.goalKind == .time ? "Add \(Int(quickStep)) minutes" : "Add \(task.goalKind.format(quickStep))")
+                            }
                         }
                     }
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
@@ -437,9 +488,13 @@ struct TaskRowCard: View {
             labeledGoalRow("Progress") {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
+            // What + and − add or take away; empty picks one from the target.
+            labeledGoalRow("Step") {
+                goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
+            }
             HStack(spacing: 12) {
                 // Deleting removes the whole task, so it's small and kept apart from Save.
-                Button(role: .destructive) { showDeleteConfirmation = true } label: {
+                Button(role: .destructive, action: deleteTask) {
                     Text("Delete Task")
                         .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                         .foregroundStyle(Theme.destructive(theme))
@@ -493,6 +548,7 @@ struct TaskRowCard: View {
                 set: { newKind in
                     goalTargetInput = goalTargetInput.converted(from: goalKindSelection, to: newKind)
                     editedProgressInput = editedProgressInput.converted(from: goalKindSelection, to: newKind)
+                    goalStepInput = goalStepInput.converted(from: goalKindSelection, to: newKind)
                     goalKindSelection = newKind
                 }
             )) {
@@ -641,6 +697,7 @@ struct TaskRowCard: View {
         goalTargetInput = GoalAmountInput(target, kind: kind)
         editedProgressInput = GoalAmountInput(task.goalProgress ?? 0, kind: kind)
         goalUnitText = task.goalUnit ?? ""
+        goalStepInput = task.goalStep.map { GoalAmountInput($0, kind: kind) } ?? GoalAmountInput()
         closeAddProgress()
         isEditingGoal = true
     }
@@ -648,6 +705,7 @@ struct TaskRowCard: View {
     private func closeGoalEditing() {
         isEditingGoal = false
         goalTargetInput = GoalAmountInput()
+        goalStepInput = GoalAmountInput()
         goalUnitText = ""
         focusedGoalField = nil
     }
@@ -655,6 +713,7 @@ struct TaskRowCard: View {
     private var canSaveEditedGoal: Bool {
         goalTargetInput.positiveValue(for: goalKindSelection) != nil
             && editedProgressInput.value(for: goalKindSelection) != nil
+            && (goalStepInput.isEmpty || goalStepInput.positiveValue(for: goalKindSelection) != nil)
     }
 
     private func saveEditedGoal() {
@@ -662,6 +721,7 @@ struct TaskRowCard: View {
               let progress = editedProgressInput.value(for: goalKindSelection) else { return }
         store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, kind: goalKindSelection, unit: goalUnitText)
         store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
+        store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection))
         closeGoalEditing()
     }
 
@@ -677,11 +737,24 @@ struct TaskRowCard: View {
         focusedGoalField = nil
     }
 
-    /// One more (or 15 more minutes) toward the goal.
-    private func addQuickProgress() {
-        let amount: Double = task.goalKind == .time ? 15 : 1
+    /// One step forward (+) or back (−); never below zero.
+    private func addQuickProgress(sign: Double) {
+        let progress = max(0, (task.goalProgress ?? 0) + sign * quickStep)
         withAnimation(.snappy(duration: 0.2)) {
-            store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: (task.goalProgress ?? 0) + amount)
+            store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
+        }
+    }
+
+    /// One tap's worth of progress: 1 for counts; for time, a step that suits the target
+    /// (+5m toward 10 minutes, +30m toward 4 hours).
+    private var quickStep: Double {
+        if let step = task.goalStep, step > 0 { return step }  // set in the goal editor
+        guard task.goalKind == .time else { return 1 }
+        switch task.goalTarget ?? 0 {
+        case ...20: return 5
+        case ...60: return 10
+        case ...180: return 15
+        default: return 30
         }
     }
 
@@ -696,7 +769,7 @@ struct TaskRowCard: View {
         switch field {
         case .addProgress:
             addGoalProgress()
-        case .target, .unitName, .editProgress:
+        case .target, .unitName, .editProgress, .step:
             if isEditingGoal { saveEditedGoal() } else { setGoal() }
         }
     }
@@ -709,6 +782,19 @@ struct TaskRowCard: View {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: current + amount)
             closeAddProgress()
         }
+    }
+}
+
+// MARK: - Dragging Tasks
+
+/// What a task's reorder handle drags. Raw data rather than text, so a text field (or
+/// another app) doesn't take it as something to paste.
+struct TaskDragItem: Codable, Transferable {
+    let taskID: UUID
+    let categoryID: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data)
     }
 }
 
@@ -791,6 +877,9 @@ struct GoalAmountInput: Equatable {
         return result <= GoalUnitKind.maxValue ? result : nil
     }
 
+    /// Nothing typed.
+    var isEmpty: Bool { number.isEmpty && hours.isEmpty && minutes.isEmpty }
+
     /// The typed value if it's greater than zero.
     func positiveValue(for kind: GoalUnitKind, locale: Locale = .current) -> Double? {
         value(for: kind, locale: locale).flatMap { $0 > 0 ? $0 : nil }
@@ -827,7 +916,6 @@ struct SubTaskRowCard: View {
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
     @FocusState private var isTitleFocused: Bool
-    @State private var showDeleteConfirmation = false
 
     /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
     private static let touchHeight: CGFloat = 32
@@ -846,7 +934,10 @@ struct SubTaskRowCard: View {
             // from the task's own trash can on the right.
             if isEditing && !isPastWeek {
                 Button {
-                    showDeleteConfirmation = true
+                    // No confirmation: it can be undone from the message that follows.
+                    withAnimation(.snappy(duration: 0.2)) {
+                        store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+                    }
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.expandedCard(.subheadline))
@@ -893,11 +984,6 @@ struct SubTaskRowCard: View {
         .onChange(of: isEditing) { _, editing in
             if !editing && isEditingTitle { commitTitle() }
         }
-        .confirmationDialog("Delete \(subtask.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button(isListItem ? "Delete Item" : "Delete Sub-Task", role: .destructive) {
-                store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
-            }
-        }
     }
 
     private var checkbox: some View {
@@ -924,6 +1010,7 @@ struct SubTaskRowCard: View {
         }
         .buttonStyle(CheckboxButtonStyle())
         .disabled(isPastWeek)
+        .sensoryFeedback(.selection, trigger: subtask.isCompleted)
         .accessibilityLabel(TaskAccessibility.checkboxLabel(subtask.title, isCompleted: subtask.isCompleted))
         .accessibilityAddTraits(subtask.isCompleted ? .isSelected : [])
     }
@@ -945,17 +1032,45 @@ struct AddTaskRowCard: View {
     @FocusState private var isFocused: Bool
     /// Working out a task from the typed words (Smart Add).
     @State private var isParsing = false
-    /// The type or mode the user chose in the picker; Smart Add keeps them.
+    /// The type or mode was chosen in the picker for the task being typed; Smart Add keeps
+    /// them. Reset after each add, so a pick for one task doesn't force the next ones.
     @State private var pickedType = false
     @State private var pickedMode = false
     /// Bumped when Smart Add adds a task, for its haptic.
     @State private var smartAddCount = 0
+    /// What Smart Add just added, shown under the row for a few seconds with Undo.
+    @State private var smartAddResult: SmartAddResult?
+
+    private struct SmartAddResult: Equatable {
+        let taskID: UUID
+        let text: String
+        let summary: String
+        let token = UUID()
+    }
     /// Optional: Smart Add only shows when the parser can run on this device.
     private let parser: TaskTextParser = AppleIntelligenceTaskParser.shared
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     private var hasText: Bool { !newTitle.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            addRow
+            if let result = smartAddResult {
+                smartAddMessage(result)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: smartAddResult?.token) {
+            // With VoiceOver it stays (until the next Smart Add), so Undo can be reached.
+            guard smartAddResult != nil, !voiceOverEnabled else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.25)) { smartAddResult = nil }
+        }
+    }
+
+    private var addRow: some View {
         // Wider than other rows: the field's fill reaches past its text (see cardField).
         HStack(spacing: 14) {
             Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
@@ -969,9 +1084,10 @@ struct AddTaskRowCard: View {
                 .onChange(of: isFocused) { _, focused in
                     if focused {
                         parser.prepare()
-                    } else if !showOptions {
+                    } else if !showOptions, newTitle.trimmingCharacters(in: .whitespaces).count > 1 {
                         // However the keyboard went away (swiped down, another field
                         // tapped), what was typed is added, like a renamed task's name.
+                        // (A single stray letter isn't.)
                         addTask(keepTyping: false)
                     }
                 }
@@ -1014,6 +1130,35 @@ struct AddTaskRowCard: View {
         .sensoryFeedback(.success, trigger: smartAddCount)
     }
 
+    /// "✨ Added Gym · repeating goal of 3   Undo": what Smart Add worked out, so a wrong
+    /// guess is seen and can be taken back (the task is removed and the words return).
+    private func smartAddMessage(_ result: SmartAddResult) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles").foregroundStyle(Theme.accent(theme, rc: rc))
+            Text("Added \(result.summary)")
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button("Undo") { undoSmartAdd(result) }
+                .buttonStyle(.plain)
+                .fontWeight(.semibold)
+                .foregroundStyle(Theme.accent(theme, rc: rc))
+                .touchTarget()
+                .accessibilityLabel("Undo Smart Add")
+        }
+        .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+        .padding(.leading, 24 * expandedCardScale)
+    }
+
+    /// Takes the task back entirely: no "Deleted … · Undo" of its own, and nothing left
+    /// in the field to be added again when the keyboard closes.
+    private func undoSmartAdd(_ result: SmartAddResult) {
+        withAnimation(.snappy(duration: 0.2)) {
+            store.deleteTask(categoryID: categoryID, taskID: result.taskID, undoable: false)
+            smartAddResult = nil
+        }
+    }
+
     /// Smart Add: the typed words become a task with its type, mode, goal or list items
     /// worked out ("Run 3 times every week" → a repeating goal of 3). Styled like the
     /// type and mode capsule beside it, so it reads as a button.
@@ -1045,8 +1190,14 @@ struct AddTaskRowCard: View {
         isParsing = true
         Task {
             var parsed: ParsedTask
+            var usedModel = false
             do {
-                parsed = try await parser.parse(text) ?? TaskTextHints.refine(ParsedTask(title: text), from: text)
+                if let result = try await parser.parse(text) {
+                    parsed = result
+                    usedModel = true
+                } else {
+                    parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
+                }
             } catch {
                 Self.log.error("Smart Add couldn't parse: \(error)")
                 parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
@@ -1058,33 +1209,41 @@ struct AddTaskRowCard: View {
                 parsed.items = []
                 parsed.goalTarget = nil
             }
-            let awaitsTarget = parsed.type == .goal && parsed.goalTarget == nil
+            // A goal without an amount takes the keyboard for its target; a list without
+            // items, for its first item.
+            let awaitsTarget = (parsed.type == .goal && parsed.goalTarget == nil) || (parsed.type == .list && parsed.items.isEmpty)
             var added: UUID?
             withAnimation(.snappy(duration: 0.2)) {
                 added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: weekStart)
                 // A goal it couldn't find an amount for takes the keyboard for its target.
                 if awaitsTarget, let added { store.taskAwaitingFirstInput = added }
             }
-            guard added != nil else { return }
+            guard let added else { return }
             smartAddCount += 1
-            AccessibilityNotification.Announcement("Added \(Self.describe(parsed))").post()
+            pickedType = false
+            pickedMode = false
+            // Says when Apple Intelligence couldn't be used and only the plain rules applied.
+            let summary = Self.describe(parsed, separator: " · ") + (usedModel ? "" : " · without Apple Intelligence")
+            withAnimation(.snappy(duration: 0.25)) {
+                smartAddResult = SmartAddResult(taskID: added, text: text, summary: summary)
+            }
+            AccessibilityNotification.Announcement("Added \(Self.describe(parsed)). Undo is below.").post()
             // Anything typed meanwhile stays.
             if newTitle.trimmingCharacters(in: .whitespaces) == text { newTitle = "" }
-            resetOptions()
         }
     }
 
-    /// "Run, repeating goal of 3" for VoiceOver.
-    private static func describe(_ task: ParsedTask) -> String {
+    /// "Run, repeating goal of 3" (VoiceOver), or with " · " for the message under the row.
+    private static func describe(_ task: ParsedTask, separator: String = ", ") -> String {
         let mode = task.mode.label.lowercased()
         switch task.type {
         case .goal:
             let amount = task.goalTarget.map { " of \(task.goalKind.format($0))\(task.goalUnit.isEmpty ? "" : " \(task.goalUnit)")" } ?? ""
-            return "\(task.title), \(mode) goal\(amount)"
+            return "\(task.title)\(separator)\(mode) goal\(amount)"
         case .list:
-            return "\(task.title), \(mode) list with \(task.items.count) items"
+            return "\(task.title)\(separator)\(mode) list of \(task.items.count)"
         case .checkbox:
-            return "\(task.title), \(mode)"
+            return "\(task.title)\(separator)\(mode)"
         }
     }
 
@@ -1103,13 +1262,8 @@ struct AddTaskRowCard: View {
             if keepTyping && awaitsInput { store.taskAwaitingFirstInput = id }
         }
         newTitle = ""
-        if keepTyping && !awaitsInput { isFocused = true }
-    }
-
-    private func resetOptions() {
-        newType = .checkbox
-        newMode = .oneTime
         pickedType = false
         pickedMode = false
+        if keepTyping && !awaitsInput { isFocused = true }
     }
 }
