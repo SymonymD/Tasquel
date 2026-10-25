@@ -1059,6 +1059,8 @@ struct ContentView: View {
     /// Re-sorts at the calm moments `sortedNames` describes.
     private var sortOrderWatcher: some View {
         Color.clear
+            // The home-screen icon follows the Retro theme.
+            .onChange(of: store.appearanceMode) { _, mode in AppIconSwitcher.update(for: mode) }
             // Categories added or deleted while editing take their sorted places.
             .onChange(of: isEditing) { _, editing in
                 if !editing { refreshSortOrder() }

@@ -5,6 +5,9 @@ import SwiftUI
 struct OnboardingSheet: View {
     let store: ChecklistStore
     let calendar: CalendarService
+    /// Opened from Settings ▸ Show Welcome Tour: adds pages on features newer than the
+    /// first-launch tour, and the buttons say Close and Done.
+    var isReplay = false
     @Environment(\.dismiss) private var dismiss
 
     @State private var page: Page = .welcome
@@ -12,17 +15,21 @@ struct OnboardingSheet: View {
     /// Every step is a page: swipe between them, or use Next and Back.
     private enum Page: Int, CaseIterable {
         case welcome, types, modes, categories, calendar
+        // Welcome Tour only.
+        case smartAdd, tidyUp, goalSteps
     }
+
+    private var pages: [Page] {
+        isReplay ? Page.allCases : [.welcome, .types, .modes, .categories, .calendar]
+    }
+
+    private var pageIndex: Int { pages.firstIndex(of: page) ?? 0 }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 TabView(selection: $page) {
-                    illustratedPage(.welcome)
-                    illustratedPage(.types)
-                    illustratedPage(.modes)
-                    illustratedPage(.categories)
-                    illustratedPage(.calendar)
+                    ForEach(pages, id: \.self) { illustratedPage($0) }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
 
@@ -39,9 +46,9 @@ struct OnboardingSheet: View {
                         }
                     }
                 }
-                if page != Page.allCases.last {
+                if page != pages.last {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Skip", action: finishOnboarding)
+                        Button(isReplay ? "Close" : "Skip", action: finishOnboarding)
                     }
                 }
             }
@@ -49,13 +56,14 @@ struct OnboardingSheet: View {
     }
 
     private func go(by offset: Int) {
-        guard let next = Page(rawValue: page.rawValue + offset) else { return }
-        withAnimation(.snappy(duration: 0.3)) { page = next }
+        let index = pageIndex + offset
+        guard pages.indices.contains(index) else { return }
+        withAnimation(.snappy(duration: 0.3)) { page = pages[index] }
     }
 
     private var pageDots: some View {
         HStack(spacing: 8) {
-            ForEach(Page.allCases, id: \.self) { dot in
+            ForEach(pages, id: \.self) { dot in
                 Circle()
                     .fill(dot == page ? Color.blue : Color.secondary.opacity(0.3))
                     .frame(width: 8, height: 8)
@@ -64,15 +72,15 @@ struct OnboardingSheet: View {
             }
         }
         .accessibilityElement()
-        .accessibilityLabel("Page \(page.rawValue + 1) of \(Page.allCases.count)")
+        .accessibilityLabel("Page \(pageIndex + 1) of \(pages.count)")
     }
 
     private var bottomButton: some View {
-        let isLast = page == Page.allCases.last
+        let isLast = page == pages.last
         return Button {
             if isLast { finishOnboarding() } else { go(by: 1) }
         } label: {
-            Text(isLast ? "Let's Go!" : "Next")
+            Text(isLast ? (isReplay ? "Done" : "Let's Go!") : "Next")
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
         }
         .buttonStyle(.borderedProminent)
@@ -123,6 +131,15 @@ struct OnboardingSheet: View {
                 featureText("Your Calendar, Alongside",
                             "See the week's events next to your tasks: tap the calendar button at the bottom. You can turn this on now, or later in Settings.")
                 calendarButton
+            case .smartAdd:
+                featureText("Smart Add",
+                            "Type a task in your own words, like “Gym 3x per week”, and tap the sparkles: it becomes a repeating goal of 3. If it guessed wrong, tap Undo in the note that appears.")
+            case .tidyUp:
+                featureText("Tidy Up",
+                            "Deleting doesn't ask first: tap Undo in the message to bring it back. Pull the cards down from the top and let go to close them all.")
+            case .goalSteps:
+                featureText("Goals, Step by Step",
+                            "Tap + to count progress and − to take it back. Each tap adds a step that suits the goal; set your own in Edit Goal, like 20 for 500 push-ups.")
             }
         }
         .padding(.vertical, 24)
@@ -137,6 +154,9 @@ struct OnboardingSheet: View {
         case .modes: TaskModesAnimation()
         case .categories: CategoryCardsAnimation()
         case .calendar: CalendarEventsAnimation()
+        case .smartAdd: SmartAddAnimation()
+        case .tidyUp: TidyUpAnimation()
+        case .goalSteps: GoalStepsAnimation()
         }
     }
 

@@ -42,7 +42,8 @@ Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checkin
 | `Tasquel/AddCategorySheet.swift` | `AddCategorySheet` (saved templates + create new; Edit Saved Categories edits and removes them in place) + `DatePickerSheet` |
 | `Tasquel/SettingsSheet.swift` | Settings (standard List + retro layouts); `AppInfo` holds the Support/Privacy URLs and reads the version |
 | `Tasquel/HelpSheet.swift` | Help guide |
-| `Tasquel/OnboardingSheet.swift` | Onboarding: welcome, then one page each for task types, task modes, category cards and calendar events, each with an animation |
+| `Tasquel/OnboardingSheet.swift` | Onboarding: welcome, then one page each for task types, task modes, category cards and calendar events, each with an animation. From Settings ▸ Show Welcome Tour (`isReplay`) it adds Smart Add, Tidy Up and Goals pages, and says Close / Done |
+| `Tasquel/TourAnimations.swift` | The Welcome Tour's extra animations (`SmartAddAnimation`, `TidyUpAnimation`, `GoalStepsAnimation`), built from the same `Illustration` parts |
 | `Tasquel/CategoryGridLayout.swift` | Custom `Layout`: card grid (2 columns on iPhone, 3 on iPad portrait, 4 on iPad landscape), expanded cards take a full row |
 | `Tasquel/CalendarService.swift` | Calendar integration: EventKit/fake providers, day grouping, permission, per-week event cache, `FeatureAccess` |
 | `Tasquel/CalendarSettings.swift` | Settings rows and calendar picker for calendar integration |
@@ -51,7 +52,9 @@ Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checkin
 | `Tasquel/FeatureAnimations.swift` | Onboarding feature animations (`TaskTypesAnimation`, `TaskModesAnimation`, `CategoryCardsAnimation`, `CalendarEventsAnimation`) and the shared `Illustration` parts / `IllustrationCheck` all the onboarding animations draw with |
 | `Tasquel/ParsedTask.swift` | Smart Add, platform-neutral half: `ParsedTask`, the `TaskTextParser` protocol, `store.addParsedTask` (one save, only into the week it was typed in), and `TaskTextHints` (rules for clear schedule phrases like "3x per week", "daily" (a goal of 7), "every Monday", "until done" that override the model when they match). Smart Add shows "Added … · Undo" under the row for 4s. Only the ✨ Smart Add button reads the words; Return adds text exactly as typed |
 | `Tasquel/AppleIntelligenceTaskParser.swift` | Smart Add's parser: the only file that imports FoundationModels (on-device model, `@Generable TaskDraft`). Optional by design (no Apple Intelligence, or a future Android build): the add-task row hides Smart Add when `isAvailable` is false |
-| `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest (no tracking or collected data; UserDefaults reason CA92.1) |
+| `Tasquel/AppIconSwitcher.swift` | Switches the home-screen icon to `AppIconRetro.icon` (alternate icon, `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`) while the Retro theme is chosen; iOS shows its own alert on each change |
+| `Tasquel/ComingSoonSurvey.swift` | Settings ▸ Coming Soon: tick features you'd use (iCloud Sync, Stats & Charts, Secret Categories) plus an optional comment, sent anonymously as JSON to the support site's Cloudflare Pages Function at `https://jbfentner.com/tasquel/survey` (`SurveyForm`; Send stays off until `isLive`). Only the picks, comment and app version are sent, over an ephemeral session |
+| `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking; one collected type, the anonymous survey (Other Data, not linked, not tracking); UserDefaults reason CA92.1 |
 
 ### Data Models (`Models.swift`)
 

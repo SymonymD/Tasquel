@@ -1,0 +1,127 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.03000,0.08000,0.03000,1.00000",
+      "extended-gray:0.00000,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 0.7
+      }
+    }
+  },
+  "groups": [
+    {
+      "blur-material": 0.5,
+      "hidden": false,
+      "layers": [
+        {
+          "blend-mode-specializations": [
+            {
+              "value": "normal"
+            },
+            {
+              "appearance": "dark",
+              "value": "normal"
+            }
+          ],
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "display-p3:0.20000,1.00000,0.20000,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "display-p3:0.20000,1.00000,0.20000,1.00000"
+              }
+            }
+          ],
+          "glass": true,
+          "image-name": "Tasquel_t_logo.svg",
+          "name": "Tasquel_t_logo",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ],
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              16.987132352941387,
+              -0.005096074850428067
+            ]
+          }
+        },
+        {
+          "blend-mode-specializations": [
+            {
+              "appearance": "dark",
+              "value": "normal"
+            }
+          ],
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "display-p3:0.20000,1.00000,0.20000,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "display-p3:0.20000,1.00000,0.20000,1.00000"
+              }
+            }
+          ],
+          "glass": false,
+          "image-name": "Tasquel_retro_brackets.svg",
+          "name": "Tasquel_retro_brackets",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ],
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              10,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting": "combined",
+      "name": "Tasquel_t_logo_layers",
+      "position": {
+        "scale": 1.55,
+        "translation-in-points": [
+          0,
+          0
+        ]
+      },
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.6
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

@@ -54,7 +54,7 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
-            .sheet(isPresented: $showTour) { OnboardingSheet(store: store, calendar: calendar) }
+            .sheet(isPresented: $showTour) { OnboardingSheet(store: store, calendar: calendar, isReplay: true) }
             .task {
                 calendar.refreshAuthorization()
                 await calendar.loadCalendars()
@@ -110,6 +110,20 @@ struct SettingsSheet: View {
                 }
             } header: {
                 Text("Help")
+            }
+            .listRowBackground(darkCardBg)
+            Section {
+                ComingSoonSurvey(store: store)
+            } header: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Coming Soon")
+                    Text(Self.comingSoonDescription)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                }
+            } footer: {
+                Text("Tick what you'd use. It's anonymous: only your picks and comment are sent.")
             }
             .listRowBackground(darkCardBg)
             Section("Support") {
@@ -168,6 +182,15 @@ struct SettingsSheet: View {
                         retroLinkLabel("> Show Welcome Tour")
                     }
                     .buttonStyle(.plain)
+                }
+                retroSection("COMING_SOON") {
+                    Text(Self.comingSoonDescription)
+                        .font(Theme.captionFont(theme))
+                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    ComingSoonSurvey(store: store)
+                    Text("anonymous // only your picks and comment are sent")
+                        .font(Theme.captionFont(theme))
+                        .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
                 retroSection("SUPPORT") {
                     retroLink("> Support", to: AppInfo.supportURL)
@@ -286,6 +309,9 @@ struct SettingsSheet: View {
             }
         }
     }
+
+    /// What the Coming Soon survey is for, under its heading.
+    private static let comingSoonDescription = "Features being considered for Tasquel. Tick the ones you'd use to help decide what comes next."
 
     /// Manual (hold and drag) or by when each category was last edited.
     private var sortPicker: some View {

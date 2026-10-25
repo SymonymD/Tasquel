@@ -1365,6 +1365,10 @@ struct PrivacyManifestTests {
         #expect(plist["NSPrivacyTracking"] as? Bool == false)
         let apis = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
         #expect(apis.contains { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" })
+        // The Coming Soon survey is the only data that leaves the device: anonymous.
+        let collected = plist["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? []
+        #expect(collected.count == 1)
+        #expect(collected.allSatisfy { $0["NSPrivacyCollectedDataTypeLinked"] as? Bool == false && $0["NSPrivacyCollectedDataTypeTracking"] as? Bool == false })
     }
 }
 
@@ -2293,5 +2297,28 @@ func smartAddReadsAmounts(text: String, title: String, target: Double, kind: Goa
 @Test func smartAddIgnoresNonAmounts() {
     for text in ["Dentist at 3 today", "Renew passport in 2 days", "Read chapter 3", "Print 4 x 6 photos", "Room 101 cleanup"] {
         #expect(TaskTextHints.refine(ParsedTask(title: text), from: text).type == .checkbox, "\(text)")
+    }
+}
+
+/// The Welcome Tour's extra animations loop in 6 seconds and come to rest on their
+/// Reduce Motion frames.
+@Test func tourAnimationTimelines() {
+    let smart = KeyframeTimeline(initialValue: SmartAddAnimation.Values()) { SmartAddAnimation.timeline }
+    #expect(abs(smart.duration - 6) < 0.001)
+    let smartRest = smart.value(time: 5.0), smartDone = SmartAddAnimation.Values.finished
+    for path in [\SmartAddAnimation.Values.typed, \.tap, \.added, \.note] {
+        #expect(abs(smartRest[keyPath: path] - smartDone[keyPath: path]) < 0.05)
+    }
+    let tidy = KeyframeTimeline(initialValue: TidyUpAnimation.Values()) { TidyUpAnimation.timeline }
+    #expect(abs(tidy.duration - 6) < 0.001)
+    let tidyRest = tidy.value(time: 5.0), tidyDone = TidyUpAnimation.Values.finished
+    for path in [\TidyUpAnimation.Values.trashTap, \.deleted, \.toast, \.undoTap, \.pull, \.closed] {
+        #expect(abs(tidyRest[keyPath: path] - tidyDone[keyPath: path]) < 0.05)
+    }
+    let goal = KeyframeTimeline(initialValue: GoalStepsAnimation.Values()) { GoalStepsAnimation.timeline }
+    #expect(abs(goal.duration - 6) < 0.001)
+    let goalRest = goal.value(time: 5.0), goalDone = GoalStepsAnimation.Values.finished
+    for path in [\GoalStepsAnimation.Values.progress, \.plusTap, \.minusTap, \.check] {
+        #expect(abs(goalRest[keyPath: path] - goalDone[keyPath: path]) < 0.05)
     }
 }
