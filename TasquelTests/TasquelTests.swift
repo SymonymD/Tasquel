@@ -1369,6 +1369,8 @@ struct PrivacyManifestTests {
         let collected = plist["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? []
         #expect(collected.count == 1)
         #expect(collected.allSatisfy { $0["NSPrivacyCollectedDataTypeLinked"] as? Bool == false && $0["NSPrivacyCollectedDataTypeTracking"] as? Bool == false })
+        // Matches the App Store Connect privacy answer: Analytics.
+        #expect(collected.allSatisfy { ($0["NSPrivacyCollectedDataTypePurposes"] as? [String]) == ["NSPrivacyCollectedDataTypePurposeAnalytics"] })
     }
 }
 

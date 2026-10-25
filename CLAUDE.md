@@ -54,7 +54,7 @@ Simulator: iPhone 17 Pro (iOS 26.3; an iOS 26.0 runtime is installed for checkin
 | `Tasquel/AppleIntelligenceTaskParser.swift` | Smart Add's parser: the only file that imports FoundationModels (on-device model, `@Generable TaskDraft`). Optional by design (no Apple Intelligence, or a future Android build): the add-task row hides Smart Add when `isAvailable` is false |
 | `Tasquel/AppIconSwitcher.swift` | Switches the home-screen icon to `AppIconRetro.icon` (alternate icon, `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`) while the Retro theme is chosen; iOS shows its own alert on each change |
 | `Tasquel/ComingSoonSurvey.swift` | Settings ▸ Coming Soon: tick features you'd use (iCloud Sync, Stats & Charts, Secret Categories) plus an optional comment, sent anonymously as JSON to the support site's Cloudflare Pages Function at `https://jbfentner.com/tasquel/survey` (`SurveyForm`; Send stays off until `isLive`). Only the picks, comment and app version are sent, over an ephemeral session |
-| `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking; one collected type, the anonymous survey (Other Data, not linked, not tracking); UserDefaults reason CA92.1 |
+| `Tasquel/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking; one collected type, the anonymous survey (Other Data, not linked, not tracking, purpose Analytics to match App Store Connect); UserDefaults reason CA92.1 |
 
 ### Data Models (`Models.swift`)
 

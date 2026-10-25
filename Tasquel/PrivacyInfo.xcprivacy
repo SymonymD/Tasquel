@@ -19,7 +19,7 @@
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
-				<string>NSPrivacyCollectedDataTypePurposeOther</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 	</array>
