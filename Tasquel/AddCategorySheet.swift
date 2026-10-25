@@ -13,6 +13,7 @@ struct AddCategorySheet: View {
     @State private var templateToRemove: CategoryTemplate?
     @State private var pendingAdd: PendingCategory?
     @State private var isEditingSaved = false
+    @FocusState private var isNameFocused: Bool
 
     /// A category waiting for the user to choose "every week" or "this week only".
     private struct PendingCategory {
@@ -24,66 +25,8 @@ struct AddCategorySheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Create New") {
-                    if isCreatingNew {
-                        HStack {
-                            CategorySymbolMenu(symbol: $newSymbol) {
-                                CategoryIcon(symbol: newSymbol)
-                                    .font(.title3)
-                                    .frame(width: 32, height: 32)
-                                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                                    .touchTarget()
-                            }
-                            TextField("Category name", text: $newName)
-                                .onSubmit(createNew)
-                        }
-                        if isNewNameTaken {
-                            Text("A category named \(ChecklistStore.cleanName(newName)) already exists. Pick it from Saved Categories, or choose another name.")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                        HStack {
-                            Button("Cancel") {
-                                isCreatingNew = false
-                                newName = ""
-                            }
-                            .buttonStyle(.borderless)
-                            Spacer()
-                            Button("Add Category") {
-                                createNew()
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(ChecklistStore.cleanName(newName).isEmpty || isNewNameTaken)
-                        }
-                        .font(.subheadline)
-                    } else {
-                        Button {
-                            isCreatingNew = true
-                        } label: {
-                            Label("Create New Category", systemImage: "plus.circle")
-                        }
-                    }
-                }
-
-                if !store.savedCategories.isEmpty {
-                    Section("Saved Categories") {
-                        ForEach(store.savedCategories) { template in
-                            if isEditingSaved {
-                                SavedCategoryRow(store: store, template: template) {
-                                    templateToRemove = template
-                                }
-                            } else {
-                                savedCategoryButton(template)
-                            }
-                        }
-                        Button {
-                            withAnimation { isEditingSaved.toggle() }
-                        } label: {
-                            Label(isEditingSaved ? "Done Editing" : "Edit Saved Categories",
-                                  systemImage: isEditingSaved ? "checkmark" : "pencil")
-                        }
-                    }
-                }
+                createSection
+                savedSection
             }
             .onChange(of: store.savedCategories.isEmpty) { _, isEmpty in
                 if isEmpty { isEditingSaved = false }
@@ -110,23 +53,102 @@ struct AddCategorySheet: View {
             .toolbar {
                 // A plain glass capsule rather than the blue confirm button (user's choice).
                 ToolbarItem(placement: .topBarTrailing) {
-                    SheetDoneButton { dismiss() }
+                    SheetDoneButton(action: finish)
                 }
             }
-            .confirmationDialog("Remove saved category?", isPresented: Binding(
-                get: { templateToRemove != nil },
-                set: { if !$0 { templateToRemove = nil } }
-            )) {
-                Button("Remove Saved Category", role: .destructive) {
-                    if let templateToRemove {
-                        store.removeSavedCategory(templateToRemove.id)
+            .savedCategoryRemoval($templateToRemove, store: store)
+        }
+        .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
+        .tint(Theme.isRetro(store.appearanceMode) ? Theme.accent(store.appearanceMode, rc: store.retroColor) : nil)
+    }
+
+    private var createSection: some View {
+        Section("Create New") {
+            if isCreatingNew {
+                HStack {
+                    CategorySymbolMenu(symbol: $newSymbol) {
+                        CategoryIcon(symbol: newSymbol)
+                            .font(.title3)
+                            .frame(width: 32, height: 32)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            .touchTarget()
                     }
-                    templateToRemove = nil
+                    TextField("Category name", text: $newName)
+                        .focused($isNameFocused)
+                        .submitLabel(.done)
+                        .onSubmit(createNew)
+                        // The keyboard opens with the row, so one tap is enough.
+                        .onAppear { isNameFocused = true }
                 }
-            } message: {
-                Text("You can create this category again later.")
+                if isNewNameTaken {
+                    Text(nameTakenMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Button("Cancel") {
+                        isCreatingNew = false
+                        newName = ""
+                    }
+                    .buttonStyle(.borderless)
+                    Spacer()
+                    Button("Add Category") {
+                        createNew()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    // Retro's tint is a bright phosphor color; white text on it can't be read.
+                    .foregroundStyle(Theme.isRetro(store.appearanceMode) ? Color.black : Color.white)
+                    .disabled(ChecklistStore.cleanName(newName).isEmpty || isNewNameTaken)
+                }
+                .font(.subheadline)
+            } else {
+                Button {
+                    isCreatingNew = true
+                } label: {
+                    Label("Create New Category", systemImage: "plus.circle")
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private var savedSection: some View {
+        if !store.savedCategories.isEmpty {
+            Section {
+                ForEach(store.savedCategories) { template in
+                    if isEditingSaved {
+                        SavedCategoryRow(store: store, template: template) {
+                            templateToRemove = template
+                        }
+                    } else {
+                        savedCategoryButton(template)
+                    }
+                }
+                Button {
+                    withAnimation { isEditingSaved.toggle() }
+                } label: {
+                    Label(isEditingSaved ? "Done Editing" : "Edit Saved Categories",
+                          systemImage: isEditingSaved ? "checkmark" : "pencil")
+                }
+            } header: {
+                Text("Saved Categories")
+            } footer: {
+                if isEditingSaved {
+                    Text("A new name or icon also applies to the category's card this week and in later weeks. To reorder, go to Settings ▸ Saved Categories.")
+                }
+            }
+        }
+    }
+
+    /// Done adds a category being typed rather than dropping it; with nothing typed it
+    /// just closes. A name that's taken keeps the sheet open, showing why.
+    private func finish() {
+        guard isCreatingNew, !ChecklistStore.cleanName(newName).isEmpty else {
+            dismiss()
+            return
+        }
+        createNew()
     }
 
     /// A saved category to add; swipe to remove it.
@@ -167,6 +189,15 @@ struct AddCategorySheet: View {
 
     private var isNewNameTaken: Bool { store.isCategoryNameTaken(newName) }
 
+    /// Says where the name is taken: this week's cards, or Saved Categories.
+    private var nameTakenMessage: String {
+        let name = ChecklistStore.cleanName(newName)
+        let inSaved = store.savedCategories.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        return inSaved
+            ? "A category named \(name) already exists. Pick it from Saved Categories, or choose another name."
+            : "\(name) is already in this week. Choose another name."
+    }
+
     private func createNew() {
         let name = ChecklistStore.cleanName(newName)
         guard !name.isEmpty, !isNewNameTaken else { return }
@@ -191,28 +222,38 @@ struct AddCategorySheet: View {
 struct DatePickerSheet: View {
     let selectedDate: Date
     let firstWeekday: Int
+    var theme: AppearanceMode = .system
+    var rc: RetroColor = .green
     let onSelect: (Date) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var pickerDate: Date
 
-    init(selectedDate: Date, firstWeekday: Int, onSelect: @escaping (Date) -> Void) {
+    init(selectedDate: Date, firstWeekday: Int, theme: AppearanceMode = .system, rc: RetroColor = .green,
+         onSelect: @escaping (Date) -> Void) {
         self.selectedDate = selectedDate
         self.firstWeekday = firstWeekday
+        self.theme = theme
+        self.rc = rc
         self.onSelect = onSelect
         self._pickerDate = State(initialValue: selectedDate)
     }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                DatePicker("Select a week", selection: $pickerDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .tint(.blue)
-                    .environment(\.calendar, pickerCalendar)
-                Text("Selected: Week of \(formattedWeekStart)")
-                    .font(.subheadline).foregroundStyle(.secondary)
+            // Scrolls rather than pushing the selected week off the bottom at the
+            // half-height detent or with large text.
+            ScrollView {
+                VStack(spacing: 20) {
+                    DatePicker("Select a week", selection: $pickerDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .tint(Theme.isRetro(theme) ? Theme.accent(theme, rc: rc) : .blue)
+                        .environment(\.calendar, pickerCalendar)
+                    Text("Selected: Week of \(formattedWeekStart)")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .padding()
             }
-            .padding()
+            .fontDesign(Theme.isRetro(theme) ? .monospaced : nil)
             .navigationTitle("Go to Week")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -236,10 +277,9 @@ struct DatePickerSheet: View {
         return calendar
     }
 
+    /// In the user's language and region ("Oct 19, 2026", "19 Oct 2026").
     private var formattedWeekStart: String {
-        let start = Week.startOfWeek(containing: pickerDate, firstWeekday: firstWeekday)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: start)
+        Week.startOfWeek(containing: pickerDate, firstWeekday: firstWeekday)
+            .formatted(.dateTime.month(.abbreviated).day().year())
     }
 }

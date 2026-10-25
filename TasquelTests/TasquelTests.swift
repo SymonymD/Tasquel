@@ -1771,6 +1771,27 @@ struct DataRecoveryTests {
         #expect(saved.contains("Unsaved"))
     }
 
+    @Test("A failing save alerts once; the lasting notice stays until a save works")
+    func saveFailureAlertsOnce() throws {
+        let directory = makeTempDirectory()
+        let store = makeIsolatedStore(directory: directory)
+        let weeksFile = directory.appending(path: "checklist.json")
+        try? FileManager.default.removeItem(at: weeksFile)
+        try FileManager.default.createDirectory(at: weeksFile.appending(path: "blocker"), withIntermediateDirectories: true)
+        let categoryID = store.selectedWeek!.categories[0].id
+
+        store.addTask(categoryID: categoryID, title: "First")
+        #expect(store.saveError != nil)
+        store.dismissSaveError()
+        store.addTask(categoryID: categoryID, title: "Second")
+        #expect(store.saveError == nil, "no second alert while saves keep failing")
+        #expect(store.isSaveFailing)
+
+        try FileManager.default.removeItem(at: weeksFile)
+        store.addTask(categoryID: categoryID, title: "Third")
+        #expect(!store.isSaveFailing)
+    }
+
     @Test("A task with missing fields or an unknown mode still loads")
     func lenientTaskDecoding() throws {
         let directory = makeTempDirectory()
@@ -1828,4 +1849,224 @@ func previewKeepsIDs() {
     }
     #expect(CategorySymbols.name(for: "🎸") == "🎸")
     #expect(CategorySymbols.name(for: "cart") == "Shopping")
+}
+
+/// Checking a task with sub-tasks checks them all; unchecking clears them. Checking a
+/// sub-task afterwards then can't uncheck the task by surprise.
+@Test func checkingParentChecksSubtasks() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let taskID = store.addTask(categoryID: categoryID, title: "Pack")!
+    store.addSubtask(categoryID: categoryID, taskID: taskID, title: "Socks")
+    store.addSubtask(categoryID: categoryID, taskID: taskID, title: "Charger")
+    func task() -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == taskID }! }
+
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    #expect(task().isCompleted)
+    let allChecked = task().subtasks.allSatisfy(\.isCompleted)
+    #expect(allChecked)
+
+    store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: task().subtasks[0].id)
+    #expect(!task().isCompleted, "unchecking a sub-task unchecks the task")
+    store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: task().subtasks[0].id)
+    #expect(task().isCompleted)
+
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    #expect(!task().isCompleted)
+    let anyChecked = task().subtasks.contains(where: \.isCompleted)
+    #expect(!anyChecked)
+}
+
+/// Smart Add's result becomes a task with its goal target or list items; a goal with no
+/// amount is left for the user to set.
+@Test func addingParsedTasks() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    func task(_ id: UUID?) -> ChecklistTask? { store.selectedWeek!.categories[0].tasks.first { $0.id == id } }
+
+    let run = store.addParsedTask(ParsedTask(title: "Run", type: .goal, mode: .repeating, goalTarget: 3), categoryID: categoryID)
+    #expect(task(run)?.mode == .repeating)
+    #expect(task(run)?.goalTarget == 3)
+
+    let read = store.addParsedTask(ParsedTask(title: "Read", type: .goal, goalTarget: 20, goalKind: .custom, goalUnit: "pages"), categoryID: categoryID)
+    #expect(task(read)?.goalUnit == "pages")
+
+    let groceries = store.addParsedTask(ParsedTask(title: "Groceries", type: .list, items: ["milk", " ", "eggs"]), categoryID: categoryID)
+    #expect(task(groceries)?.taskType == .list)
+    #expect(task(groceries)?.subtasks.map(\.title) == ["milk", "eggs"], "blank items are skipped")
+
+    let vague = store.addParsedTask(ParsedTask(title: "Stretch", type: .goal), categoryID: categoryID)
+    #expect(task(vague)?.goalTarget == nil)
+    #expect(store.addParsedTask(ParsedTask(title: "  "), categoryID: categoryID) == nil)
+}
+
+/// Smart Add's rules fix what the model can miss, even when it returns the words as a
+/// plain one-time checkbox.
+@Test(arguments: [
+    ("run 3x per week", "Run", TaskType.goal, TaskMode.repeating, 3.0),
+    ("Run 3x a week", "Run", .goal, .repeating, 3),
+    ("gym twice a week", "Gym", .goal, .repeating, 2),
+    ("yoga 3x/week", "Yoga", .goal, .repeating, 3),
+    ("swim three times a week", "Swim", .goal, .repeating, 3),
+    ("Water plants weekly", "Water plants", .checkbox, .repeating, nil),
+    ("call mom every Sunday", "Call mom", .checkbox, .repeating, nil),
+    ("Call the bank until it's sorted", "Call the bank", .checkbox, .carryOver, nil),
+    ("Weekly report this week only", "Weekly report", .checkbox, .oneTime, nil),
+    ("Plan a week of meals", "Plan a week of meals", .checkbox, .oneTime, nil),
+    ("run 3x", "Run", .goal, .oneTime, 3),
+    ("Take pill twice a day", "Take pill", .checkbox, .repeating, nil),
+    // Ordinary words that only look like schedules are left alone.
+    ("Measure twice, cut once", "Measure twice, cut once", .checkbox, .oneTime, nil),
+    ("Print 4 x 6 photos", "Print 4 x 6 photos", .checkbox, .oneTime, nil),
+    ("Buy 1x HDMI cable", "Buy 1x HDMI cable", .checkbox, .oneTime, nil),
+    ("Carry over boxes to garage", "Carry over boxes to garage", .checkbox, .oneTime, nil),
+    ("Dentist every other Tuesday", "Dentist every other Tuesday", .checkbox, .oneTime, nil),
+    ("Pay one-time fee", "Pay one-time fee", .checkbox, .oneTime, nil),
+    ("Daily standup notes", "Daily standup notes", .checkbox, .repeating, nil),
+    ("Study C# daily", "Study C#", .checkbox, .repeating, nil),
+] as [(String, String, TaskType, TaskMode, Double?)])
+func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, target: Double?) {
+    let refined = TaskTextHints.refine(ParsedTask(title: text), from: text)
+    #expect(refined.title == title)
+    #expect(refined.type == type)
+    #expect(refined.mode == mode)
+    #expect(refined.goalTarget == target)
+}
+
+/// Words with no schedule or count are added exactly as typed.
+@Test func smartAddHintsLeavePlainWords() {
+    let refined = TaskTextHints.refine(ParsedTask(title: "buy milk."), from: "buy milk.")
+    #expect(refined == ParsedTask(title: "buy milk."))
+    #expect(TaskTextHints.refine(ParsedTask(title: "read a book every week"), from: "read a book every week").mode == .repeating)
+    let groceries = TaskTextHints.refine(ParsedTask(title: "groceries: milk, eggs, bread"), from: "groceries: milk, eggs, bread")
+    #expect(groceries.type == .list)
+    #expect(groceries.title == "Groceries")
+    #expect(groceries.items == ["milk", "eggs", "bread"])
+    for text in ["Dentist 10:30, bring forms", "Read: Pride and Prejudice"] {
+        #expect(TaskTextHints.refine(ParsedTask(title: text), from: text) == ParsedTask(title: text), "\(text)")
+    }
+    #expect(TaskTextHints.refine(ParsedTask(title: "Note: call mom"), from: "Note: call mom").type == .checkbox, "one item isn't a list")
+}
+
+
+// MARK: - Second Audit Fixes
+
+/// A carry-over deleted two weeks ahead stays deleted once the week in between is saved.
+@Test func carryOverDeletedTwoWeeksAheadStaysDeleted() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver)
+
+    store.navigateToDate(clock.weeks(2, from: clock.now))
+    let copy = category().tasks.first { $0.title == "Taxes" }!
+    store.deleteTask(categoryID: category().id, taskID: copy.id)
+
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.addTask(categoryID: category().id, title: "Other")  // saves the week in between
+    store.navigateToDate(clock.weeks(2, from: clock.now))
+    #expect(!category().tasks.contains { $0.title == "Taxes" })
+}
+
+/// Tapping a name and leaving it unchanged doesn't make a copy stop following its source.
+@Test func unchangedRenameKeepsCopyFollowing() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let copy = category().tasks.first { $0.title == "Taxes" }!
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Taxes")
+    store.updateTaskMode(categoryID: category().id, taskID: copy.id, mode: .carryOver)
+    #expect(category().tasks.first { $0.title == "Taxes" }?.isUserEdited == false)
+}
+
+/// Unchecking a task right after checking it puts its sub-tasks' checks back.
+@Test func uncheckingRestoresSubtaskChecks() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let taskID = store.addTask(categoryID: categoryID, title: "Pack")!
+    for item in ["Socks", "Charger", "Tickets"] { store.addSubtask(categoryID: categoryID, taskID: taskID, title: item) }
+    func task() -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == taskID }! }
+    store.toggleSubtask(categoryID: categoryID, taskID: taskID, subtaskID: task().subtasks[0].id)
+
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    #expect(task().subtasks.map(\.isCompleted) == [true, false, false])
+}
+
+/// A rename can't give a category the name another category has in a later week.
+@Test func renameChecksLaterWeeks() {
+    let thisMonday = Week.startOfWeek(containing: Date())
+    let nextMonday = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: thisMonday)!
+    let store = makeIsolatedStore()
+    var trip = Category(name: "Trip", symbol: "airplane")
+    trip.isThisWeekOnly = true
+    store.weeks = [
+        Week(startDate: nextMonday, categories: [Category(name: "Work", symbol: "briefcase"), trip]),
+        Week(startDate: thisMonday, categories: [Category(name: "Work", symbol: "briefcase")]),
+    ]
+    store.selectedDate = thisMonday
+    #expect(!store.renameCategory(store.selectedWeek!.categories[0].id, newName: "trip"))
+}
+
+/// Adding a deleted category back starts it empty: its carried tasks stay deleted.
+@Test func readdedCategoryStartsEmpty() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    let symbol = store.selectedWeek!.categories[0].symbol
+    store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Taxes", mode: .carryOver)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let category = store.selectedWeek!.categories.first { $0.name == name }!
+    #expect(category.tasks.contains { $0.title == "Taxes" })
+    store.deleteCategory(category.id)
+    store.addCategory(name: name, symbol: symbol)
+    store.navigateToDate(clock.now)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(store.selectedWeek!.categories.first { $0.name == name }?.tasks.isEmpty == true)
+}
+
+/// A saved category the user removed isn't saved again when its card is deleted.
+@Test func removedSavedCategoryStaysRemoved() {
+    let store = makeIsolatedStore()
+    let category = store.selectedWeek!.categories[0]
+    let template = store.savedCategories.first { $0.name == category.name }!
+    store.removeSavedCategory(template.id)
+    store.deleteCategory(category.id)
+    #expect(!store.savedCategories.contains { $0.name == category.name })
+}
+
+/// Without settings.json, the week start comes from the saved weeks, so they stay reachable.
+@Test func weekStartInferredWithoutSettings() throws {
+    let directory = makeTempDirectory()
+    let first = makeIsolatedStore(directory: directory)
+    first.addTask(categoryID: first.selectedWeek!.categories[0].id, title: "Keep me")
+    first.setWeekStartsOnSunday(true)
+    try FileManager.default.removeItem(at: directory.appending(path: "settings.json"))
+
+    let reopened = makeIsolatedStore(directory: directory)
+    #expect(reopened.weekStartsOnSunday)
+    #expect(reopened.selectedWeek!.categories[0].tasks.contains { $0.title == "Keep me" })
+}
+
+/// One category missing a field doesn't stop the file from loading.
+@Test func categoryDecodesLeniently() throws {
+    let category = try JSONDecoder().decode(Tasquel.Category.self, from: Data(#"{"name":"Work"}"#.utf8))
+    #expect(category.name == "Work")
+    #expect(category.symbol == "folder")
+}
+
+/// Smart Add only adds to the week it was typed in, and keeps a goal's unit without an amount.
+@Test func parsedTaskWeekAndUnit() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let otherWeek = store.selectedWeek!.startDay.adding(days: 7)
+    #expect(store.addParsedTask(ParsedTask(title: "Late"), categoryID: categoryID, weekStart: otherWeek) == nil)
+    let id = store.addParsedTask(ParsedTask(title: "Read", type: .goal, goalKind: .custom, goalUnit: "pages"), categoryID: categoryID)
+    let task = store.selectedWeek!.categories[0].tasks.first { $0.id == id }
+    #expect(task?.goalTarget == nil)
+    #expect(task?.goalUnitLabel == "pages")
 }

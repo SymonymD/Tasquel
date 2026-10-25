@@ -4,6 +4,7 @@ import SwiftUI
 
 struct OnboardingSheet: View {
     let store: ChecklistStore
+    let calendar: CalendarService
     @Environment(\.dismiss) private var dismiss
 
     @State private var page: Page = .welcome
@@ -36,6 +37,11 @@ struct OnboardingSheet: View {
                         Button { go(by: -1) } label: {
                             Label("Back", systemImage: "chevron.left").labelStyle(.titleAndIcon)
                         }
+                    }
+                }
+                if page != Page.allCases.last {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Skip", action: finishOnboarding)
                     }
                 }
             }
@@ -101,13 +107,14 @@ struct OnboardingSheet: View {
                             "Tick off a checkbox, work toward a goal like 50 push-ups, or fill a list like Groceries. Goals and lists check themselves off when they're done.")
             case .modes:
                 featureText("You Decide What Happens Next",
-                            "When the week ends, one-time tasks stay behind, carry-over tasks move on if they're unfinished, and repeating tasks come back unchecked. Tap the icons at the end of a task to choose.")
+                            "When the week ends, one-time tasks stay behind, carry-over tasks move on if they're unfinished, and repeating tasks come back unchecked. New tasks start as one-time; tap the icons at the end of a task to choose.")
             case .categories:
                 featureText("Organized by Category",
-                            "Your tasks live in category cards. Tap a card to open it, or tap the grid button to add, remove and rearrange categories.")
+                            "Your tasks live in category cards. Tap a card to open it, and hold and drag one to move it. Tap Edit at the bottom to add or remove categories.")
             case .calendar:
                 featureText("Your Calendar, Alongside",
-                            "See the week's events next to your tasks. Turn on Show Calendar Events in Settings, then tap the calendar button at the bottom.")
+                            "See the week's events next to your tasks: tap the calendar button at the bottom. You can turn this on now, or later in Settings.")
+                calendarButton
             }
         }
         .padding(.vertical, 24)
@@ -122,6 +129,26 @@ struct OnboardingSheet: View {
         case .modes: TaskModesAnimation()
         case .categories: CategoryCardsAnimation()
         case .calendar: CalendarEventsAnimation()
+        }
+    }
+
+    /// Turns on calendar events here, where the reason for asking was just shown, before
+    /// iOS asks for access.
+    @ViewBuilder
+    private var calendarButton: some View {
+        if store.calendarEventsEnabled && calendar.isAuthorized {
+            Label("Calendar Events On", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.green)
+        } else if calendar.authorization == .denied || calendar.authorization == .restricted {
+            Text("Calendar access is off for Tasquel. You can allow it in the Settings app.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        } else {
+            Button("Turn On Calendar Events", systemImage: "calendar") {
+                Task { await CalendarSettingsRows.turnOn(store: store, calendar: calendar) }
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -141,5 +168,5 @@ struct OnboardingSheet: View {
 
 #Preview("Onboarding") {
     // Temporary storage so the preview never reads or writes the app's real data.
-    OnboardingSheet(store: ChecklistStore(directory: .temporaryDirectory))
+    OnboardingSheet(store: ChecklistStore(directory: .temporaryDirectory), calendar: CalendarService(provider: FakeEventProvider()))
 }

@@ -216,12 +216,13 @@ struct Category: Codable, Identifiable, Equatable {
 }
 
 extension Category {
-    /// Decodes `isThisWeekOnly` leniently so data saved before it existed still loads.
+    /// Decodes leniently, like tasks: one category missing a field mustn't stop the whole
+    /// file from loading (`isThisWeekOnly` is also missing in data saved before it existed).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        symbol = try container.decode(String.self, forKey: .symbol)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? "folder"
         tasks = try container.decodeIfPresent([ChecklistTask].self, forKey: .tasks) ?? []
         isThisWeekOnly = try container.decodeIfPresent(Bool.self, forKey: .isThisWeekOnly) ?? false
     }

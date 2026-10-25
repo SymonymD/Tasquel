@@ -24,8 +24,7 @@ struct SettingsSheet: View {
     let calendar: CalendarService
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
-    @State private var editingName = ""
-    @State private var isEditingName = false
+    @State private var showTour = false
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -55,6 +54,7 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
+            .sheet(isPresented: $showTour) { OnboardingSheet(store: store, calendar: calendar) }
             .task {
                 calendar.refreshAuthorization()
                 await calendar.loadCalendars()
@@ -69,10 +69,6 @@ struct SettingsSheet: View {
 
     private var standardSettings: some View {
         List {
-            Section("Name") {
-                nameRow
-            }
-            .listRowBackground(darkCardBg)
             Section("Appearance") {
                 appearanceRows
             }
@@ -104,6 +100,9 @@ struct SettingsSheet: View {
                 Button { showHelp = true } label: {
                     Label("How to Use Tasquel", systemImage: "questionmark.circle")
                 }
+                Button { showTour = true } label: {
+                    Label("Show Welcome Tour", systemImage: "sparkles")
+                }
             } header: {
                 Text("Help")
             }
@@ -132,9 +131,6 @@ struct SettingsSheet: View {
     private var retroSettings: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                retroSection("USER") {
-                    nameRow
-                }
                 retroSection("APPEARANCE") {
                     appearanceRows
                 }
@@ -148,9 +144,7 @@ struct SettingsSheet: View {
                     NavigationLink {
                         SavedCategoriesView(store: store)
                     } label: {
-                        Text("> Saved Categories")
-                            .font(Theme.bodyFont(theme))
-                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                        retroLinkLabel("> Saved Categories")
                     }
                     .buttonStyle(.plain)
                 }
@@ -161,9 +155,11 @@ struct SettingsSheet: View {
                 }
                 retroSection("HELP") {
                     Button { showHelp = true } label: {
-                        Text("> How to Use Tasquel")
-                            .font(Theme.bodyFont(theme))
-                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                        retroLinkLabel("> How to Use Tasquel")
+                    }
+                    .buttonStyle(.plain)
+                    Button { showTour = true } label: {
+                        retroLinkLabel("> Show Welcome Tour")
                     }
                     .buttonStyle(.plain)
                 }
@@ -192,12 +188,16 @@ struct SettingsSheet: View {
 
     /// Opens in Safari.
     private func retroLink(_ title: String, to url: URL) -> some View {
-        Link(destination: url) {
-            Text(title)
-                .font(Theme.bodyFont(theme))
-                .foregroundStyle(Theme.accent(theme, rc: rc))
-                .frame(minHeight: 44)
-        }
+        Link(destination: url) { retroLinkLabel(title) }
+    }
+
+    /// A retro link's text, a full 44pt tall and tappable across the row.
+    private func retroLinkLabel(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.bodyFont(theme))
+            .foregroundStyle(Theme.accent(theme, rc: rc))
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -220,42 +220,6 @@ struct SettingsSheet: View {
     }
 
     // MARK: - Shared Rows
-
-    @ViewBuilder
-    private var nameRow: some View {
-        if isEditingName {
-            HStack {
-                TextField(retro ? "name>" : "Your name", text: $editingName)
-                    .font(retro ? Theme.bodyFont(theme) : .body)
-                    .onSubmit {
-                        let name = editingName.trimmingCharacters(in: .whitespaces)
-                        if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
-                        isEditingName = false
-                    }
-                Button(retro ? "[SAVE]" : "Save") {
-                    let name = editingName.trimmingCharacters(in: .whitespaces)
-                    if !name.isEmpty && name.count <= 20 { store.setUserName(name) }
-                    isEditingName = false
-                }
-                .font(retro ? Theme.bodyFont(theme) : .body)
-                .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
-                .disabled(editingName.trimmingCharacters(in: .whitespaces).isEmpty || editingName.count > 20)
-            }
-        } else {
-            HStack {
-                Text(store.userName.isEmpty ? (retro ? "not_set" : "Not set") : store.userName)
-                    .font(retro ? Theme.bodyFont(theme) : .body)
-                    .foregroundStyle(store.userName.isEmpty ? Theme.textTertiary(theme, rc: rc) : (retro ? Theme.textPrimary(theme, rc: rc) : Color(.label)))
-                Spacer()
-                Button(retro ? "[EDIT]" : "Edit") {
-                    editingName = store.userName
-                    isEditingName = true
-                }
-                .font(retro ? Theme.bodyFont(theme) : .subheadline)
-                .foregroundStyle(retro ? Theme.accent(theme, rc: rc) : .blue)
-            }
-        }
-    }
 
     @ViewBuilder
     private var appearanceRows: some View {
@@ -283,6 +247,7 @@ struct SettingsSheet: View {
                     }
                 }
                 .padding(.vertical, 6)
+                .frame(minHeight: retro ? 44 : nil)
                 .contentShape(Rectangle())
             }
         }

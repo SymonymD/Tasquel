@@ -25,6 +25,8 @@ struct CalendarSettingsRows: View {
             }
         }
         .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+        // Without access a tap can't turn it on; the note below says how to allow it.
+        .disabled(calendar.authorization == .denied || calendar.authorization == .restricted)
 
         switch calendar.authorization {
         case .denied, .restricted, .writeOnly:
@@ -69,16 +71,18 @@ struct CalendarSettingsRows: View {
             store.setCalendarEventsEnabled(false)
             return
         }
-        Task {
-            await calendar.requestAccess()
-            guard calendar.isAuthorized else {
-                store.setCalendarEventsEnabled(false)
-                return
-            }
-            // First time (or every saved calendar is gone): select the user's own calendars.
-            store.setSelectedCalendarIDs(calendar.effectiveSelection(store.selectedCalendarIDs))
-            store.setCalendarEventsEnabled(true)
-        }
+        Task { await Self.turnOn(store: store, calendar: calendar) }
+    }
+
+    /// Asks for access if needed and turns events on. The choice is kept even when access
+    /// is refused, so allowing it later in the Settings app shows events straight away
+    /// (events only show while access is allowed).
+    static func turnOn(store: ChecklistStore, calendar: CalendarService) async {
+        await calendar.requestAccess()
+        store.setCalendarEventsEnabled(true)
+        guard calendar.isAuthorized else { return }
+        // First time (or every saved calendar is gone): select the user's own calendars.
+        store.setSelectedCalendarIDs(calendar.effectiveSelection(store.selectedCalendarIDs))
     }
 }
 
@@ -119,6 +123,9 @@ struct CalendarPicker: View {
                 }
                 .listRowBackground(Theme.isDark(theme) ? Theme.cardFill(theme) : nil)
             }
+            Section {} footer: {
+                Text("At least one calendar stays selected. To hide events, turn off Show Calendar Events.")
+            }
         }
         .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
         .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
@@ -134,7 +141,14 @@ struct CalendarPicker: View {
 
     private func toggle(_ id: String) {
         var ids = selected
-        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        if ids.contains(id) {
+            // An empty selection means "the defaults", so unticking the last one would
+            // tick others back on; it stays instead.
+            guard ids.count > 1 else { return }
+            ids.remove(id)
+        } else {
+            ids.insert(id)
+        }
         // Keep the account/title order stable in the saved list.
         store.setSelectedCalendarIDs(calendar.availableCalendars.map(\.id).filter { ids.contains($0) })
     }

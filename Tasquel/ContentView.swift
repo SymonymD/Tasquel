@@ -24,6 +24,8 @@ struct ContentView: View {
     @State private var lastCardDrop = Date.distantPast
     /// Cards whose own edit button is on (only their tasks become editable).
     @State private var editingCategoryKeys: Set<CategoryLayoutKey> = []
+    /// The cards that were open when edit mode closed them, reopened when it ends.
+    @State private var expandedBeforeEditing: Set<CategoryLayoutKey> = []
     @State private var showOnboarding = false
     @State private var showStartFreshConfirmation = false
     /// The bottom bar's calendar toggle: expands the bar to show the week's events.
@@ -40,7 +42,6 @@ struct ContentView: View {
     @State private var bottomBarHeight: CGFloat = 68
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
     @State private var homeIndicatorInset: CGFloat = 34
-    @Namespace private var bottomBarGlass
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -100,6 +101,7 @@ struct ContentView: View {
                             }
                         }
                         Button("Start Fresh", role: .destructive) { showStartFreshConfirmation = true }
+                        Link("Contact Support", destination: AppInfo.supportURL)
                     }
                     .confirmationDialog("Start Fresh?", isPresented: $showStartFreshConfirmation, titleVisibility: .visible) {
                         Button("Start Fresh", role: .destructive) {
@@ -109,11 +111,27 @@ struct ContentView: View {
                             }
                         }
                     } message: {
-                        Text("Tasquel will continue without the file it can't open. The file is kept on this device, renamed, and isn't deleted.")
+                        Text(startFreshMessage)
                     }
                     Spacer()
                 } else if let week = store.selectedWeek {
                     weekNavigationBar
+                    if isPastWeek {
+                        // Past weeks can't be changed; say so before a tap does nothing.
+                        Label(Theme.isRetro(theme) ? "PAST_WEEK // READ_ONLY" : "Past week · view only", systemImage: "lock")
+                            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
+                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                            .padding(.bottom, -4)
+                    } else if isEditing {
+                        Text(Theme.isRetro(theme) ? "> hold + drag a card to move it" : "Hold and drag a card to move it")
+                            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
+                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                            .padding(.bottom, -4)
+                            .transition(.opacity)
+                    }
+                    if store.isSaveFailing && store.saveError == nil {
+                        saveFailingNotice
+                    }
                     PagerTrack(pager: pager) {
                         // Keyed by week, so the page that slides in keeps its identity when
                         // it becomes current; only the new off-screen neighbor is built.
@@ -146,17 +164,30 @@ struct ContentView: View {
 
             if store.persistenceError == nil {
                 // Pinned to the very bottom of the screen; the bar pads itself above the
-                // home indicator. (The keyboard still pushes it up.)
+                // home indicator. When the keyboard opens the bar goes at once: fading it out
+                // let it ride up the screen on top of the rising keyboard.
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    bottomBar
-                        // Not while the events panel follows a finger: the grid would re-pad
-                        // itself on every frame of the drag.
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            if !isEventsPanelDragged { bottomBarHeight = height }
-                        }
+                    if !isKeyboardVisible {
+                        bottomBar
+                            // Not while the events panel follows a finger: the grid would re-pad
+                            // itself on every frame of the drag.
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                if !isEventsPanelDragged { bottomBarHeight = height }
+                            }
+                            .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                    }
                 }
                 .ignoresSafeArea(.container, edges: .bottom)
+
+                // Just above the keyboard while it's up.
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    if isKeyboardVisible {
+                        keyboardDoneLayer
+                            .transition(.opacity)
+                    }
+                }
             }
 
             // Retro scanline overlay
@@ -181,10 +212,12 @@ struct ContentView: View {
             withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = false }
         }
         .sheet(isPresented: $showDatePicker) {
-            DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday) { date in
+            DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday,
+                            theme: theme, rc: rc) { date in
                 changeWeek(to: date)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+            .preferredColorScheme(store.colorScheme)
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet(store: store, calendar: calendarService)
@@ -195,9 +228,10 @@ struct ContentView: View {
                 isEditing = false
             }
             .presentationDetents([.medium, .large])
+            .preferredColorScheme(store.colorScheme)
         }
         .sheet(isPresented: $showOnboarding) {
-            OnboardingSheet(store: store)
+            OnboardingSheet(store: store, calendar: calendarService)
                 .interactiveDismissDisabled()
         }
         .onAppear {
@@ -228,11 +262,17 @@ struct ContentView: View {
             Task { await calendarService.loadCalendars() }
         }
         .onChange(of: isEditing) {
-            // Edit mode is for managing categories: collapse everything.
-            guard isEditing else { return }
+            // Edit mode is for managing categories: collapse everything, and reopen the
+            // same cards afterwards.
             withAnimation(cardAnimation) {
-                expandedCategoryKeys.removeAll()
-                editingCategoryKeys.removeAll()
+                if isEditing {
+                    expandedBeforeEditing = expandedCategoryKeys
+                    expandedCategoryKeys.removeAll()
+                    editingCategoryKeys.removeAll()
+                } else {
+                    expandedCategoryKeys = expandedBeforeEditing
+                    expandedBeforeEditing.removeAll()
+                }
                 categoryDisplayOrder.removeAll()
                 lastToggledCategory = nil
             }
@@ -416,6 +456,26 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Problems Saving or Loading
+
+    /// What Start Fresh leaves behind, named for the file that couldn't be read.
+    private var startFreshMessage: String {
+        var lost: [String] = []
+        if store.weekLoadError != nil { lost.append("your tasks and weeks") }
+        if store.settingsLoadError != nil { lost.append("your settings and saved categories") }
+        return "Tasquel will start over without \(lost.joined(separator: " or ")). The file it can't open is set aside on this device, not deleted. If you need it back, contact Support before starting fresh."
+    }
+
+    /// Stays while saves keep failing, after the one-time alert is dismissed.
+    private var saveFailingNotice: some View {
+        Label(Theme.isRetro(theme) ? "ERR: CHANGES_NOT_SAVED" : "Changes aren't being saved", systemImage: "exclamationmark.triangle.fill")
+            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced).bold() : .caption.bold())
+            .foregroundStyle(Theme.destructive(theme))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Theme.destructive(theme).opacity(0.12), in: Capsule())
+            .accessibilityHint("Free up storage on your device; everything is saved again with your next change.")
+    }
+
     // MARK: - Expand / Collapse All
 
     /// Collapses every card when any is open; otherwise opens them all.
@@ -424,6 +484,7 @@ struct ContentView: View {
         if store.persistenceError == nil, !isEditing, let week = store.selectedWeek, !gridEntries(for: week).isEmpty {
             let anyExpanded = gridEntries(for: week).contains { expandedCategoryKeys.contains($0.id) }
             Button {
+                if anyExpanded { dismissKeyboard() }  // see collapseCategory
                 withAnimation(cardAnimation) {
                     if anyExpanded {
                         expandedCategoryKeys.removeAll()
@@ -501,66 +562,66 @@ struct ContentView: View {
     @ViewBuilder
     private var bottomBar: some View {
         if Theme.isRetro(theme) {
-            if isKeyboardVisible {
+            retroBottomBar
+        } else {
+            // Flush with the bottom of the screen, like a tab bar: a flat translucent
+            // bar with only a top border, running down behind the home indicator
+            // while the buttons stay above it.
+            // The content shape makes the whole bar a touch target. Without it, taps on
+            // Settings/Edit fell through to the scrolling grid behind the see-through
+            // bar and the buttons never fired.
+            bottomBarStack
+                .padding(.horizontal, 28)
+                .padding(.top, 8)
+                .padding(.bottom, homeIndicatorInset)
+                .contentShape(Rectangle())
+                .background {
+                    Rectangle().fill(.bar)
+                        .overlay(alignment: .top) { Divider() }
+                }
+        }
+    }
+
+    /// The keyboard's Done, at the right just above the keyboard.
+    private var keyboardDoneLayer: some View {
+        Group {
+            if Theme.isRetro(theme) {
                 keyboardDoneButton
                     .background(
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Theme.navCapsule(theme))
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
                     )
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                    .transition(.opacity)
             } else {
-                retroBottomBar
-                    .transition(.opacity)
-            }
-        } else {
-            // The bar and the Done button share a glass ID, so the bar's glass morphs
-            // into the button when the keyboard opens.
-            GlassEffectContainer {
-                if isKeyboardVisible {
-                    keyboardDoneButton
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                        .glassEffectID("bottomBar", in: bottomBarGlass)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                } else {
-                    // Flush with the bottom of the screen, like a tab bar: a flat translucent
-                    // bar with only a top border, running down behind the home indicator
-                    // while the buttons stay above it.
-                    // The content shape makes the whole bar a touch target. Without it, taps on
-                    // Settings/Edit fell through to the scrolling grid behind the see-through
-                    // bar and the buttons never fired.
-                    bottomBarStack
-                        .padding(.horizontal, 28)
-                        .padding(.top, 8)
-                        .padding(.bottom, homeIndicatorInset)
-                        .contentShape(Rectangle())
-                        .background {
-                            Rectangle().fill(.bar)
-                                .overlay(alignment: .top) { Divider() }
-                        }
-                }
+                keyboardDoneButton
+                    .glassEffect(.regular.interactive(), in: Circle())
             }
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
-    /// Closes the keyboard; also closes it when swiped down.
+    /// Closes the keyboard; also closes it when swiped down. Tapping it first saves what's
+    /// typed in an add-task or goal field (rows watch `keyboardDoneRequests` while their
+    /// field still has focus), then closes the keyboard.
     private var keyboardDoneButton: some View {
         Button {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            store.keyboardDoneRequests += 1
+            DispatchQueue.main.async {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
         } label: {
-            Label("Done", systemImage: "keyboard.chevron.compact.down")
-                .font(Theme.isRetro(theme) ? .system(.headline, design: .monospaced) : .headline)
+            // A small icon at the right rather than a full-width bar (user's choice).
+            Image(systemName: "keyboard.chevron.compact.down")
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Theme.isRetro(theme) ? Theme.accent(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Done")
+        .accessibilityHint("Saves what you typed and closes the keyboard")
         .simultaneousGesture(
             DragGesture(minimumDistance: 10).onEnded { value in
                 if value.translation.height > 20 {
@@ -648,35 +709,30 @@ struct ContentView: View {
                 Button {
                     withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
                 } label: {
-                    if isEditing {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: Self.barIconSize))
-                            .foregroundStyle(Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
-                            .frame(width: Self.barButtonSize, height: Self.barButtonSize)
-                            .background {
-                                if Theme.isRetro(theme) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Theme.cardFill(theme))
-                                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.dotComplete(theme, rc: rc), lineWidth: 1.5))
-                                } else {
-                                    Circle().fill(.green.opacity(0.15))
-                                        .overlay(Circle().stroke(.green, lineWidth: 1.5))
-                                }
+                    // Words, not an icon: "Edit" says what it does, and a pencil is each
+                    // card's own edit button.
+                    let color: Color = isEditing
+                        ? (Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
+                        : Theme.textSecondary(theme, rc: rc)
+                    Text(Theme.isRetro(theme) ? (isEditing ? "[DONE]" : "[EDIT]") : (isEditing ? "Done" : "Edit"))
+                        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .headline)
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: Self.barButtonSize, minHeight: Self.barButtonSize * 0.75)
+                        .background {
+                            if Theme.isRetro(theme) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Theme.cardFill(theme))
+                                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(color, lineWidth: isEditing ? 1.5 : 1))
+                            } else if isEditing {
+                                Capsule().fill(.green.opacity(0.15))
+                                    .overlay(Capsule().stroke(.green, lineWidth: 1.5))
                             }
-                    } else {
-                        // Not a pencil: that's each card's own edit button.
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: Self.barIconSize))
-                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                            .frame(width: Self.barButtonSize, height: Self.barButtonSize)
-                            .background {
-                                if Theme.isRetro(theme) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Theme.cardFill(theme))
-                                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-                                }
-                            }
-                    }
+                        }
+                        .frame(height: Self.barButtonSize)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
@@ -734,7 +790,7 @@ struct ContentView: View {
     private static let barIconSize: CGFloat = 24
     private static let barButtonSize: CGFloat = 52
     /// Room above the keyboard taken by the Done button.
-    private static let keyboardDoneClearance: CGFloat = 64
+    private static let keyboardDoneClearance: CGFloat = 56
 
     /// One spring for expand, collapse, and the reflow of neighboring cards.
     private static let cardSpring = Animation.spring(duration: 0.45, bounce: 0.12)
@@ -778,6 +834,13 @@ struct ContentView: View {
                             },
                             onRenamed: { renameCardKey(entry.id, to: $0) }
                         )
+                        // Deleting a card's last task while editing it ends its edit mode, so
+                        // the Add task row is back (empty, as a checkbox and one-time) without
+                        // tapping the checkmark first.
+                        .onChange(of: entry.category.tasks.isEmpty) { _, isEmpty in
+                            guard isEmpty, editingCategoryKeys.contains(entry.id) else { return }
+                            withAnimation(.snappy(duration: 0.25)) { _ = editingCategoryKeys.remove(entry.id) }
+                        }
                         // The dragged card leaves a gap where it will land; a lifted copy
                         // follows the finger (see the overlay below).
                         .opacity(cardDrag?.key == entry.id ? 0 : 1)
@@ -817,8 +880,8 @@ struct ContentView: View {
                 if categories.isEmpty && !isEditing {
                     ContentUnavailableView(
                         "No Categories",
-                        systemImage: "folder.badge.plus",
-                        description: Text("Tap the grid button below to add categories.")
+                        systemImage: store.isPastWeek(week) ? "folder" : "folder.badge.plus",
+                        description: Text(store.isPastWeek(week) ? "Nothing was planned this week." : "Tap Edit below to add categories.")
                     )
                     .padding(.top, 40)
                 }
@@ -826,7 +889,9 @@ struct ContentView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             // Clear of the bottom bar, which grows when the events panel is open.
-            .padding(.bottom, max(80, bottomBarHeight - (isKeyboardVisible ? 0 : homeIndicatorInset) + 16))
+            // (The bar is hidden while the keyboard is up; the Done button is covered by
+            // keyboardDoneClearance below.)
+            .padding(.bottom, isKeyboardVisible ? 80 : max(80, bottomBarHeight - homeIndicatorInset + 16))
         }
         // Dragging down into the keyboard closes it; scrolling up keeps it open.
         .scrollDismissesKeyboard(.interactively)
@@ -1021,6 +1086,9 @@ struct ContentView: View {
     }
 
     private func collapseCategory(_ key: CategoryLayoutKey) {
+        // A field in the closing card would otherwise keep the keyboard, typing into a
+        // card that's no longer shown. (What was typed is saved as the field closes.)
+        dismissKeyboard()
         editingCategoryKeys.remove(key)
         expandedCategoryKeys.remove(key)
         lastToggledCategory = key
@@ -1217,7 +1285,9 @@ private struct CardDragGesture: ViewModifier {
             .contentShape(Rectangle())
             .gesture(TapGesture().onEnded(onTap), including: isCollapsed ? .all : .subviews)
             .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.35)
+                // Half a second, like iOS's own hold-to-move: shorter caught fingers that
+                // only paused before scrolling, reordering cards by accident.
+                LongPressGesture(minimumDuration: 0.5)
                     .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(ContentView.cardGridSpace)))
                     .updating($isHolding) { value, state, _ in
                         if case .second(true, _) = value { state = true }

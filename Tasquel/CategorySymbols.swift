@@ -48,6 +48,8 @@ struct CategorySymbolMenu<Label: View>: View {
     @Binding var symbol: String
     @ViewBuilder let label: () -> Label
     @State private var isChoosingEmoji = false
+    /// A sheet doesn't inherit the app's appearance setting, so it's passed on.
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Menu {
@@ -68,6 +70,7 @@ struct CategorySymbolMenu<Label: View>: View {
         .accessibilityLabel("Icon: \(CategorySymbols.name(for: symbol))")
         .sheet(isPresented: $isChoosingEmoji) {
             EmojiPickerSheet { symbol = $0 }
+                .preferredColorScheme(colorScheme)
         }
     }
 }

@@ -64,16 +64,15 @@ final class GoalUITests: XCTestCase {
         let targetHours = app.textFields["Target hours"]
         XCTAssertTrue(targetHours.waitForExistence(timeout: 3))
 
-        // While the keyboard is up, the bottom bar becomes a Done button that closes it.
+        // While the keyboard is up, the bottom bar becomes a Done button that closes it,
+        // and sets the typed target rather than leaving it unsaved in the field.
         targetHours.tap()
         targetHours.typeText("2")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Settings"].exists, "bottom bar hidden while typing")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "Done closes the keyboard")
-
-        app.buttons["Set"].tap()
-        XCTAssertTrue(app.staticTexts["0m / 2h"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["0m / 2h"].waitForExistence(timeout: 3), "Done set the goal")
         XCTAssertFalse(app.textFields["Amount minutes"].exists, "progress entry hidden until Add Progress")
 
         // Add Progress reveals the entry with the keyboard up; Add hides both.
@@ -167,8 +166,69 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Saved Categories"].waitForExistence(timeout: 3))
         while !help.isHittable { app.swipeUp() }
         help.tap()
-        XCTAssertTrue(app.staticTexts["Type and Mode"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Navigate Weeks"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// Deleting a card's only task while editing it brings the Add task row straight back,
+    /// empty and with the default type and mode.
+    @MainActor
+    func testDeletingLastTaskEndsCardEditing() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Return library books\n")
+        app.buttons["Done"].firstMatch.tap()
+
+        app.buttons["Edit Errands"].tap()
+        XCTAssertFalse(addTask.exists, "no adding while editing")
+        app.buttons["Delete Return library books"].tap()
+        app.buttons["Delete Task"].firstMatch.tap()
+
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3), "the Add task row is back")
+        XCTAssertTrue(app.buttons["Edit Errands"].exists, "the card left edit mode")
+        addTask.tap()
+        XCTAssertTrue(app.buttons["New task options: Checkbox, One-Time"].waitForExistence(timeout: 2))
+    }
+
+    /// Return adds exactly what was typed; Smart Add (where it shows) works out a schedule,
+    /// count or list from the words.
+    @MainActor
+    func testSmartAddWords() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+
+        addTask.typeText("read a book every week\n")
+        XCTAssertTrue(app.staticTexts["read a book every week"].waitForExistence(timeout: 3), "Return adds it as typed")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].exists)
+
+        addTask.typeText("run 3x per week")
+        let smartAdd = app.buttons["Smart Add"]
+        guard smartAdd.waitForExistence(timeout: 2) else {
+            print("Smart Add: Apple Intelligence isn't available in this simulator")
+            return
+        }
+        // The simulator has no model files, so this checks the rules it falls back on; on
+        // a phone with Apple Intelligence the model answers first.
+        smartAdd.tap()
+        XCTAssertTrue(app.staticTexts["Run"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["Task options: Goal, Repeating"].exists, "3x per week is a repeating goal")
+        XCTAssertTrue(app.staticTexts["0/3"].exists)
+
+        addTask.tap()
+        addTask.typeText("Groceries: milk, eggs")
+        smartAdd.tap()
+        XCTAssertTrue(app.staticTexts["milk"].waitForExistence(timeout: 30), "a list with its items")
+        XCTAssertTrue(app.staticTexts["eggs"].exists)
     }
 
     /// A closed card can be dragged onto another card's place without edit mode, and still
@@ -285,7 +345,7 @@ final class GoalUITests: XCTestCase {
         XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
         // Delete sits left of Save Goal and asks first.
-        let delete = app.buttons["Delete goal"]
+        let delete = app.buttons["Delete task"]
         let save = app.buttons["Save Goal"]
         XCTAssertLessThan(delete.frame.maxX, save.frame.minX)
         delete.tap()

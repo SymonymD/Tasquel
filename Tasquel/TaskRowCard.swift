@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 import UIKit
 
 // MARK: - Expanded Card Sizing
@@ -127,9 +128,11 @@ struct TaskRowCard: View {
                                     .frame(width: expandedCardControl(18), height: expandedCardControl(18))
                             }
                         }
+                        .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
                         .touchTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(CheckboxButtonStyle())
+                    .disabled(isPastWeek)
                     .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
                     .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
                 }
@@ -138,6 +141,7 @@ struct TaskRowCard: View {
                 if isEditingTitle {
                     TextField("Task name", text: $editedTitle)
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+                        .cardField(theme, rc: rc, outset: true)
                         .focused($isTitleFocused)
                         // The keyboard opens with the field, so one tap is enough.
                         .onAppear { isTitleFocused = true }
@@ -190,12 +194,17 @@ struct TaskRowCard: View {
                             .font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
                         TextField(subtaskPlaceholder, text: $newSubtaskTitle)
                             .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                            .cardField(theme, rc: rc, outset: true)
                             .focused($isSubtaskFieldFocused)
                             .submitLabel(.next)
-                            .onSubmit(addSubtask)
+                            .onSubmit { addSubtask() }
                             // An empty sub-task field closes when the keyboard does.
                             .onChange(of: isSubtaskFieldFocused) { _, focused in
-                                if !focused && newSubtaskTitle.isEmpty { isAddingSubtask = false }
+                                guard !focused else { return }
+                                // However the keyboard went away, what was typed is added;
+                                // an empty field then closes.
+                                addSubtask(keepTyping: false)
+                                isAddingSubtask = false
                             }
                     }
                     .padding(.leading, 24 * expandedCardScale)
@@ -203,11 +212,16 @@ struct TaskRowCard: View {
                 }
             }
         }
-        .task(id: store.listAwaitingFirstItem) {
-            guard store.listAwaitingFirstItem == task.id else { return }
-            store.listAwaitingFirstItem = nil
-            isSubtaskFieldFocused = true
+        .task(id: store.taskAwaitingFirstInput) {
+            guard store.taskAwaitingFirstInput == task.id else { return }
+            store.taskAwaitingFirstInput = nil
+            if task.taskType == .goal {
+                focusedGoalField = GoalFocus(field: .target, part: goalKindSelection == .time ? .hours : .number)
+            } else {
+                isSubtaskFieldFocused = true
+            }
         }
+        .onChange(of: store.keyboardDoneRequests) { saveTypedOnDone() }
         .confirmationDialog("Delete \(task.title)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete Task", role: .destructive) {
                 store.deleteTask(categoryID: categoryID, taskID: task.id)
@@ -341,17 +355,23 @@ struct TaskRowCard: View {
                 }
                 .padding(.leading, 24 * expandedCardScale)
 
-                if !isPastWeek {
+                if !isPastWeek && !isEditingGoal {
                     HStack(spacing: 20) {
-                        Button(isEditingGoal ? "Cancel" : "Edit Goal") {
-                            if isEditingGoal { closeGoalEditing() } else { startEditingGoal(target: target) }
-                        }
-                        .accessibilityLabel(isEditingGoal ? "Cancel editing goal" : "Edit goal")
+                        Button("Edit Goal") { startEditingGoal(target: target) }
+                            .accessibilityLabel("Edit goal")
                         if !task.goalIsComplete || isAddingProgress {
                             Button(isAddingProgress ? "Cancel" : "Add Progress") {
                                 if isAddingProgress { closeAddProgress() } else { startAddingProgress() }
                             }
                             .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
+                        }
+                        // The most common update, in one tap.
+                        if !task.goalIsComplete && !isAddingProgress {
+                            Button(action: addQuickProgress) {
+                                actionPill(task.goalKind == .time ? "+15m" : "+1")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(task.goalKind == .time ? "Add 15 minutes" : "Add 1")
                         }
                     }
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
@@ -418,13 +438,19 @@ struct TaskRowCard: View {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
             HStack(spacing: 12) {
-                // Same width, in the style of the type/mode picker's buttons.
-                Button { showDeleteConfirmation = true } label: {
-                    OptionButtonLabel(title: "Delete", symbol: "trash", color: .red, isHighlighted: true,
-                                      theme: theme, rc: rc)
+                // Deleting removes the whole task, so it's small and kept apart from Save.
+                Button(role: .destructive) { showDeleteConfirmation = true } label: {
+                    Text("Delete Task")
+                        .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                        .foregroundStyle(Theme.destructive(theme))
+                        .touchTarget()
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Delete goal")
+                .accessibilityLabel("Delete task")
+                Spacer(minLength: 0)
+                Button("Cancel", action: closeGoalEditing)
+                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                    .accessibilityLabel("Cancel editing goal")
                 Button(action: saveEditedGoal) {
                     OptionButtonLabel(title: "Save Goal", symbol: "checkmark", color: .green, isHighlighted: true,
                                       theme: theme, rc: rc, isEnabled: canSaveEditedGoal)
@@ -494,7 +520,7 @@ struct TaskRowCard: View {
         TextField("Unit", text: $goalUnitText)
             .font(goalFieldFont)
             .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-            .textFieldStyle(.roundedBorder)
+            .cardField(theme, rc: rc)
             .frame(minWidth: 64 * expandedCardScale)
             .focused($focusedGoalField, equals: GoalFocus(field: .unitName, part: .number))
             .accessibilityLabel("Unit name, for example pages")
@@ -524,7 +550,7 @@ struct TaskRowCard: View {
             .font(goalFieldFont)
             .foregroundStyle(Theme.textPrimary(theme, rc: rc))
             .keyboardType(keyboard)
-            .textFieldStyle(.roundedBorder)
+            .cardField(theme, rc: rc)
             .frame(width: width * expandedCardScale)
             .focused($focusedGoalField, equals: focus)
             // A tap just outside the small box still lands in it.
@@ -575,14 +601,14 @@ struct TaskRowCard: View {
     }
 
     /// Return keeps the keyboard up for the next item; Return on an empty field closes it.
-    private func addSubtask() {
+    private func addSubtask(keepTyping: Bool = true) {
         let title = newSubtaskTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
         withAnimation(.snappy(duration: 0.2)) {
             store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
         newSubtaskTitle = ""
-        isSubtaskFieldFocused = true
+        if keepTyping { isSubtaskFieldFocused = true }
     }
 
     private func startEditingTitle() {
@@ -651,6 +677,30 @@ struct TaskRowCard: View {
         focusedGoalField = nil
     }
 
+    /// One more (or 15 more minutes) toward the goal.
+    private func addQuickProgress() {
+        let amount: Double = task.goalKind == .time ? 15 : 1
+        withAnimation(.snappy(duration: 0.2)) {
+            store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: (task.goalProgress ?? 0) + amount)
+        }
+    }
+
+    /// The keyboard's Done saves a goal amount or sub-task typed in this row but not yet
+    /// set or added; number pads have no Return key, so otherwise it would be lost.
+    private func saveTypedOnDone() {
+        if isSubtaskFieldFocused {
+            addSubtask()
+            return
+        }
+        guard let field = focusedGoalField?.field else { return }
+        switch field {
+        case .addProgress:
+            addGoalProgress()
+        case .target, .unitName, .editProgress:
+            if isEditingGoal { saveEditedGoal() } else { setGoal() }
+        }
+    }
+
     /// Adds the typed amount, then hides the entry row and closes the keyboard.
     private func addGoalProgress() {
         guard let amount = addProgressInput.positiveValue(for: task.goalKind) else { return }
@@ -659,6 +709,27 @@ struct TaskRowCard: View {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: current + amount)
             closeAddProgress()
         }
+    }
+}
+
+// MARK: - Checkboxes
+
+/// A checkbox's button style: no press or disabled dimming of its own, so a past week's
+/// checkbox can be disabled (VoiceOver says so) while `PastWeekDimming` sets the look.
+private struct CheckboxButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
+
+/// Past weeks are view only: their checkboxes are dimmed. Not in retro, whose text
+/// colors are tuned to keep 4.5:1 and would fall below it.
+private struct PastWeekDimming: ViewModifier {
+    let isPastWeek: Bool
+    let theme: AppearanceMode
+
+    func body(content: Content) -> some View {
+        content.opacity(isPastWeek && !Theme.isRetro(theme) ? 0.5 : 1)
     }
 }
 
@@ -759,7 +830,7 @@ struct SubTaskRowCard: View {
     @State private var showDeleteConfirmation = false
 
     /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
-    private static let touchHeight: CGFloat = 28
+    private static let touchHeight: CGFloat = 32
 
     private func commitTitle() {
         let title = editedTitle.trimmingCharacters(in: .whitespaces)
@@ -789,9 +860,10 @@ struct SubTaskRowCard: View {
                 checkbox
             }
 
-            if isEditing && !isPastWeek && isEditingTitle {
+            if !isPastWeek && isEditingTitle {
                 TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle)
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
+                    .cardField(theme, rc: rc, outset: true)
                     .focused($isTitleFocused)
                     .onAppear { isTitleFocused = true }
                     .onSubmit(commitTitle)
@@ -806,8 +878,9 @@ struct SubTaskRowCard: View {
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    // One tap renames, like a task's name.
                     .onTapGesture {
-                        if isEditing && !isPastWeek {
+                        if !isPastWeek {
                             editedTitle = subtask.title
                             isEditingTitle = true
                         }
@@ -815,7 +888,7 @@ struct SubTaskRowCard: View {
             }
         }
         .padding(.leading, 24 * expandedCardScale)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         // Leaving edit mode removes the field before it loses focus: save the name now.
         .onChange(of: isEditing) { _, editing in
             if !editing && isEditingTitle { commitTitle() }
@@ -846,9 +919,11 @@ struct SubTaskRowCard: View {
                         .frame(width: expandedCardControl(14), height: expandedCardControl(14))
                 }
             }
+            .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
             .touchTarget(height: Self.touchHeight)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CheckboxButtonStyle())
+        .disabled(isPastWeek)
         .accessibilityLabel(TaskAccessibility.checkboxLabel(subtask.title, isCompleted: subtask.isCompleted))
         .accessibilityAddTraits(subtask.isCompleted ? .isSelected : [])
     }
@@ -868,44 +943,173 @@ struct AddTaskRowCard: View {
     @State private var newMode: TaskMode = .oneTime
     @State private var showOptions = false
     @FocusState private var isFocused: Bool
+    /// Working out a task from the typed words (Smart Add).
+    @State private var isParsing = false
+    /// The type or mode the user chose in the picker; Smart Add keeps them.
+    @State private var pickedType = false
+    @State private var pickedMode = false
+    /// Bumped when Smart Add adds a task, for its haptic.
+    @State private var smartAddCount = 0
+    /// Optional: Smart Add only shows when the parser can run on this device.
+    private let parser: TaskTextParser = AppleIntelligenceTaskParser.shared
+
+    private var hasText: Bool { !newTitle.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
-        HStack(spacing: 10) {
+        // Wider than other rows: the field's fill reaches past its text (see cardField).
+        HStack(spacing: 14) {
             Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                 .font(.expandedCard(.subheadline)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
             TextField(Theme.isRetro(theme) ? "new_task>" : "Add task", text: $newTitle)
-                .font(.expandedCard(.subheadline, design: Theme.isRetro(theme) ? .monospaced : .default)).focused($isFocused).onSubmit(addTask)
-            // Kept while the picker is open, which can take the keyboard away.
-            if isFocused || showOptions || !newTitle.isEmpty {
-                Button { showOptions = true } label: {
-                    TaskOptionsLabel(type: newType, mode: newMode, theme: theme, rc: rc)
+                .font(.expandedCard(.subheadline, design: Theme.isRetro(theme) ? .monospaced : .default))
+                .cardField(theme, rc: rc, outset: true)
+                .focused($isFocused)
+                .submitLabel(.next)
+                .onSubmit { addTask(keepTyping: true) }
+                .onChange(of: isFocused) { _, focused in
+                    if focused {
+                        parser.prepare()
+                    } else if !showOptions {
+                        // However the keyboard went away (swiped down, another field
+                        // tapped), what was typed is added, like a renamed task's name.
+                        addTask(keepTyping: false)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("New task options: \(newType.label), \(newMode.label)")
-                .popover(isPresented: $showOptions) {
-                    TaskOptionsPicker(
-                        type: newType, mode: newMode, theme: theme, rc: rc,
-                        onSelectType: { newType = $0 },
-                        onSelectMode: { newMode = $0 },
-                        onAdd: newTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : {
-                            showOptions = false
-                            addTask()
-                        }
-                    )
+            HStack(spacing: 6) {
+                if isParsing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(minWidth: expandedCardControl(36), minHeight: expandedCardControl(36))
+                        .accessibilityLabel("Working out the task")
+                } else if hasText && parser.isAvailable {
+                    smartAddButton
+                }
+                // Kept while the picker is open, which can take the keyboard away.
+                if !isParsing && (isFocused || showOptions || !newTitle.isEmpty) {
+                    Button { showOptions = true } label: {
+                        TaskOptionsLabel(type: newType, mode: newMode, theme: theme, rc: rc)
+                            .contentShape(Rectangle())
+                            .touchTarget()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("New task options: \(newType.label), \(newMode.label)")
+                    .popover(isPresented: $showOptions) {
+                        TaskOptionsPicker(
+                            type: newType, mode: newMode, theme: theme, rc: rc,
+                            onSelectType: { newType = $0; pickedType = true },
+                            onSelectMode: { newMode = $0; pickedMode = true },
+                            onAdd: newTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : {
+                                showOptions = false
+                                addTask(keepTyping: true)
+                            }
+                        )
+                    }
                 }
             }
         }
+        // The keyboard's Done adds a typed task rather than leaving it in the field.
+        .onChange(of: store.keyboardDoneRequests) {
+            if isFocused { addTask(keepTyping: false) }
+        }
+        .sensoryFeedback(.success, trigger: smartAddCount)
     }
 
-    /// Return uses the type and mode last picked.
-    private func addTask() {
+    /// Smart Add: the typed words become a task with its type, mode, goal or list items
+    /// worked out ("Run 3 times every week" → a repeating goal of 3). Styled like the
+    /// type and mode capsule beside it, so it reads as a button.
+    private var smartAddButton: some View {
+        Button(action: smartAdd) {
+            Image(systemName: "sparkles")
+                .expandedCardFont(.subheadline)
+                .foregroundStyle(Theme.accent(theme, rc: rc))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Theme.accent(theme, rc: rc).opacity(0.15), in: Capsule())
+                .overlay(Capsule().stroke(Theme.accent(theme, rc: rc).opacity(0.35), lineWidth: 1))
+                .contentShape(Rectangle())
+                .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Smart Add")
+        .accessibilityHint("Works out the task's type, schedule, goal or list items from what you typed")
+    }
+
+    /// The model reads the words, then the plain rules correct what it can miss. If the
+    /// model can't run or fails, the rules alone decide. Picks made in the type and mode
+    /// picker are kept. The task goes into the week it was typed in; if the user moved to
+    /// another week meanwhile, nothing is added and the text stays.
+    private func smartAdd() {
+        let text = newTitle.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, !isParsing else { return }
+        let weekStart = store.selectedWeek?.startDay
+        isParsing = true
+        Task {
+            var parsed: ParsedTask
+            do {
+                parsed = try await parser.parse(text) ?? TaskTextHints.refine(ParsedTask(title: text), from: text)
+            } catch {
+                Self.log.error("Smart Add couldn't parse: \(error)")
+                parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
+            }
+            isParsing = false
+            if pickedMode { parsed.mode = newMode }
+            if pickedType && parsed.type != newType {
+                parsed.type = newType
+                parsed.items = []
+                parsed.goalTarget = nil
+            }
+            let awaitsTarget = parsed.type == .goal && parsed.goalTarget == nil
+            var added: UUID?
+            withAnimation(.snappy(duration: 0.2)) {
+                added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: weekStart)
+                // A goal it couldn't find an amount for takes the keyboard for its target.
+                if awaitsTarget, let added { store.taskAwaitingFirstInput = added }
+            }
+            guard added != nil else { return }
+            smartAddCount += 1
+            AccessibilityNotification.Announcement("Added \(Self.describe(parsed))").post()
+            // Anything typed meanwhile stays.
+            if newTitle.trimmingCharacters(in: .whitespaces) == text { newTitle = "" }
+            resetOptions()
+        }
+    }
+
+    /// "Run, repeating goal of 3" for VoiceOver.
+    private static func describe(_ task: ParsedTask) -> String {
+        let mode = task.mode.label.lowercased()
+        switch task.type {
+        case .goal:
+            let amount = task.goalTarget.map { " of \(task.goalKind.format($0))\(task.goalUnit.isEmpty ? "" : " \(task.goalUnit)")" } ?? ""
+            return "\(task.title), \(mode) goal\(amount)"
+        case .list:
+            return "\(task.title), \(mode) list with \(task.items.count) items"
+        case .checkbox:
+            return "\(task.title), \(mode)"
+        }
+    }
+
+    private static let log = Logger(subsystem: "com.symonym.Tasquel", category: "SmartAdd")
+
+    /// Adds exactly what was typed, with the type and mode last picked (Smart Add is the
+    /// only thing that reads the words). Return keeps the keyboard up for the next task;
+    /// a new list or goal takes the keyboard for its first item or target instead.
+    private func addTask(keepTyping: Bool) {
         let title = newTitle.trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty else { return }
+        guard !title.isEmpty, !isParsing else { return }
+        let task = ParsedTask(title: title, type: newType, mode: newMode)
+        let awaitsInput = task.type != .checkbox
         withAnimation(.snappy(duration: 0.2)) {
-            let id = store.addTask(categoryID: categoryID, title: title, mode: newMode, type: newType)
-            // A new list goes straight to typing its first item.
-            if newType == .list { store.listAwaitingFirstItem = id }
+            let id = store.addParsedTask(task, categoryID: categoryID)
+            if keepTyping && awaitsInput { store.taskAwaitingFirstInput = id }
         }
         newTitle = ""
+        if keepTyping && !awaitsInput { isFocused = true }
+    }
+
+    private func resetOptions() {
+        newType = .checkbox
+        newMode = .oneTime
+        pickedType = false
+        pickedMode = false
     }
 }

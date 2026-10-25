@@ -12,16 +12,19 @@ struct HelpSheet: View {
 
     private let helpSections: [(title: String, items: [(symbol: String, title: String, detail: String)])] = [
         ("Weekly Checklist", [
-            ("calendar", "Navigate Weeks", "Swipe left or right, use the arrows, or tap the calendar icon to jump to any week. Future weeks can be filled in ahead of time. Past weeks are read-only. Tasquel opens on the current week."),
-            ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings, then tap the calendar button next to Settings to see the week's events. Tap an event to open it in Calendar. Choose which calendars to include in Settings; events stay on your device."),
-            ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap the collapse icon to close it. The button at the top right opens or closes all cards. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
+            ("calendar", "Navigate Weeks", "Swipe left or right, use the arrows, or tap the calendar icon to jump to any week. Future weeks can be filled in ahead of time. Past weeks are view only, as the line under the week bar says. Tasquel opens on the current week."),
+            ("calendar.day.timeline.left", "Week Start", "Weeks start on Monday. Choose Sunday in Settings ▸ Week."),
+            ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings, then tap the calendar button next to Settings to see the week's events. Tap an event to see that day in Calendar. Choose which calendars to include in Settings; events stay on your device."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to open it and see its tasks; tap its name or the collapse icon to close it. The button at the top right opens or closes all cards. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
         ]),
         ("Tasks", [
+            ("sparkles", "Smart Add", "With Apple Intelligence on, type a task in your own words and tap the sparkles button: \"Run 3x per week\" becomes a repeating goal of 3, and \"Groceries: milk, eggs\" a list with those items. Any type or mode you picked is kept. It works on your device; nothing is sent anywhere. Return adds exactly what you typed."),
             ("slider.horizontal.3", "Type and Mode", "Every task has a type and a mode. Tap the icons at the end of a task to change either."),
             ("checkmark.circle", "Checkbox", "A task to tick off. Tap + next to its icons to add sub-tasks."),
-            ("target", "Goal", "Progress toward a target, like 50 push-ups or 2 hours. Use Add Progress as you go; it checks itself off when you reach the target."),
+            ("target", "Goal", "Progress toward a target, like 50 push-ups or 2 hours. Tap +1 (or +15m for a time goal) to count one more, or Add Progress for any amount; it checks itself off when you reach the target."),
             ("list.bullet", "List", "A checklist like Groceries. Type an item and press Return to start the next one. The list checks itself off when every item is checked."),
-            ("hand.draw", "Rename and Delete", "Tap a task's name to rename it. Tap a card's edit button to show a trash can on each task. A goal's editor also has Delete."),
+            ("keyboard.chevron.compact.down", "Closing the Keyboard", "Tap the round keyboard button at the bottom right, or swipe down on your cards. Anything you've typed is kept: a new task or sub-task is added, and the keyboard button also sets a goal amount you've typed."),
+            ("hand.draw", "Rename and Delete", "Tap a task's or sub-task's name to rename it. Tap a card's edit button to show a trash can on each task. A goal's editor also has Delete Task."),
         ]),
         ("After This Week", [
             ("1.circle", "One-Time", "This week only. New tasks start as One-Time."),
@@ -30,13 +33,13 @@ struct HelpSheet: View {
         ]),
         ("Sub-Tasks", [
             ("plus", "Adding Sub-Tasks", "Tap + on a checkbox task, type a sub-task and press Return to add another. Press Return on an empty line to finish."),
-            ("checkmark.circle", "Completing Sub-Tasks", "Tap a sub-task's circle to check it off. When every sub-task is checked, the task checks itself off."),
+            ("checkmark.circle", "Completing Sub-Tasks", "Tap a sub-task's circle to check it off. When every sub-task is checked, the task checks itself off, and checking the task checks all its sub-tasks. Unchecking the task right away puts back the checks it had."),
         ]),
         ("Managing Categories", [
-            ("square.grid.2x2", "Edit Mode", "Tap the grid button in the bottom bar to add or delete categories. Cards stay closed while editing."),
-            ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and future weeks."),
-            ("trash", "Deleting Categories", "Deleting a category removes it from this week on. Past weeks keep their history, and you can add it back from Add Category."),
-            ("square.stack", "Saved Categories", "Add Category offers your saved categories. Edit, reorder or delete them in Settings ▸ Saved Categories. A category you add for every week is saved automatically."),
+            ("square.grid.2x2", "Edit Mode", "Tap Edit in the bottom bar to add or delete categories. Open cards close while editing and reopen when you tap Done."),
+            ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and future weeks. The icon can also be any emoji: pick Choose Emoji… from the icon menu."),
+            ("trash", "Deleting Categories", "Deleting a category removes it and its tasks from this week on. Past weeks keep their history. It's kept in Saved Categories (unless you removed it there), so you can add it back from Add Category, but its tasks won't return."),
+            ("square.stack", "Saved Categories", "Add Category offers your saved categories; tap Edit Saved Categories there to rename, re-icon or remove them. Reorder them in Settings ▸ Saved Categories. A new name or icon also applies to the category's card from this week on. A category you add for every week is saved automatically."),
         ]),
     ]
 

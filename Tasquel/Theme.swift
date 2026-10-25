@@ -165,6 +165,27 @@ struct ScanlineOverlay: View {
     }
 }
 
+// MARK: - Card Text Fields
+
+extension View {
+    /// The look of every text field in a card: a soft fill with slightly rounded corners
+    /// (square in retro, like its cards). With `outset`, the fill reaches beyond the text
+    /// instead of padding it, so swapping a name for its field doesn't move the words.
+    func cardField(_ theme: AppearanceMode, rc: RetroColor, outset: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 8, style: .continuous)
+        let fill = Theme.textTertiary(theme, rc: rc).opacity(0.2)
+        return Group {
+            if outset {
+                background { shape.fill(fill).padding(.horizontal, -8).padding(.vertical, -4) }
+            } else {
+                textFieldStyle(.plain)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(fill, in: shape)
+            }
+        }
+    }
+}
+
 // MARK: - Sheet Done Button
 
 /// A sheet's Done button: a checkmark in a plain glass circle, still read as "Done".

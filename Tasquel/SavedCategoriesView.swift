@@ -1,5 +1,25 @@
 import SwiftUI
 
+// MARK: - Removing a Saved Category
+
+extension View {
+    /// The one confirmation for removing a saved category, used by Settings and Add Category.
+    func savedCategoryRemoval(_ template: Binding<CategoryTemplate?>, store: ChecklistStore) -> some View {
+        confirmationDialog(
+            "Remove \(template.wrappedValue?.name ?? "")?",
+            isPresented: Binding(get: { template.wrappedValue != nil }, set: { if !$0 { template.wrappedValue = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Remove Saved Category", role: .destructive) {
+                if let removed = template.wrappedValue { store.removeSavedCategory(removed.id) }
+                template.wrappedValue = nil
+            }
+        } message: {
+            Text("It won't be offered in Add Category any more. Categories already in your weeks stay.")
+        }
+    }
+}
+
 // MARK: - Saved Categories (Settings)
 
 /// Edit the saved categories offered in Add Category: rename and change icons in place,
@@ -8,7 +28,7 @@ import SwiftUI
 struct SavedCategoriesView: View {
     let store: ChecklistStore
     @State private var editing: TemplateDraft?
-    @State private var templateToDelete: CategoryTemplate?
+    @State private var templateToRemove: CategoryTemplate?
     @State private var editMode: EditMode = .inactive
 
     private var theme: AppearanceMode { store.appearanceMode }
@@ -25,12 +45,18 @@ struct SavedCategoriesView: View {
     var body: some View {
         List {
             Section {
+                // In edit mode each row leads with the same remove button as Add Category
+                // (one tap, then the confirmation), and gets a reorder handle.
                 ForEach(store.savedCategories) { template in
-                    SavedCategoryRow(store: store, template: template)
-                }
-                // Gives both the swipe and, in edit mode, a visible delete button on each row.
-                .onDelete { offsets in
-                    templateToDelete = offsets.first.map { store.savedCategories[$0] }
+                    SavedCategoryRow(store: store, template: template,
+                                     onRemove: editMode.isEditing ? { templateToRemove = template } : nil)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                templateToRemove = template
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
                 }
                 .onMove { store.moveSavedCategories(fromOffsets: $0, toOffset: $1) }
                 .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
@@ -69,18 +95,7 @@ struct SavedCategoriesView: View {
             TemplateEditor(store: store, draft: draft)
                 .presentationDetents([.medium])
         }
-        .confirmationDialog(
-            "Delete \(templateToDelete?.name ?? "")?",
-            isPresented: Binding(get: { templateToDelete != nil }, set: { if !$0 { templateToDelete = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete Saved Category", role: .destructive) {
-                if let templateToDelete { store.removeSavedCategory(templateToDelete.id) }
-                templateToDelete = nil
-            }
-        } message: {
-            Text("It won't be offered in Add Category any more. Categories already in your weeks stay.")
-        }
+        .savedCategoryRemoval($templateToRemove, store: store)
     }
 }
 
@@ -216,6 +231,7 @@ private struct TemplateEditor: View {
             .onAppear { if draft.id == nil { isNameFocused = true } }
         }
         .preferredColorScheme(store.colorScheme)
+        .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
     }
 
     private func save() {

@@ -13,7 +13,7 @@ private extension View {
         } message: {
             Text(category.isThisWeekOnly
                  ? "This removes the category and its tasks from this week."
-                 : "This removes the category and its tasks from this week and all upcoming weeks. Past weeks keep their history. You can add it back from Add Category.")
+                 : "This removes the category and its tasks from this week and all upcoming weeks. Past weeks keep their history. You can add the category back from Add Category, but its tasks won't return.")
         }
     }
 }
@@ -148,6 +148,39 @@ struct CategoryGridCard: View {
 
     private var header: some View {
         HStack(alignment: .center) {
+            headerTitle
+                // An open card also closes from a tap on its icon or name, not just
+                // the button at its bottom. (Off while renaming, and on a closed card,
+                // whose taps go to the grid's tap-or-hold gesture.)
+                .contentShape(Rectangle())
+                .gesture(TapGesture().onEnded { onCollapse() },
+                         including: isExpanded && !isRenaming && !isEditing ? .all : .subviews)
+            Spacer(minLength: 4)
+            // The edit button lives beside the pie chart in space that opens up as
+            // the card expands, so it travels with the pie instead of being inserted.
+            completionIcon
+                .padding(.leading, showsEditButton ? expandedPieSize + 10 : 0)
+                .overlay(alignment: .leading) {
+                    if !isPastWeek {
+                        Button { onToggleEdit() } label: {
+                            Image(systemName: isEditingTasks ? "checkmark.circle.fill" : "square.and.pencil")
+                                .font(.system(size: expandedPieSize))
+                                .foregroundStyle(isEditingTasks ? .green : Theme.textSecondary(theme, rc: rc))
+                                .touchTarget()
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(showsEditButton ? 1 : 0)
+                        .scaleEffect(showsEditButton ? 1 : 0.5)
+                        .allowsHitTesting(showsEditButton)
+                        .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit \(category.name)")
+                    }
+                }
+        }
+    }
+
+    /// The card's icon and name, or their editors while renaming.
+    private var headerTitle: some View {
+        HStack(alignment: .center) {
             if isRenaming {
                 CategorySymbolMenu(symbol: Binding(
                     get: { category.symbol },
@@ -172,8 +205,7 @@ struct CategoryGridCard: View {
                     .onChange(of: isNameFocused) { _, focused in
                         if !focused { commitName() }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                    .cardField(theme, rc: rc)
                     .accessibilityLabel("Category name")
             } else {
                 Text(Theme.isRetro(theme) ? "[\(category.name.uppercased())]" : category.name)
@@ -184,26 +216,6 @@ struct CategoryGridCard: View {
                     // Long names wrap rather than being cut off at large text sizes.
                     .lineLimit(2)
             }
-            Spacer(minLength: 4)
-            // The edit button lives beside the pie chart in space that opens up as
-            // the card expands, so it travels with the pie instead of being inserted.
-            completionIcon
-                .padding(.leading, showsEditButton ? expandedPieSize + 10 : 0)
-                .overlay(alignment: .leading) {
-                    if !isPastWeek {
-                        Button { onToggleEdit() } label: {
-                            Image(systemName: isEditingTasks ? "checkmark.circle.fill" : "square.and.pencil")
-                                .font(.system(size: expandedPieSize))
-                                .foregroundStyle(isEditingTasks ? .green : Theme.textSecondary(theme, rc: rc))
-                                .touchTarget()
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(showsEditButton ? 1 : 0)
-                        .scaleEffect(showsEditButton ? 1 : 0.5)
-                        .allowsHitTesting(showsEditButton)
-                        .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit \(category.name)")
-                    }
-                }
         }
     }
 
@@ -305,11 +317,13 @@ private struct CollapsedCategoryContent: View {
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
+    /// Tasks listed on a closed card; any more are counted below them.
+    private static let previewCount = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 3) {
-                ForEach(category.tasks.prefix(5)) { task in
+                ForEach(category.tasks.prefix(Self.previewCount)) { task in
                     HStack(spacing: 6) {
                         if Theme.isRetro(theme) {
                             Text(task.isCompleted ? "[x]" : "[ ]")
@@ -326,6 +340,11 @@ private struct CollapsedCategoryContent: View {
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc)).lineLimit(1)
                     }
+                }
+                if category.tasks.count > Self.previewCount {
+                    Text(Theme.isRetro(theme) ? "+\(category.tasks.count - Self.previewCount)_more" : "+\(category.tasks.count - Self.previewCount) more")
+                        .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
+                        .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
             }
 
