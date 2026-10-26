@@ -125,6 +125,11 @@ Key behaviors:
 - Debug builds only.
 - `-isolatedData`: the app uses throwaway storage (never the simulator's real data). Fresh data shows onboarding first.
 - `-fakeCalendar`: sample calendar events instead of EventKit.
+- `-demoData`: throwaway storage, no onboarding, and a current week filled with sample tasks (`DemoData.swift`), plus a fuller set of fake events; `-demoAppearance <system|light|dark|retro>` picks the theme. For App Store screenshots.
+
+## App Store Screenshots
+
+`scripts/app-store-screenshots.sh [iphone|ipad]` boots an iPhone 17 Pro Max and an iPad Pro 13" (M5) simulator (iOS 26.3), sets a 9:41 status bar, and runs `ScreenshotTests` (skipped in normal test runs), which steps through the screens with `-demoData` and has the script take each picture with `xcrun simctl io … screenshot`. On iPad it first sets Settings ▸ Multitasking & Gestures ▸ Full Screen Apps (windowed apps show a resize handle). Output: `screenshots/iphone/` (1320×2868) and `screenshots/ipad/` (2064×2752); the script checks the sizes.
 
 ## Test Targets
 

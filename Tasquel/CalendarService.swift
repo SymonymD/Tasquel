@@ -129,6 +129,13 @@ final class EventKitProvider: EventProviding, @unchecked Sendable {
 
 /// Sample events relative to the current week, for UI tests (`-fakeCalendar`).
 final class FakeEventProvider: EventProviding, @unchecked Sendable {
+    /// A fuller week for App Store screenshots (`-demoData`); tests rely on the short list.
+    let includesDemoEvents: Bool
+
+    init(includesDemoEvents: Bool = false) {
+        self.includesDemoEvents = includesDemoEvents
+    }
+
     func authorization() -> CalendarAuthorization { .authorized }
     func requestAccess() async -> Bool { true }
 
@@ -151,7 +158,12 @@ final class FakeEventProvider: EventProviding, @unchecked Sendable {
             CalendarEvent(id: "dentist", eventIdentifier: "dentist", title: "Dentist", start: at(2, 15), end: at(2, 16), isAllDay: false, calendarID: "home", color: .blue),
             CalendarEvent(id: "trip", eventIdentifier: "trip", title: "Lake Trip", start: at(4, 0), end: at(6, 0), isAllDay: true, calendarID: "home", color: .blue),
             CalendarEvent(id: "bday", eventIdentifier: "bday", title: "Sam's Birthday", start: at(3, 0), end: at(4, 0), isAllDay: true, calendarID: "birthdays", color: .gray),
-        ]
+        ] + (includesDemoEvents ? [
+            CalendarEvent(id: "yoga", eventIdentifier: "yoga", title: "Yoga Class", start: at(1, 18), end: at(1, 19), isAllDay: false, calendarID: "home", color: .blue),
+            CalendarEvent(id: "review", eventIdentifier: "review", title: "Design Review", start: at(2, 11), end: at(2, 12), isAllDay: false, calendarID: "work", color: .orange),
+            CalendarEvent(id: "lunch", eventIdentifier: "lunch", title: "Lunch with Alex", start: at(3, 12, 30), end: at(3, 13, 30), isAllDay: false, calendarID: "home", color: .blue),
+            CalendarEvent(id: "market", eventIdentifier: "market", title: "Farmers Market", start: at(6, 9), end: at(6, 10), isAllDay: false, calendarID: "home", color: .blue),
+        ] : [])
         return all.filter { calendarIDs.contains($0.calendarID) && $0.start < end && $0.end > start }
     }
 
@@ -247,7 +259,8 @@ final class CalendarService {
     static func makeDefault() -> CalendarService {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-fakeCalendar") {
-            return CalendarService(provider: FakeEventProvider())
+            let demo = ProcessInfo.processInfo.arguments.contains("-demoData")
+            return CalendarService(provider: FakeEventProvider(includesDemoEvents: demo))
         }
         #endif
         return CalendarService(provider: EventKitProvider())

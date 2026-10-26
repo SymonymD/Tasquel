@@ -123,6 +123,7 @@ final class ChecklistStore {
     /// The app's store, or one backed by throwaway storage when UI tests pass
     /// `-isolatedData`, so they never touch the simulator's real data.
     /// `-isolatedDataID <name>` reuses the same throwaway storage across launches.
+    /// `-demoData` also uses throwaway storage, filled with sample tasks.
     /// Debug builds only.
     static func makeDefault() -> ChecklistStore {
         #if !DEBUG
@@ -130,10 +131,14 @@ final class ChecklistStore {
         #else
         let arguments = ProcessInfo.processInfo.arguments
         let reusableID = arguments.firstIndex(of: "-isolatedDataID").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
-        guard arguments.contains("-isolatedData") || reusableID != nil else { return ChecklistStore() }
+        let demo = launchesWithDemoData
+        guard arguments.contains("-isolatedData") || reusableID != nil || demo else { return ChecklistStore() }
         let directory = FileManager.default.temporaryDirectory.appending(path: "isolated-\(reusableID ?? UUID().uuidString)")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: directory.lastPathComponent) ?? .standard)
+        let store = ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: directory.lastPathComponent) ?? .standard)
+        // App Store screenshots: sample tasks, no onboarding (DemoData.swift).
+        if demo { store.fillWithDemoData() }
+        return store
         #endif
     }
 

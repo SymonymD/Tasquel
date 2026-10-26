@@ -390,13 +390,17 @@ struct TaskRowCard: View {
                 .padding(.leading, 24 * expandedCardScale)
 
                 if !isPastWeek && !isEditingGoal {
-                    HStack(spacing: 20) {
+                    // Retro's monospaced words are wider, so they sit closer together; the step
+                    // pills keep their size.
+                    HStack(spacing: Theme.isRetro(theme) ? 12 : 20) {
                         Button("Edit Goal") { startEditingGoal(target: target) }
+                            .lineLimit(1)
                             .accessibilityLabel("Edit goal")
                         if !task.goalIsComplete || isAddingProgress {
                             Button(isAddingProgress ? "Cancel" : "Add Progress") {
                                 if isAddingProgress { closeAddProgress() } else { startAddingProgress() }
                             }
+                            .lineLimit(1)
                             .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
                         }
                         // The most common update, in one tap, and its undo: − takes a step
@@ -424,6 +428,7 @@ struct TaskRowCard: View {
                                 .accessibilityLabel(task.goalKind == .time ? "Add \(Int(quickStep)) minutes" : "Add \(task.goalKind.format(quickStep))")
                             }
                         }
+                        .fixedSize()
                     }
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                     .padding(.leading, 24 * expandedCardScale)
@@ -637,6 +642,9 @@ struct TaskRowCard: View {
     private func actionPill(_ title: String) -> some View {
         Text(title)
             .font(.expandedCard(.caption1, weight: .bold, scale: 1.15))
+            // Never wraps ("+15 / m" in retro's wider monospaced font); the words beside it shrink instead.
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 14).padding(.vertical, 7)
             .background(Theme.accent(theme, rc: rc), in: Capsule())
             // Retro's accent is a bright phosphor color: dark text stays readable on it.
