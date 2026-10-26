@@ -1190,17 +1190,20 @@ struct AddTaskRowCard: View {
         isParsing = true
         Task {
             var parsed: ParsedTask
-            var usedModel = false
+            // Said after the summary when only the plain rules applied.
+            var rulesOnlyNote = ""
             do {
                 if let result = try await parser.parse(text) {
                     parsed = result
-                    usedModel = true
                 } else {
                     parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
+                    rulesOnlyNote = " · without Apple Intelligence"
                 }
             } catch {
+                // Apple Intelligence is on but turned these words down (or failed).
                 Self.log.error("Smart Add couldn't parse: \(error)")
                 parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
+                rulesOnlyNote = " · set up from your words"
             }
             isParsing = false
             if pickedMode { parsed.mode = newMode }
@@ -1222,8 +1225,7 @@ struct AddTaskRowCard: View {
             smartAddCount += 1
             pickedType = false
             pickedMode = false
-            // Says when Apple Intelligence couldn't be used and only the plain rules applied.
-            let summary = Self.describe(parsed, separator: " · ") + (usedModel ? "" : " · without Apple Intelligence")
+            let summary = Self.describe(parsed, separator: " · ") + rulesOnlyNote
             withAnimation(.snappy(duration: 0.25)) {
                 smartAddResult = SmartAddResult(taskID: added, text: text, summary: summary)
             }

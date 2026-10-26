@@ -637,7 +637,8 @@ struct WeekStartTests {
     @Test("Switching to Sunday moves every week back a day with its tasks, and switching back restores it")
     func switchingMovesWeeks() {
         let directory = makeTempDirectory()
-        let store = makeIsolatedStore(directory: directory)
+        let clock = TestClock(2099, 6, 10)  // a Wednesday
+        let store = makeIsolatedStore(directory: directory, clock: clock)
         let mondays = [date(2099, 6, 1), date(2099, 6, 8)]
         store.weeks = mondays.enumerated().map { index, monday in
             Week(startDate: monday, categories: [Category(name: "Work", symbol: "briefcase",
@@ -653,7 +654,7 @@ struct WeekStartTests {
         #expect(moved.map { $0.categories.first?.tasks.first?.title } == ["Task 0", "Task 1"])
         #expect(store.selectedWeek?.id == selectedID, "the same week stays selected")
 
-        let reloaded = makeIsolatedStore(directory: directory)
+        let reloaded = makeIsolatedStore(directory: directory, clock: clock)
         #expect(reloaded.weekStartsOnSunday)
         #expect(reloaded.weeks.contains { $0.startDate == date(2099, 5, 31) })
 
@@ -1332,6 +1333,8 @@ struct TaskAccessibilityTests {
         #expect(german.contains("22") && !german.contains("nd"))
         #expect(!ContentView.dateString(clock.now, weekday: nil, locale: Locale(identifier: "en_GB")).hasSuffix("nd"),
                 "the day doesn't come last here, so no suffix")
+        // The shortest form, for the largest text sizes.
+        #expect(ContentView.numericDateString(clock.now, locale: us) == "3/22")
     }
 
     @Test("Checkboxes say what tapping them does")
@@ -1358,16 +1361,23 @@ struct TaskAccessibilityTests {
 // MARK: - Privacy Manifest
 
 struct PrivacyManifestTests {
-    @Test("The app ships a privacy manifest declaring its UserDefaults use")
+    @Test("The app ships a privacy manifest declaring its UserDefaults and keyboard use")
     func manifestIsBundled() throws {
         let url = try #require(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
         let plist = try #require(NSDictionary(contentsOf: url))
         #expect(plist["NSPrivacyTracking"] as? Bool == false)
         let apis = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
         #expect(apis.contains { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" })
-        // The Coming Soon survey is the only data that leaves the device: anonymous.
+        // The emoji field reads the active keyboards (UITextInputMode.activeInputModes).
+        #expect(apis.contains {
+            $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryActiveKeyboards"
+                && ($0["NSPrivacyAccessedAPITypeReasons"] as? [String]) == ["54BD.1"]
+        })
+        // The Feature Ideas survey is the only data that leaves the device, anonymously:
+        // the picks and app version (Other Data) and the optional comment (Other User Content).
         let collected = plist["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? []
-        #expect(collected.count == 1)
+        #expect(Set(collected.compactMap { $0["NSPrivacyCollectedDataType"] as? String })
+                == ["NSPrivacyCollectedDataTypeOtherDataTypes", "NSPrivacyCollectedDataTypeOtherUserContent"])
         #expect(collected.allSatisfy { $0["NSPrivacyCollectedDataTypeLinked"] as? Bool == false && $0["NSPrivacyCollectedDataTypeTracking"] as? Bool == false })
         // Matches the App Store Connect privacy answer: Analytics.
         #expect(collected.allSatisfy { ($0["NSPrivacyCollectedDataTypePurposes"] as? [String]) == ["NSPrivacyCollectedDataTypePurposeAnalytics"] })
@@ -1745,10 +1755,30 @@ func weekStartSwitchOnSunday() {
     let removed = store.selectedWeek!.categories[0].name
     store.deleteCategory(store.selectedWeek!.categories[0].id)
 
-    // Today's week moves a day later and becomes next week.
+    // Today's week stays the current week, and next week rolls from it.
     store.setWeekStartsOnSunday(false)
+    #expect(store.isCurrentWeek(store.selectedWeek!))
+    #expect(!store.selectedWeek!.categories.contains { $0.name == removed })
     store.navigateToDate(clock.weeks(1, from: clock.now))
     #expect(!store.selectedWeek!.categories.contains { $0.name == removed })
+}
+
+@Test("Changing the week start on a Sunday keeps this week's tasks in the current, editable week",
+      arguments: [false, true])
+func weekStartSwitchOnSundayKeepsCurrentWeek(startOnSunday: Bool) {
+    let clock = TestClock(2099, 3, 8)  // a Sunday
+    let store = makeIsolatedStore(clock: clock)
+    if startOnSunday { store.setWeekStartsOnSunday(true) }
+    let categoryID = store.selectedWeek!.categories[0].id
+    store.addTask(categoryID: categoryID, title: "Dentist", mode: .oneTime)
+
+    store.setWeekStartsOnSunday(!startOnSunday)
+    let week = store.selectedWeek!
+    #expect(store.isCurrentWeek(week), "today's week stays the current week")
+    #expect(!store.isPastWeek(week))
+    #expect(week.startDay == (startOnSunday ? DayKey(year: 2099, month: 3, day: 2) : DayKey(year: 2099, month: 3, day: 8)))
+    #expect(week.categories[0].tasks.contains { $0.title == "Dentist" })
+    #expect(store.weeks.filter { store.isCurrentWeek($0) }.count == 1, "no second current week")
 }
 
 // MARK: - Unreadable or Odd Data

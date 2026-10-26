@@ -19,8 +19,11 @@ struct OnboardingSheet: View {
         case smartAdd, tidyUp, goalSteps
     }
 
+    /// The Smart Add page shows only where Smart Add can run (Apple Intelligence).
     private var pages: [Page] {
-        isReplay ? Page.allCases : [.welcome, .types, .modes, .categories, .calendar]
+        guard isReplay else { return [.welcome, .types, .modes, .categories, .calendar] }
+        let smartAdd = AppleIntelligenceTaskParser.shared.isAvailable
+        return Page.allCases.filter { $0 != .smartAdd || smartAdd }
     }
 
     private var pageIndex: Int { pages.firstIndex(of: page) ?? 0 }

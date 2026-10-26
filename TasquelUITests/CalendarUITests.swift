@@ -22,8 +22,8 @@ final class CalendarUITests: XCTestCase {
 
         // Turn it on in Settings.
         settings.tap()
-        let toggle = app.switches["Show Calendar Events"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        let toggle = calendarToggle(in: app)
+        XCTAssertTrue(toggle.exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         let calendarsRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "selected")).firstMatch
         XCTAssertTrue(calendarsRow.waitForExistence(timeout: 3))
@@ -88,7 +88,7 @@ final class CalendarUITests: XCTestCase {
 
         // Turning the setting off removes the toggle.
         settings.tap()
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        XCTAssertTrue(calendarToggle(in: app).exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         app.buttons["Done"].firstMatch.tap()
         XCTAssertFalse(app.buttons["Show events"].waitForExistence(timeout: 1))
@@ -111,8 +111,8 @@ final class CalendarUITests: XCTestCase {
             app.buttons["Let's Go!"].tap()
         }
         app.buttons["Settings"].tap()
-        let toggle = app.switches["Show Calendar Events"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        let toggle = calendarToggle(in: app)
+        XCTAssertTrue(toggle.exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "selected")).firstMatch.waitForExistence(timeout: 3))
         app.buttons["Done"].firstMatch.tap()
@@ -127,5 +127,15 @@ final class CalendarUITests: XCTestCase {
         showEvents.tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Dentist")).firstMatch.waitForExistence(timeout: 3),
                       "events show after relaunch without visiting Settings")
+    }
+
+    /// Settings ▸ Calendar is a few rows down; a List only builds rows on screen.
+    @MainActor
+    private func calendarToggle(in app: XCUIApplication) -> XCUIElement {
+        let toggle = app.switches["Show Calendar Events"]
+        for _ in 0..<4 where !toggle.waitForExistence(timeout: 2) || !toggle.isHittable {
+            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
+        }
+        return toggle
     }
 }

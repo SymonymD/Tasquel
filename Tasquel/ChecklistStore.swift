@@ -433,11 +433,17 @@ final class ChecklistStore {
         return weeks.firstIndex { $0.id == week.id }
     }
 
-    /// Changes the week start day. Every saved week moves by one day (Monday ↔ the
-    /// Sunday before it) so its tasks stay with it, and the selected week stays selected.
+    /// Changes the week start day. Every saved week moves by the same number of days, so
+    /// its tasks stay with it, the selected week stays selected, and the week containing
+    /// today stays the current week: usually one day (Monday ↔ the Sunday before it), but
+    /// six on a Sunday, which ends a Monday week and starts a Sunday one.
     func setWeekStartsOnSunday(_ sunday: Bool) {
         guard sunday != weekStartsOnSunday, persistenceError == nil else { return }
-        let shift = sunday ? -1 : 1
+        let oldStart = startOfWeek(containing: now())
+        let newStart = Week.startOfWeek(containing: now(), firstWeekday: sunday ? Week.sunday : Week.monday,
+                                        calendar: calendar)
+        let shift = Calendar.weekDates(in: calendar.timeZone)
+            .dateComponents([.day], from: oldStart, to: newStart).day ?? (sunday ? -1 : 1)
         let selectedStart = selectedWeek.map { $0.startDay.adding(days: shift).date(in: calendar) }
         weeks = weeks.map { week in
             var moved = week

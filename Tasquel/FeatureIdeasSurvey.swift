@@ -1,8 +1,9 @@
 import SwiftUI
 
-// MARK: - Coming Soon Survey
+// MARK: - Feature Ideas Survey
 
-/// Features being considered, for the Settings survey.
+/// Features being considered, for the Settings survey. Not in the app: the raw values
+/// are what the survey sends, so they stay the same even when the titles change.
 enum UpcomingFeature: String, CaseIterable, Identifiable {
     case iCloudSync = "iCloud Sync"
     case stats = "Stats & Charts"
@@ -10,11 +11,19 @@ enum UpcomingFeature: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    var title: String {
+        switch self {
+        case .iCloudSync: "Sync Across Devices"
+        case .stats: "Stats & Charts"
+        case .secretCategories: "Locked Categories"
+        }
+    }
+
     var detail: String {
         switch self {
-        case .iCloudSync: "Your tasks on all your devices"
+        case .iCloudSync: "Your tasks on your iPhone and iPad"
         case .stats: "See how your weeks, goals and habits went"
-        case .secretCategories: "Categories shown only after Face ID or your passcode"
+        case .secretCategories: "Categories that stay hidden until you unlock them"
         }
     }
 
@@ -62,15 +71,16 @@ enum SurveyForm {
     }
 }
 
-/// Settings ▸ Coming Soon: tick the features you'd use (Tasquel's own check circles),
+/// Settings ▸ Feature Ideas: tick the features you'd use (Tasquel's own check circles),
 /// add a comment if you like, and send. Rows only; Settings puts them in its section.
-struct ComingSoonSurvey: View {
+struct FeatureIdeasSurvey: View {
     let store: ChecklistStore
 
     @State private var picks: Set<UpcomingFeature> = []
     @State private var comment = ""
     @State private var status = Status.idle
-    /// Sent once already: shows thanks instead of the form, until "Change my picks".
+    /// Sent once already: shows thanks instead of the form, until Change. (The key keeps
+    /// the section's old name so earlier answers are remembered.)
     @AppStorage("didSendComingSoonSurvey") private var didSend = false
 
     private enum Status: Equatable { case idle, sending, failed }
@@ -147,7 +157,7 @@ struct ComingSoonSurvey: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Label(feature.rawValue, systemImage: feature.symbol)
+                    Label(feature.title, systemImage: feature.symbol)
                         .font(retro ? Theme.bodyFont(theme) : .body)
                         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                     Text(feature.detail)

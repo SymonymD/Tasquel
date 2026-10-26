@@ -49,6 +49,9 @@ struct ContentView: View {
     @State private var isEventsPanelDragged = false
     /// While the keyboard is up, the bottom bar turns into a Done button.
     @State private var isKeyboardVisible = false
+    private var isSheetPresented: Bool {
+        showSettings || showAddCategory || showDatePicker || showOnboarding
+    }
     /// The bottom bar's height above the home indicator; the grid scrolls clear of it.
     @State private var bottomBarHeight: CGFloat = 68
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
@@ -236,6 +239,9 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: store.lastDelete)
         .preferredColorScheme(store.colorScheme)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            // A keyboard for a field in a sheet isn't this screen's: on iPad the bar would
+            // change around the form sheet.
+            guard !isSheetPresented else { return }
             withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
@@ -782,6 +788,8 @@ struct ContentView: View {
                         Text(Theme.isRetro(theme) ? "> GO_TO_TODAY" : "Go to Today")
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.accent(theme, rc: rc))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                     }
                 }
                 .buttonStyle(.plain)
@@ -834,22 +842,34 @@ struct ContentView: View {
         return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
     }
 
-    /// Today's date, in the bottom bar: shorter forms on narrow screens instead of
-    /// cutting it off ("Wednesday, Oct 21st", "Wed, Oct 21st", "Oct 21st").
+    /// Today's date, in the bottom bar: shorter forms on narrow screens or at large text
+    /// sizes instead of cutting it off ("Wednesday, Oct 21st", "Wed, Oct 21st", "Oct 21st",
+    /// then the numeric "10/21"). VoiceOver always hears the full date.
     private var todayText: some View {
         ViewThatFits(in: .horizontal) {
             todayLabel(weekday: .wide)
             todayLabel(weekday: .abbreviated)
             todayLabel(weekday: nil)
-                .minimumScaleFactor(0.8)
+            todayLabel(Self.numericDateString(today))
+                .minimumScaleFactor(0.6)
         }
         .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(today.formatted(date: .complete, time: .omitted))
     }
 
     private func todayLabel(weekday: Date.FormatStyle.Symbol.Weekday?) -> some View {
-        let date = Self.dateString(today, weekday: weekday)
-        return Text(Theme.isRetro(theme) ? "[\(date)]" : date)
+        todayLabel(Self.dateString(today, weekday: weekday))
+    }
+
+    private func todayLabel(_ date: String) -> some View {
+        Text(Theme.isRetro(theme) ? "[\(date)]" : date)
             .lineLimit(1)
+    }
+
+    /// The shortest form, month and day in digits in the user's order ("10/21", "21.10.").
+    static func numericDateString(_ date: Date, locale: Locale = .current) -> String {
+        date.formatted(Date.FormatStyle(locale: locale).month(.defaultDigits).day())
     }
 
     /// The date in the user's language and region. English adds the day's ordinal
@@ -1059,8 +1079,6 @@ struct ContentView: View {
     /// Re-sorts at the calm moments `sortedNames` describes.
     private var sortOrderWatcher: some View {
         Color.clear
-            // The home-screen icon follows the Retro theme.
-            .onChange(of: store.appearanceMode) { _, mode in AppIconSwitcher.update(for: mode) }
             // Categories added or deleted while editing take their sorted places.
             .onChange(of: isEditing) { _, editing in
                 if !editing { refreshSortOrder() }

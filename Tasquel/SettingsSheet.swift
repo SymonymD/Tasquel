@@ -25,6 +25,7 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
     @State private var showTour = false
+    @AppStorage(AppIconSwitcher.matchesThemeKey) private var iconMatchesTheme = true
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -54,7 +55,11 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
-            .sheet(isPresented: $showTour) { OnboardingSheet(store: store, calendar: calendar, isReplay: true) }
+            .sheet(isPresented: $showTour) {
+                // Sheets don't inherit the app's appearance.
+                OnboardingSheet(store: store, calendar: calendar, isReplay: true)
+                    .preferredColorScheme(store.colorScheme)
+            }
             .task {
                 calendar.refreshAuthorization()
                 await calendar.loadCalendars()
@@ -69,8 +74,15 @@ struct SettingsSheet: View {
 
     private var standardSettings: some View {
         List {
-            Section("Appearance") {
+            Section {
                 appearanceRows
+                appIconToggle
+            } header: {
+                Text("Appearance")
+            } footer: {
+                if AppIconSwitcher.isSupported {
+                    Text("Uses the retro home-screen icon with the Retro theme. iOS confirms each icon change.")
+                }
             }
             .listRowBackground(darkCardBg)
             Section("Week") {
@@ -113,17 +125,17 @@ struct SettingsSheet: View {
             }
             .listRowBackground(darkCardBg)
             Section {
-                ComingSoonSurvey(store: store)
+                FeatureIdeasSurvey(store: store)
             } header: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Coming Soon")
-                    Text(Self.comingSoonDescription)
+                    Text("Feature Ideas")
+                    Text(Self.featureIdeasDescription)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .textCase(nil)
                 }
             } footer: {
-                Text("Tick what you'd use. It's anonymous: only your picks and comment are sent.")
+                Text("Optional and anonymous: only your picks, your comment and the app version are sent.")
             }
             .listRowBackground(darkCardBg)
             Section("Support") {
@@ -152,6 +164,7 @@ struct SettingsSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 retroSection("APPEARANCE") {
                     appearanceRows
+                    appIconToggle
                 }
                 retroSection("TERMINAL_COLOR") {
                     retroColorPalette
@@ -183,12 +196,12 @@ struct SettingsSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                retroSection("COMING_SOON") {
-                    Text(Self.comingSoonDescription)
+                retroSection("FEATURE_IDEAS") {
+                    Text(Self.featureIdeasDescription)
                         .font(Theme.captionFont(theme))
                         .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    ComingSoonSurvey(store: store)
-                    Text("anonymous // only your picks and comment are sent")
+                    FeatureIdeasSurvey(store: store)
+                    Text("anonymous // sends picks, comment, app version")
                         .font(Theme.captionFont(theme))
                         .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
@@ -255,6 +268,7 @@ struct SettingsSheet: View {
         ForEach(AppearanceMode.allCases, id: \.self) { mode in
             Button {
                 store.setAppearance(mode)
+                AppIconSwitcher.update(for: mode, matchingTheme: iconMatchesTheme)
             } label: {
                 HStack {
                     if retro {
@@ -278,6 +292,24 @@ struct SettingsSheet: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: retro ? 44 : nil)
                 .contentShape(Rectangle())
+            }
+        }
+    }
+
+    /// Whether the home-screen icon turns retro with the Retro theme.
+    @ViewBuilder
+    private var appIconToggle: some View {
+        if AppIconSwitcher.isSupported {
+            Toggle(isOn: $iconMatchesTheme) {
+                if retro {
+                    Text("> Match App Icon to Theme").font(Theme.bodyFont(theme))
+                } else {
+                    Label("Match App Icon to Theme", systemImage: "app.badge")
+                }
+            }
+            .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+            .onChange(of: iconMatchesTheme) { _, matching in
+                AppIconSwitcher.update(for: store.appearanceMode, matchingTheme: matching)
             }
         }
     }
@@ -310,8 +342,8 @@ struct SettingsSheet: View {
         }
     }
 
-    /// What the Coming Soon survey is for, under its heading.
-    private static let comingSoonDescription = "Features being considered for Tasquel. Tick the ones you'd use to help decide what comes next."
+    /// What the Feature Ideas survey is for, under its heading.
+    private static let featureIdeasDescription = "Ideas being considered. They aren't in Tasquel yet. Tick the ones you'd use to help decide what comes next."
 
     /// Manual (hold and drag) or by when each category was last edited.
     private var sortPicker: some View {
