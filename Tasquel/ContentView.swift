@@ -190,9 +190,10 @@ struct ContentView: View {
                     if !isKeyboardVisible {
                         bottomBar
                             // Not while the events panel follows a finger: the grid would re-pad
-                            // itself on every frame of the drag.
+                            // itself on every frame of the drag. Not under a sheet either (see
+                            // `homeIndicatorInset`).
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                if !isEventsPanelDragged { bottomBarHeight = height }
+                                if !isEventsPanelDragged && !isSheetPresented { bottomBarHeight = height }
                             }
                             .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
@@ -229,11 +230,16 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
         }
-        // Ignoring the keyboard, the bottom inset is the home indicator's alone.
+        // Ignoring the keyboard, the bottom inset is the home indicator's alone. Not measured
+        // while a sheet covers the screen: a keyboard in a sheet over a sheet (Choose Emoji…
+        // in Add Category or Saved Categories) lifts this screen's inset to ~380pt, and the
+        // bar, padded by it, then chased it in a layout loop that froze the app.
         .background {
             Color.clear
                 .ignoresSafeArea(.keyboard)
-                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { homeIndicatorInset = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
+                    if !isSheetPresented { homeIndicatorInset = inset }
+                }
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: store.lastDelete)

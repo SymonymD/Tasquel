@@ -31,6 +31,12 @@ struct AddCategorySheet: View {
                 createSection
                 savedSection
             }
+            // The keyboard opens with the row, so one tap is enough. Once, when the row
+            // opens: an onAppear fired again whenever the List rebuilt the row (as when
+            // Choose Emoji… opened its keyboard) and took the keyboard back.
+            .onChange(of: isCreatingNew) { _, creating in
+                if creating { isNameFocused = true }
+            }
             .onChange(of: store.savedCategories.isEmpty) { _, isEmpty in
                 if isEmpty { isEditingSaved = false }
             }
@@ -67,8 +73,6 @@ struct AddCategorySheet: View {
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(createNew)
-                        // The keyboard opens with the row, so one tap is enough.
-                        .onAppear { isNameFocused = true }
                 }
                 if isNewNameTaken {
                     Text(nameTakenMessage)
