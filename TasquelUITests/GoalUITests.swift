@@ -5,10 +5,10 @@ import XCTest
 final class GoalUITests: XCTestCase {
     /// Launches with throwaway data and skips onboarding.
     @MainActor
-    private func launchFresh() -> XCUIApplication {
+    private func launchFresh(_ extraArguments: [String] = []) -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
-        app.launchArguments = ["-isolatedData"]
+        app.launchArguments = ["-isolatedData"] + extraArguments
         app.launch()
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) {
             app.buttons["Next"].tap()
@@ -232,7 +232,9 @@ final class GoalUITests: XCTestCase {
     /// count or list from the words.
     @MainActor
     func testSmartAddWords() throws {
-        let app = launchFresh()
+        // The simulator has no Apple Intelligence model: -smartAddRules gives Smart Add the
+        // rules it applies after the model (with the model's pause), so this always runs.
+        let app = launchFresh(["-smartAddRules"])
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
@@ -246,12 +248,7 @@ final class GoalUITests: XCTestCase {
 
         addTask.typeText("run 3x per week")
         let smartAdd = app.buttons["Smart Add"]
-        guard smartAdd.waitForExistence(timeout: 2) else {
-            print("Smart Add: Apple Intelligence isn't available in this simulator")
-            return
-        }
-        // The simulator has no model files, so this checks the rules it falls back on; on
-        // a phone with Apple Intelligence the model answers first.
+        XCTAssertTrue(smartAdd.waitForExistence(timeout: 2))
         smartAdd.tap()
         XCTAssertTrue(app.staticTexts["Run"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Task options: Goal, Repeating"].exists, "3x per week is a repeating goal")

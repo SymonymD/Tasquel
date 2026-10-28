@@ -177,3 +177,29 @@ struct TaskDraft {
         return task
     }
 }
+
+// MARK: - Parser Choice
+
+/// The parser Smart Add uses: Apple Intelligence or, in debug builds launched with
+/// `-smartAddRules`, the plain rules after a 2-second pause like the model's, so Smart Add
+/// can be tested in a simulator (which has no model).
+enum SmartAddParser {
+    static let current: TaskTextParser = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-smartAddRules") { return RulesOnlyTaskParser() }
+        #endif
+        return AppleIntelligenceTaskParser.shared
+    }()
+}
+
+#if DEBUG
+/// Smart Add without a model, for simulators: the rules Smart Add applies after the model.
+struct RulesOnlyTaskParser: TaskTextParser {
+    var isAvailable: Bool { true }
+    func prepare() {}
+    func parse(_ text: String) async throws -> ParsedTask? {
+        try await Task.sleep(for: .seconds(2))
+        return TaskTextHints.refine(TaskTextHints.dropInvented(ParsedTask(title: text), from: text), from: text)
+    }
+}
+#endif

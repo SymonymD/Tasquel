@@ -15,6 +15,9 @@ struct AddCategorySheet: View {
     /// Off: the category carries into future weeks. On: it's for the viewed week only.
     @State private var thisWeekOnly = false
     @FocusState private var isNameFocused: Bool
+    /// Set once a category is added, while the sheet closes: the name just added would
+    /// otherwise count as taken and flash the warning below the field.
+    @State private var didAdd = false
 
     var body: some View {
         NavigationStack {
@@ -181,7 +184,7 @@ struct AddCategorySheet: View {
         add(name: template.name, symbol: template.symbol, isNew: false)
     }
 
-    private var isNewNameTaken: Bool { store.isCategoryNameTaken(newName) }
+    private var isNewNameTaken: Bool { !didAdd && store.isCategoryNameTaken(newName) }
 
     /// Says where the name is taken: this week's cards, or Saved Categories.
     private var nameTakenMessage: String {
@@ -201,6 +204,7 @@ struct AddCategorySheet: View {
     /// A new category added for every week is also kept in Saved Categories;
     /// one added for this week only isn't, since it's meant to be temporary.
     private func add(name: String, symbol: String, isNew: Bool) {
+        didAdd = true
         if isNew && !thisWeekOnly {
             store.addSavedCategory(name: name, symbol: symbol)
         }

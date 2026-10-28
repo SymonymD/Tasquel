@@ -131,6 +131,30 @@ final class EmojiPickerUITests: XCTestCase {
         assertBottomBar(in: app, at: barFrame)
     }
 
+    /// Saving a new category doesn't flash "already exists" while the sheet closes (the
+    /// name it just saved counted as taken).
+    @MainActor
+    func testCreatingCategoryDoesNotFlashNameTaken() throws {
+        let app = launch()
+        app.buttons["Edit"].tap()
+        let addCard = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Add Category")).firstMatch
+        XCTAssertTrue(addCard.waitForExistence(timeout: 3))
+        addCard.tap()
+        app.buttons["Create New Category"].tap()
+        let name = app.textFields["Category name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        name.typeText("Garden\n")  // Return adds it
+        let taken = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "already")).firstMatch
+        var sawTaken = false
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, !sawTaken {
+            sawTaken = taken.exists
+        }
+        XCTAssertFalse(sawTaken, "no name-taken warning while the sheet closes")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Garden,")).firstMatch
+            .waitForExistence(timeout: 3))
+    }
+
     // MARK: Helpers
 
     /// The bottom bar is showing, where it was at launch.

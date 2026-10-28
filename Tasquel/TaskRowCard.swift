@@ -1056,7 +1056,7 @@ struct AddTaskRowCard: View {
         let token = UUID()
     }
     /// Optional: Smart Add only shows when the parser can run on this device.
-    private let parser: TaskTextParser = AppleIntelligenceTaskParser.shared
+    private let parser: TaskTextParser = SmartAddParser.current
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     private var hasText: Bool { !newTitle.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -1139,7 +1139,7 @@ struct AddTaskRowCard: View {
     }
 
     /// "✨ Added Gym · repeating goal of 3   Undo": what Smart Add worked out, so a wrong
-    /// guess is seen and can be taken back (the task is removed and the words return).
+    /// guess is seen and can be taken back (the task is removed; see `undoSmartAdd`).
     private func smartAddMessage(_ result: SmartAddResult) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles").foregroundStyle(Theme.accent(theme, rc: rc))

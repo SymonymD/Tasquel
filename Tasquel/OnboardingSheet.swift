@@ -22,7 +22,7 @@ struct OnboardingSheet: View {
     /// The Smart Add page shows only where Smart Add can run (Apple Intelligence).
     private var pages: [Page] {
         guard isReplay else { return [.welcome, .types, .modes, .categories, .calendar] }
-        let smartAdd = AppleIntelligenceTaskParser.shared.isAvailable
+        let smartAdd = SmartAddParser.current.isAvailable
         return Page.allCases.filter { $0 != .smartAdd || smartAdd }
     }
 
@@ -117,7 +117,7 @@ struct OnboardingSheet: View {
                 featureText("Three Kinds of Task",
                             "Tick off a checkbox, work toward a goal like 50 push-ups, or fill a list like Groceries. Goals and lists check themselves off when they're done.")
                 // Smart Add, only where it can run (Apple Intelligence on).
-                if AppleIntelligenceTaskParser.shared.isAvailable {
+                if SmartAddParser.current.isAvailable {
                     Text("\(Image(systemName: "sparkles")) Or type it in your own words, like “Gym 3x per week”, and tap the sparkles to set it up for you.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
