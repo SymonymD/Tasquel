@@ -69,6 +69,30 @@ final class EmojiPickerUITests: XCTestCase {
         assertBottomBar(in: app, at: barFrame)
     }
 
+    /// Renaming a card, then choosing an emoji for it straight away: the new name is kept
+    /// and the picker stays open (the rename used to rebuild the card and close it).
+    @MainActor
+    func testRenameCardThenChooseEmoji() throws {
+        let app = launch()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        XCTAssertTrue(app.textFields["Add task"].waitForExistence(timeout: 3), "the card is open")
+        let editCard = app.buttons["Edit Errands"]
+        XCTAssertTrue(editCard.waitForExistence(timeout: 3))
+        sleep(1)  // the edit button fades in as the card opens
+        editCard.tap()
+        let name = app.textFields["Category name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        name.tap()
+        name.typeText("2")  // "Errands2", not yet committed
+
+        chooseEmoji("🧺", in: app)
+
+        XCTAssertTrue(app.buttons["Icon: 🧺"].waitForExistence(timeout: 3), "the card's icon is the emoji")
+        XCTAssertTrue(app.buttons["Done editing Errands2"].exists, "the new name is kept")
+    }
+
     /// Settings ▸ Saved Categories ▸ New Saved Category: a sheet over Settings that opens
     /// with the keyboard, and its own Choose Emoji… (a third sheet).
     @MainActor
@@ -167,11 +191,14 @@ final class EmojiPickerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Edit"].isHittable || app.buttons["Done Editing"].isHittable, file: file, line: line)
     }
 
+    /// Closes the keyboard with the bottom bar's Done button, if it's still up (it may be
+    /// closing by itself as the card stops editing).
     @MainActor
     private func dismissKeyboardIfUp(_ app: XCUIApplication) {
+        sleep(1)
         guard app.keyboards.firstMatch.exists else { return }
         let done = app.buttons["Done"].firstMatch
-        if done.exists { done.tap() }
+        if done.waitForExistence(timeout: 1), done.isHittable { done.tap() }
     }
 
     @MainActor

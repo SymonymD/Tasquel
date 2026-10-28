@@ -221,9 +221,12 @@ final class GoalUITests: XCTestCase {
         let charlie = app.buttons["Complete Charlie"]
         XCTAssertTrue(alpha.waitForExistence(timeout: 2))
         XCTAssertLessThan(alpha.frame.minY, charlie.frame.minY)
-        let handle = app.images.matching(identifier: "line.3.horizontal").firstMatch
-        XCTAssertTrue(handle.exists, "a drag handle shows in edit mode")
-        handle.press(forDuration: 1.0, thenDragTo: charlie)
+        // The handle is for touch only (VoiceOver has Move Up / Move Down), so it isn't in
+        // the accessibility tree: it sits just right of the task's Delete button.
+        let delete = app.buttons["Delete Alpha"]
+        XCTAssertTrue(delete.exists, "edit mode shows delete and the drag handle")
+        let handle = delete.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 12, dy: 0))
+        handle.press(forDuration: 1.0, thenDragTo: charlie.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         let moved = NSPredicate { _, _ in alpha.frame.minY > charlie.frame.minY }
         wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
     }
@@ -335,6 +338,41 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(nameField.waitForExistence(timeout: 2))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2), "the keyboard opens on the first tap")
         XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
+    }
+
+    /// The + step stays where it is when − appears after the first tap (and at the
+    /// target), so two quick taps in the same place add twice instead of undoing.
+    @MainActor
+    func testQuickStepsDontMove() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.textFields["Add task"]
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Read\n")
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
+        let targetField = app.textFields["Target"]
+        XCTAssertTrue(targetField.waitForExistence(timeout: 3))
+        targetField.tap()
+        targetField.typeText("10")
+        app.buttons["Set"].tap()
+        if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
+
+        let plus = app.buttons["Add 1"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 3))
+        sleep(1)
+        let spot = plus.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        let before = plus.frame
+        spot.tap()
+        XCTAssertTrue(app.staticTexts["1/10"].waitForExistence(timeout: 3))
+        sleep(1)
+        XCTAssertEqual(plus.frame.minX, before.minX, accuracy: 1, "+1 didn't move when − appeared")
+        spot.tap()
+        XCTAssertTrue(app.staticTexts["2/10"].waitForExistence(timeout: 3), "the second tap added too")
     }
 
     /// One tap on any field in the goal editor opens the keyboard on it.

@@ -72,6 +72,7 @@ struct CategoryGridCard: View {
             Text(Theme.isRetro(theme)
                  ? "done: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " [1WK]" : "")"
                  : "Completed: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " · This week" : "")")
+                .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", this week only" : "")")
                 .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .lineLimit(1)
@@ -82,12 +83,13 @@ struct CategoryGridCard: View {
             ZStack(alignment: .topLeading) {
                 // Never read by VoiceOver: a collapsed card is announced by its Open button.
                 CollapsedCategoryContent(category: category, store: store, isPastWeek: isPastWeek, isEditing: isEditing)
-                    .accessibilityHidden(true)
+                    .hiddenFromVoiceOver()
                     .modifier(CardContentCrossFade(isHidden: isExpanded))
                 ExpandedCategoryContent(
                     category: category, store: store, isEditing: isEditingTasks,
                     isPastWeek: isPastWeek, onCollapse: onCollapse
                 )
+                .environment(\.isCardOpen, isExpanded)
                 .modifier(CardContentCrossFade(isHidden: !isExpanded))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -109,7 +111,10 @@ struct CategoryGridCard: View {
                 }
                 .buttonStyle(.plain)
                 .allowsHitTesting(false)
-                .accessibilityLabel("Open \(category.name), \(category.isThisWeekOnly ? "this week only, " : "")\(category.completedCount) of \(category.totalCount) tasks complete")
+                .accessibilityLabel(collapsedCardLabel)
+                // In Edit cards don't open; VoiceOver moves them with Move Earlier / Later.
+                .accessibilityRemoveTraits(isEditing ? .isButton : [])
+                .accessibilityHint(isEditing && !isPastWeek ? "Use the Move Earlier and Move Later actions to move it." : "")
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -177,6 +182,7 @@ struct CategoryGridCard: View {
                         .scaleEffect(showsEditButton ? 1 : 0.5)
                         .allowsHitTesting(showsEditButton)
                         .accessibilityLabel(isEditingTasks ? "Done editing \(category.name)" : "Edit \(category.name)")
+                        .accessibilityRemoveTraits(.isSelected)  // the Done checkmark isn't a state
                     }
                 }
         }
@@ -199,6 +205,7 @@ struct CategoryGridCard: View {
             } else if !Theme.isRetro(theme) {
                 CategoryIcon(symbol: category.symbol)
                     .modifier(AnimatableFont(size: isExpanded ? expandedTitleSize * 0.95 : collapsedTitleSize))
+                    .hiddenFromVoiceOver()  // the name follows
             }
             if isRenaming {
                 TextField("Category name", text: $editedName)
@@ -207,7 +214,8 @@ struct CategoryGridCard: View {
                     .submitLabel(.done)
                     .onSubmit(commitName)
                     .onChange(of: isNameFocused) { _, focused in
-                        if !focused { commitName() }
+                        // Back in the field to try again: the last "why not" goes.
+                        if focused { nameError = nil } else { commitName() }
                     }
                     .cardField(theme, rc: rc)
                     .accessibilityLabel("Category name")
@@ -217,10 +225,25 @@ struct CategoryGridCard: View {
                         size: isExpanded ? expandedTitleSize : collapsedTitleSize,
                         weight: .semibold, design: design
                     ))
-                    // Long names wrap rather than being cut off at large text sizes.
-                    .lineLimit(2)
+                    // Long names wrap rather than being cut off at large text sizes; a
+                    // single long word ("Appointments" on a small phone) shrinks instead
+                    // of breaking mid-word.
+                    .lineLimit(isSingleWordName ? 1 : 2)
+                    .minimumScaleFactor(isSingleWordName ? 0.6 : 1)
+                    .accessibilityLabel(category.name)
+                    .accessibilityAddTraits(.isHeader)
             }
         }
+    }
+
+    private var isSingleWordName: Bool { !category.name.contains(" ") }
+
+    /// What VoiceOver says for a closed card: "Open Work, 2 of 4 tasks complete" (in Edit,
+    /// where cards don't open, without "Open").
+    private var collapsedCardLabel: String {
+        let scope = category.isThisWeekOnly ? "this week only, " : ""
+        let tasks = category.totalCount == 0 ? "no tasks yet" : "\(category.completedCount) of \(category.totalCount) tasks complete"
+        return (isEditing ? "" : "Open ") + "\(category.name), \(scope)\(tasks)"
     }
 
     private var completion: CardCompletion {
@@ -235,7 +258,9 @@ struct CategoryGridCard: View {
     /// field goes back to the current name.
     private func commitName() {
         let name = ChecklistStore.cleanName(editedName)
-        guard name != category.name else { nameError = nil; return }
+        // Unchanged, including after a refused name was put back: leave its message up
+        // (Return commits, then the field losing focus commits again).
+        guard name != category.name else { return }
         if name.isEmpty {
             nameError = "A category needs a name."
         } else if store.renameCategory(category.id, newName: name) {
@@ -259,11 +284,12 @@ struct CategoryGridCard: View {
             if Theme.isRetro(theme) {
                 Text(completed == total && total > 0 ? "[OK]" : "[\(completed)/\(total)]")
                     .font(.system(.caption, design: .monospaced).bold())
+                    .hiddenFromVoiceOver()  // the card's label and completion line give the count
             } else {
                 CompletionRing(fraction: total == 0 ? 0 : Double(completed) / Double(total), color: color)
                     .frame(width: isExpanded ? expandedPieSize : collapsedPieSize,
                            height: isExpanded ? expandedPieSize : collapsedPieSize)
-                    .accessibilityHidden(true)  // the card's label and completion line give the count
+                    .hiddenFromVoiceOver()  // the card's label and completion line give the count
             }
         }
         .foregroundStyle(color)
@@ -505,4 +531,10 @@ private struct HiddenContentLayout: Layout {
             proposal: ProposedViewSize(width: bounds.width, height: isHidden ? nil : bounds.height)
         )
     }
+}
+
+extension EnvironmentValues {
+    /// Whether the card holding a view is open. An open card's contents stay in place
+    /// (hidden) while it's closed, so a field there mustn't take the keyboard then.
+    @Entry var isCardOpen = true
 }

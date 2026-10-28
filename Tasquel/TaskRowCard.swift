@@ -48,6 +48,13 @@ func expandedCardControl(_ length: CGFloat) -> CGFloat {
 }
 
 extension View {
+    /// Hides a decorative view from VoiceOver, even inside an open card. (An open card is
+    /// marked `.accessibilityHidden(false)`, which brings back children hidden with
+    /// `.accessibilityHidden(true)`; a representation of nothing stays hidden.)
+    func hiddenFromVoiceOver() -> some View {
+        accessibilityRepresentation { EmptyView() }
+    }
+
     /// Makes a small control tappable across at least 44×44 points (or the given size)
     /// around its center, without changing its layout. Apply it inside a button's label.
     func touchTarget(width: CGFloat = 44, height: CGFloat = 44) -> some View {
@@ -95,6 +102,9 @@ struct TaskRowCard: View {
     @State private var isDropTarget = false
     /// The add-sub-task field is open (a list's add-item field is always shown).
     @State private var isAddingSubtask = false
+    @Environment(\.isCardOpen) private var isCardOpen
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The goal text fields, for moving the keyboard between them.
     nonisolated private enum GoalField: Hashable { case target, editProgress, step, addProgress, unitName }
@@ -113,6 +123,7 @@ struct TaskRowCard: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(task.title) progress")
                         .accessibilityValue(TaskAccessibility.goalValue(task))
+                        .accessibilityActions { moveActions }
                 } else {
                     Button {
                         guard !isPastWeek else { return }
@@ -139,6 +150,7 @@ struct TaskRowCard: View {
                     .disabled(isPastWeek)
                     .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
                     .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
+                    .accessibilityActions { moveActions }
                 }
 
                 // Title
@@ -161,6 +173,9 @@ struct TaskRowCard: View {
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
                         .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+                        // All the lines it needs: beside the icons, a row could otherwise get
+                        // one line's height and cut the title off ("Plan Mom's birt…").
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture { startEditingTitle() }
@@ -178,6 +193,9 @@ struct TaskRowCard: View {
                             reorderHandle
                         }
                     }
+                    // At the largest text sizes the icons stop growing, leaving the title
+                    // room to wrap at word breaks ("Yog-a" otherwise).
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 }
             }
 
@@ -201,12 +219,16 @@ struct TaskRowCard: View {
                     HStack(spacing: 8) {
                         Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                             .font(.expandedCard(.caption1)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
-                        TextField(subtaskPlaceholder, text: $newSubtaskTitle)
+                            .hiddenFromVoiceOver()
+                        // Multi-line for the same reason as Add task: Return keeps the keyboard.
+                        TextField(subtaskPlaceholder, text: $newSubtaskTitle, axis: .vertical)
+                            .lineLimit(1...4)
+                            .accessibilityLabel(task.taskType == .list ? "Add item" : "Add sub-task")
                             .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                             .cardField(theme, rc: rc, outset: true)
                             .focused($isSubtaskFieldFocused)
                             .submitLabel(.next)
-                            .onSubmit { addSubtask() }
+                            .onChange(of: newSubtaskTitle) { _, text in submitTypedSubtask(text) }
                             // An empty sub-task field closes when the keyboard does.
                             .onChange(of: isSubtaskFieldFocused) { _, focused in
                                 guard !focused else { return }
@@ -224,6 +246,9 @@ struct TaskRowCard: View {
         .task(id: store.taskAwaitingFirstInput) {
             guard store.taskAwaitingFirstInput == task.id else { return }
             store.taskAwaitingFirstInput = nil
+            // Its card was closed meanwhile (Smart Add was still working): the field is
+            // hidden, so the keyboard stays down.
+            guard isCardOpen else { return }
             if task.taskType == .goal {
                 focusedGoalField = GoalFocus(field: .target, part: goalKindSelection == .time ? .hours : .number)
             } else {
@@ -231,6 +256,13 @@ struct TaskRowCard: View {
             }
         }
         .onChange(of: store.keyboardDoneRequests) { saveTypedOnDone() }
+        // Edit mode removes the add-sub-task (or add-item) field before it loses focus, so
+        // its save-on-close never runs: what was typed is added now.
+        .onChange(of: isEditing) { _, editing in
+            guard editing else { return }
+            addSubtask(keepTyping: false)
+            isAddingSubtask = false
+        }
         // A task dragged by its handle (edit mode) and dropped here takes this place.
         .dropDestination(for: TaskDragItem.self) { items, _ in
             // Only within this card, and only while it's being edited.
@@ -245,15 +277,25 @@ struct TaskRowCard: View {
                 RoundedRectangle(cornerRadius: 8).fill(Theme.accent(theme, rc: rc).opacity(0.12)).padding(-4)
             }
         }
-        .accessibilityActions {
-            if isEditing && !isPastWeek {
-                Button("Move Up") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: -1) } }
-                Button("Move Down") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: 1) } }
-            }
-        }
         // A light tap for ticking off; a success for reaching a goal.
         .sensoryFeedback(trigger: task.isCompleted) { _, done in done && task.taskType != .goal ? .impact(weight: .light) : nil }
         .sensoryFeedback(.success, trigger: task.goalIsComplete) { wasDone, done in !wasDone && done }
+    }
+
+    /// In edit mode, VoiceOver's way to reorder (the drag handle is for touch): on the
+    /// task's own checkbox or goal ring, not its sub-tasks, and only the moves there are.
+    @ViewBuilder
+    private var moveActions: some View {
+        if isEditing && !isPastWeek,
+           let tasks = store.selectedWeek?.categories.first(where: { $0.id == categoryID })?.tasks,
+           let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            if index > 0 {
+                Button("Move Up") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: -1) } }
+            }
+            if index < tasks.count - 1 {
+                Button("Move Down") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: 1) } }
+            }
+        }
     }
 
     /// No confirmation: the delete can be undone from the message that follows.
@@ -268,7 +310,18 @@ struct TaskRowCard: View {
 
     /// The task's type and mode icons; tap to change either.
     private var taskOptionsButton: some View {
-        Button { showOptions = true } label: {
+        Button {
+            // On iPad the keyboard closes first (what's typed in Add task is added, as
+            // whenever it closes): with it up, the picker went above the row and off the
+            // screen. It opens once the keyboard is down; opening it as the keyboard went
+            // cancelled it.
+            if horizontalSizeClass == .regular,
+               UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showOptions = true }
+            } else {
+                showOptions = true
+            }
+        } label: {
             TaskOptionsLabel(type: task.taskType, mode: task.mode, theme: theme, rc: rc)
                 .frame(minHeight: expandedCardControl(36))
                 .contentShape(Rectangle())
@@ -276,6 +329,7 @@ struct TaskRowCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Task options: \(task.taskType.label), \(task.mode.label)")
+        .accessibilityRemoveTraits(.isSelected)  // the checkbox type's checkmark icon isn't a state
         .popover(isPresented: $showOptions) {
             TaskOptionsPicker(
                 type: task.taskType, mode: task.mode, theme: theme, rc: rc,
@@ -312,7 +366,7 @@ struct TaskRowCard: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(Theme.cardFill(theme), in: RoundedRectangle(cornerRadius: 8))
             }
-            .accessibilityHidden(true)  // VoiceOver uses Move Up / Move Down on the task
+            .hiddenFromVoiceOver()  // VoiceOver uses Move Up / Move Down on the task
     }
 
     private var deleteButton: some View {
@@ -377,61 +431,28 @@ struct TaskRowCard: View {
     private var goalProgressSection: some View {
         VStack(spacing: 6) {
             if let target = task.goalTarget, target > 0 {
-                HStack(spacing: 10) {
+                // At accessibility text sizes the amount goes under the bar, whole.
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                    : AnyLayout(HStackLayout(spacing: 10))
+                layout {
                     ProgressView(value: min((task.goalProgress ?? 0) / target, 1.0))
                         .tint(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.accent(theme, rc: rc))
-                    Text(task.goalFraction)
-                        .font(Theme.isRetro(theme) ? .expandedCard(.caption1, weight: .bold, design: .monospaced) : .expandedCard(.caption1, weight: .bold).monospacedDigit())
-                        .foregroundStyle(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
-                    if let unit = task.goalUnitLabel {
-                        Text(unit).font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    HStack(spacing: 10) {
+                        Text(task.goalFraction)
+                            .font(Theme.isRetro(theme) ? .expandedCard(.caption1, weight: .bold, design: .monospaced) : .expandedCard(.caption1, weight: .bold).monospacedDigit())
+                            .foregroundStyle(task.goalIsComplete ? Theme.dotComplete(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+                        if let unit = task.goalUnitLabel {
+                            Text(unit).font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default)).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                        }
                     }
                 }
                 .padding(.leading, 24 * expandedCardScale)
 
                 if !isPastWeek && !isEditingGoal {
-                    // Retro's monospaced words are wider, so they sit closer together; the step
-                    // pills keep their size.
-                    HStack(spacing: Theme.isRetro(theme) ? 12 : 20) {
-                        Button("Edit Goal") { startEditingGoal(target: target) }
-                            .lineLimit(1)
-                            .accessibilityLabel("Edit goal")
-                        if !task.goalIsComplete || isAddingProgress {
-                            Button(isAddingProgress ? "Cancel" : "Add Progress") {
-                                if isAddingProgress { closeAddProgress() } else { startAddingProgress() }
-                            }
-                            .lineLimit(1)
-                            .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
-                        }
-                        // The most common update, in one tap, and its undo: − takes a step
-                        // back (also after the goal is reached, to take back the last tap).
-                        HStack(spacing: 6) {
-                            if (task.goalProgress ?? 0) > 0 && !isAddingProgress {
-                                Button { addQuickProgress(sign: -1) } label: {
-                                    Text("−")
-                                        .font(.expandedCard(.caption1, weight: .bold, scale: 1.15))
-                                        .frame(minWidth: 14)
-                                        .padding(.horizontal, 10).padding(.vertical, 6)
-                                        .foregroundStyle(Theme.accent(theme, rc: rc))
-                                        .overlay(Capsule().stroke(Theme.accent(theme, rc: rc).opacity(0.6), lineWidth: 1))
-                                        .contentShape(Capsule())
-                                        .touchTarget()
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(task.goalKind == .time ? "Remove \(Int(quickStep)) minutes" : "Remove \(task.goalKind.format(quickStep))")
-                            }
-                            if !task.goalIsComplete && !isAddingProgress {
-                                Button { addQuickProgress(sign: 1) } label: {
-                                    actionPill("+" + task.goalKind.format(quickStep))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(task.goalKind == .time ? "Add \(Int(quickStep)) minutes" : "Add \(task.goalKind.format(quickStep))")
-                            }
-                        }
-                        .fixedSize()
-                    }
-                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
-                    .padding(.leading, 24 * expandedCardScale)
+                    goalActions(target: target)
+                        .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                        .padding(.leading, 24 * expandedCardScale)
                 }
 
                 if isEditingGoal && !isPastWeek {
@@ -453,6 +474,7 @@ struct TaskRowCard: View {
     /// Shown until a goal has a target: unit and target on one line, wrapping
     /// onto two lines only when they don't fit.
     private var setGoalForm: some View {
+        VStack(alignment: .leading, spacing: 4) {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 goalUnitMenu
@@ -473,8 +495,20 @@ struct TaskRowCard: View {
                 }
             }
         }
+        goalHint(goalTargetInput.problem(for: goalKindSelection))
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
+    }
+
+    /// Why an amount can't be used, under its field (see `GoalAmountInput.problem`).
+    @ViewBuilder
+    private func goalHint(_ problem: String?) -> some View {
+        if let problem {
+            Text(problem)
+                .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                .foregroundStyle(Theme.destructive(theme))
+        }
     }
 
     private var setGoalButton: some View {
@@ -490,14 +524,33 @@ struct TaskRowCard: View {
                 goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
                 if goalKindSelection == .custom { unitNameField }
             }
+            goalHint(goalTargetInput.problem(for: goalKindSelection))
             labeledGoalRow("Progress") {
                 goalAmountFields($editedProgressInput, kind: goalKindSelection, field: .editProgress, placeholder: "Progress")
             }
+            goalHint(editedProgressInput.problem(for: goalKindSelection, allowsZero: true))
             // What + and − add or take away; empty picks one from the target.
             labeledGoalRow("Step") {
                 goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
             }
-            HStack(spacing: 12) {
+            goalHint(goalStepInput.problem(for: goalKindSelection))
+            ViewThatFits(in: .horizontal) {
+                editGoalButtons(stacked: false)
+                editGoalButtons(stacked: true)
+            }
+        }
+        .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 24 * expandedCardScale)
+    }
+
+    /// Delete Task, Cancel and Save Goal: in a row, or one above another (Save on top)
+    /// when a row doesn't fit.
+    private func editGoalButtons(stacked: Bool) -> some View {
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
                 // Deleting removes the whole task, so it's small and kept apart from Save.
                 Button(role: .destructive, action: deleteTask) {
                     Text("Delete Task")
@@ -507,7 +560,7 @@ struct TaskRowCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete task")
-                Spacer(minLength: 0)
+                if !stacked { Spacer(minLength: 0) }
                 Button("Cancel", action: closeGoalEditing)
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                     .accessibilityLabel("Cancel editing goal")
@@ -518,12 +571,10 @@ struct TaskRowCard: View {
                 .buttonStyle(.plain)
                 .disabled(!canSaveEditedGoal)
                 .accessibilityLabel("Save Goal")
+                .accessibilityRemoveTraits(.isSelected)
             }
+            .frame(maxWidth: stacked ? .infinity : nil, alignment: .trailing)
             .accessibilityElement(children: .contain)
-        }
-        .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 24 * expandedCardScale)
     }
 
     /// Revealed by Add Progress; hides again after Add.
@@ -584,6 +635,7 @@ struct TaskRowCard: View {
             .cardField(theme, rc: rc)
             .frame(minWidth: 64 * expandedCardScale)
             .focused($focusedGoalField, equals: GoalFocus(field: .unitName, part: .number))
+            .onSubmit { submitGoalField(.unitName) }
             .accessibilityLabel("Unit name, for example pages")
     }
 
@@ -614,6 +666,8 @@ struct TaskRowCard: View {
             .cardField(theme, rc: rc)
             .frame(width: width * expandedCardScale)
             .focused($focusedGoalField, equals: focus)
+            // iPad and hardware keyboards have Return (the iPhone's number pad doesn't).
+            .onSubmit { submitGoalField(focus.field) }
             // A tap just outside the small box still lands in it.
             .padding(.vertical, 6)
             .contentShape(Rectangle())
@@ -628,13 +682,23 @@ struct TaskRowCard: View {
             }
     }
 
+    /// A label column beside the fields; at accessibility text sizes the label goes above
+    /// them and the fields stack, so the editor never grows wider than the screen.
+    @ViewBuilder
     private func labeledGoalRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
-                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                .frame(width: 64 * expandedCardScale, alignment: .leading)
-            content()
+        let title = Text(label)
+            .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                title
+                VStack(alignment: .leading, spacing: 6) { content() }
+            }
+        } else {
+            HStack(spacing: 8) {
+                title.frame(width: 64 * expandedCardScale, alignment: .leading)
+                content()
+            }
         }
     }
 
@@ -664,14 +728,29 @@ struct TaskRowCard: View {
         }
     }
 
-    /// Return keeps the keyboard up for the next item; Return on an empty field closes it.
-    private func addSubtask(keepTyping: Bool = true) {
-        let title = newSubtaskTitle.trimmingCharacters(in: .whitespaces)
+    /// Return (a line break) adds the sub-task or item and keeps the keyboard for the next;
+    /// Return in an empty field closes it. Pasted lines each become one.
+    private func submitTypedSubtask(_ text: String) {
+        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
+        let line = String(text[..<lineBreak])
+        let rest = String(text[text.index(after: lineBreak)...])
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
+            newSubtaskTitle = rest
+            if rest.isEmpty { isSubtaskFieldFocused = false }
+            return
+        }
+        addSubtask(line)
+        newSubtaskTitle = rest  // one change to the field's text
+    }
+
+    /// `typed`: a line already taken out of the field (Return), instead of the field's text.
+    private func addSubtask(_ typed: String? = nil, keepTyping: Bool = true) {
+        let title = (typed ?? newSubtaskTitle).trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
         withAnimation(.snappy(duration: 0.2)) {
             store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
-        newSubtaskTitle = ""
+        if typed == nil { newSubtaskTitle = "" }
         if keepTyping { isSubtaskFieldFocused = true }
     }
 
@@ -747,10 +826,106 @@ struct TaskRowCard: View {
 
     /// One step forward (+) or back (−); never below zero.
     private func addQuickProgress(sign: Double) {
+        let wasComplete = task.goalIsComplete
         let progress = max(0, (task.goalProgress ?? 0) + sign * quickStep)
         withAnimation(.snappy(duration: 0.2)) {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
         }
+        // The + button VoiceOver was on goes away once the goal is met: say why.
+        if !wasComplete, let target = task.goalTarget, progress >= target {
+            AccessibilityNotification.Announcement("\(task.title): goal reached").post()
+        }
+    }
+
+    /// Edit Goal, Add Progress, and the − and + steps. Every control keeps its place while
+    /// hidden (at zero, at the target, while adding progress), so nothing slides under a
+    /// finger between two quick taps: − used to appear where + had just been. One line if
+    /// it fits, else the steps go on a line of their own; at the largest text sizes the
+    /// words stack too.
+    @ViewBuilder
+    private func goalActions(target: Double) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: goalActionSpacing) {
+                editGoalButton(target: target)
+                addProgressButton
+                goalSteps
+            }
+            VStack(spacing: 8) {
+                HStack(spacing: goalActionSpacing) {
+                    editGoalButton(target: target)
+                    addProgressButton
+                }
+                goalSteps
+            }
+            VStack(spacing: 8) {
+                editGoalButton(target: target, wraps: true)
+                addProgressButton(wraps: true)
+                goalSteps
+            }
+        }
+    }
+
+    /// Retro's monospaced words are wider, so they sit closer together.
+    private var goalActionSpacing: CGFloat { Theme.isRetro(theme) ? 12 : 20 }
+
+    private func editGoalButton(target: Double, wraps: Bool = false) -> some View {
+        Button("Edit Goal") { startEditingGoal(target: target) }
+            .lineLimit(wraps ? nil : 1)
+            .accessibilityLabel("Edit goal")
+    }
+
+    private var addProgressButton: some View { addProgressButton(wraps: false) }
+
+    /// "Add Progress", or "Cancel" while adding; at the target it's hidden but keeps its
+    /// place (sized for the longer word, so the switch moves nothing either).
+    private func addProgressButton(wraps: Bool) -> some View {
+        let isShown = !task.goalIsComplete || isAddingProgress
+        return Button {
+            if isAddingProgress { closeAddProgress() } else { startAddingProgress() }
+        } label: {
+            ZStack {
+                Text("Add Progress").opacity(isAddingProgress ? 0 : 1)
+                Text("Cancel").opacity(isAddingProgress ? 1 : 0)
+            }
+        }
+        .lineLimit(wraps ? nil : 1)
+        .opacity(isShown ? 1 : 0)
+        .disabled(!isShown)
+        .accessibilityHidden(!isShown)
+        .accessibilityLabel(isAddingProgress ? "Cancel adding progress" : "Add progress")
+    }
+
+    /// The most common update, in one tap, and its undo: − takes a step back (also after
+    /// the goal is reached, to take back the last tap). Both always take their space.
+    private var goalSteps: some View {
+        let canRemove = (task.goalProgress ?? 0) > 0 && !isAddingProgress
+        let canAdd = !task.goalIsComplete && !isAddingProgress
+        return HStack(spacing: 6) {
+            Button { addQuickProgress(sign: -1) } label: {
+                Text("−")
+                    .font(.expandedCard(.caption1, weight: .bold, scale: 1.15))
+                    .frame(minWidth: 14)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .foregroundStyle(Theme.accent(theme, rc: rc))
+                    .overlay(Capsule().stroke(Theme.accent(theme, rc: rc).opacity(0.6), lineWidth: 1))
+                    .contentShape(Capsule())
+                    .touchTarget()
+            }
+            .buttonStyle(.plain)
+            .opacity(canRemove ? 1 : 0)
+            .disabled(!canRemove)
+            .accessibilityHidden(!canRemove)
+            .accessibilityLabel(task.goalKind == .time ? "Remove \(Int(quickStep)) minutes" : "Remove \(task.goalKind.format(quickStep))")
+            Button { addQuickProgress(sign: 1) } label: {
+                actionPill("+" + task.goalKind.format(quickStep))
+            }
+            .buttonStyle(.plain)
+            .opacity(canAdd ? 1 : 0)
+            .disabled(!canAdd)
+            .accessibilityHidden(!canAdd)
+            .accessibilityLabel(task.goalKind == .time ? "Add \(Int(quickStep)) minutes" : "Add \(task.goalKind.format(quickStep))")
+        }
+        .fixedSize()
     }
 
     /// One tap's worth of progress: 1 for counts; for time, a step that suits the target
@@ -774,6 +949,12 @@ struct TaskRowCard: View {
             return
         }
         guard let field = focusedGoalField?.field else { return }
+        submitGoalField(field)
+    }
+
+    /// Saves what's typed in a goal field, as Set, Add or Save Goal would: from the
+    /// keyboard's Done button, or Return.
+    private func submitGoalField(_ field: GoalField) {
         switch field {
         case .addProgress:
             addGoalProgress()
@@ -888,6 +1069,28 @@ struct GoalAmountInput: Equatable {
     /// Nothing typed.
     var isEmpty: Bool { number.isEmpty && hours.isEmpty && minutes.isEmpty }
 
+    /// Why what's typed can't be used, said under the field (Set and Save stay off
+    /// otherwise, with no reason given): over the maximum, or zero where an amount has to
+    /// be more. Nil when it's fine, or when nothing (or no number) is typed.
+    func problem(for kind: GoalUnitKind, allowsZero: Bool = false, locale: Locale = .current) -> String? {
+        guard !isEmpty else { return nil }
+        let typed: Double
+        if kind == .time {
+            guard let h = hours.isEmpty ? 0 : GoalNumber.parse(hours, locale: locale),
+                  let m = minutes.isEmpty ? 0 : GoalNumber.parse(minutes, locale: locale) else { return nil }
+            typed = h * 60 + m
+        } else {
+            guard let n = GoalNumber.parse(number, locale: locale) else { return nil }
+            typed = n
+        }
+        if typed > GoalUnitKind.maxValue {
+            let limit = kind == .time ? Int(GoalUnitKind.maxValue / 60) : Int(GoalUnitKind.maxValue)
+            return "Up to " + limit.formatted(.number.locale(locale)) + (kind == .time ? " hours" : "")
+        }
+        if typed <= 0 && !allowsZero { return "More than 0" }
+        return nil
+    }
+
     /// The typed value if it's greater than zero.
     func positiveValue(for kind: GoalUnitKind, locale: Locale = .current) -> Double? {
         value(for: kind, locale: locale).flatMap { $0 > 0 ? $0 : nil }
@@ -973,7 +1176,9 @@ struct SubTaskRowCard: View {
             } else {
                 Text(subtask.title)
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
-                    .foregroundStyle(subtask.isCompleted ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                    // Done ones are struck through in the secondary color, like done tasks (the
+                    // tertiary color was too faint to read); Retro's faint color reads fine.
+                    .foregroundStyle(subtask.isCompleted && Theme.isRetro(theme) ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -1037,6 +1242,10 @@ struct AddTaskRowCard: View {
     @State private var newType: TaskType = .checkbox
     @State private var newMode: TaskMode = .oneTime
     @State private var showOptions = false
+    /// The options are about to open on iPad, after the keyboard closes: the field losing
+    /// focus meanwhile mustn't add the words (they're what the options are for).
+    @State private var isOpeningOptions = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @FocusState private var isFocused: Bool
     /// Working out a task from the typed words (Smart Add).
     @State private var isParsing = false
@@ -1061,6 +1270,40 @@ struct AddTaskRowCard: View {
 
     private var hasText: Bool { !newTitle.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// Says what Return will add when it isn't a plain one-time task ("Add repeating goal"):
+    /// a type or mode picked in the options stays picked for the card's next task.
+    private var addPlaceholder: String {
+        let kind = switch newType {
+        case .checkbox: "task"
+        case .goal: "goal"
+        case .list: "list"
+        }
+        let mode: String? = switch newMode {
+        case .oneTime: nil
+        case .carryOver: "carry-over"
+        case .repeating: "repeating"
+        }
+        if Theme.isRetro(theme) {
+            return "new_" + (mode.map { $0.replacingOccurrences(of: "-", with: "_") + "_" } ?? "") + kind + ">"
+        }
+        return addPlaceholderSpoken
+    }
+
+    /// The placeholder in words, for VoiceOver (also in Retro).
+    private var addPlaceholderSpoken: String {
+        let kind = switch newType {
+        case .checkbox: "task"
+        case .goal: "goal"
+        case .list: "list"
+        }
+        let mode: String? = switch newMode {
+        case .oneTime: nil
+        case .carryOver: "carry-over"
+        case .repeating: "repeating"
+        }
+        return "Add " + (mode.map { $0 + " " } ?? "") + kind
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             addRow
@@ -1083,16 +1326,23 @@ struct AddTaskRowCard: View {
         HStack(spacing: 14) {
             Image(systemName: Theme.isRetro(theme) ? "greaterthan" : "plus.circle")
                 .font(.expandedCard(.subheadline)).foregroundStyle(Theme.textTertiary(theme, rc: rc))
-            TextField(Theme.isRetro(theme) ? "new_task>" : "Add task", text: $newTitle)
+                .hiddenFromVoiceOver()
+            // Multi-line, so Return types a line break instead of ending editing: ending and
+            // re-focusing dropped the keyboard and brought it back (the bottom bar flashed
+            // between them). The line break adds the task; see `submitTyped`.
+            TextField(addPlaceholder, text: $newTitle, axis: .vertical)
+                .lineLimit(1...4)
+                .accessibilityIdentifier("Add task")
+                .accessibilityLabel(addPlaceholderSpoken)
                 .font(.expandedCard(.subheadline, design: Theme.isRetro(theme) ? .monospaced : .default))
                 .cardField(theme, rc: rc, outset: true)
                 .focused($isFocused)
                 .submitLabel(.next)
-                .onSubmit { addTask(keepTyping: true) }
+                .onChange(of: newTitle) { _, text in submitTyped(text) }
                 .onChange(of: isFocused) { _, focused in
                     if focused {
                         parser.prepare()
-                    } else if !showOptions, newTitle.trimmingCharacters(in: .whitespaces).count > 1 {
+                    } else if !showOptions, !isOpeningOptions, newTitle.trimmingCharacters(in: .whitespaces).count > 1 {
                         // However the keyboard went away (swiped down, another field
                         // tapped), what was typed is added, like a renamed task's name.
                         // (A single stray letter isn't.)
@@ -1110,13 +1360,28 @@ struct AddTaskRowCard: View {
                 }
                 // Kept while the picker is open, which can take the keyboard away.
                 if !isParsing && (isFocused || showOptions || !newTitle.isEmpty) {
-                    Button { showOptions = true } label: {
+                    Button {
+                        // On iPad the keyboard closes first: with it up, the picker opened
+                        // above the row and partly off the screen. It opens once the
+                        // keyboard is down (opening as it went cancelled it).
+                        if horizontalSizeClass == .regular && isFocused {
+                            isOpeningOptions = true
+                            isFocused = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                showOptions = true
+                                isOpeningOptions = false
+                            }
+                        } else {
+                            showOptions = true
+                        }
+                    } label: {
                         TaskOptionsLabel(type: newType, mode: newMode, theme: theme, rc: rc)
                             .contentShape(Rectangle())
                             .touchTarget()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("New task options: \(newType.label), \(newMode.label)")
+                    .accessibilityRemoveTraits(.isSelected)
                     .popover(isPresented: $showOptions) {
                         TaskOptionsPicker(
                             type: newType, mode: newMode, theme: theme, rc: rc,
@@ -1259,21 +1524,41 @@ struct AddTaskRowCard: View {
 
     private static let log = Logger(subsystem: "com.symonym.Tasquel", category: "SmartAdd")
 
+    /// Return in the field (a line break): what's before it is added and the keyboard stays
+    /// for the next task; Return in an empty field closes the keyboard. Pasted lines each
+    /// become a task. While Smart Add is still working, nothing is added and the words stay.
+    private func submitTyped(_ text: String) {
+        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
+        let line = String(text[..<lineBreak])
+        let rest = String(text[text.index(after: lineBreak)...])
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
+            newTitle = rest
+            if rest.isEmpty { isFocused = false }
+            return
+        }
+        // One change to the field's text, so keys typed right after Return aren't lost.
+        newTitle = addTask(line, keepTyping: true) ? rest : line + rest
+    }
+
     /// Adds exactly what was typed, with the type and mode last picked (Smart Add is the
     /// only thing that reads the words). Return keeps the keyboard up for the next task;
     /// a new list or goal takes the keyboard for its first item or target instead.
-    private func addTask(keepTyping: Bool) {
-        let title = newTitle.trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty, !isParsing else { return }
+    /// `typed`: a line already taken out of the field (Return), instead of the field's text.
+    /// Returns whether a task was added.
+    @discardableResult
+    private func addTask(_ typed: String? = nil, keepTyping: Bool) -> Bool {
+        let title = (typed ?? newTitle).trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty, !isParsing else { return false }
         let task = ParsedTask(title: title, type: newType, mode: newMode)
         let awaitsInput = task.type != .checkbox
         withAnimation(.snappy(duration: 0.2)) {
             let id = store.addParsedTask(task, categoryID: categoryID)
             if keepTyping && awaitsInput { store.taskAwaitingFirstInput = id }
         }
-        newTitle = ""
+        if typed == nil { newTitle = "" }
         pickedType = false
         pickedMode = false
         if keepTyping && !awaitsInput { isFocused = true }
+        return true
     }
 }

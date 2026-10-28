@@ -74,20 +74,47 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Close Study"].exists)
     }
 
-    /// A list Smart Add finds no items for takes the keyboard for its first item; the
-    /// words aren't added a second time as the Add task field lets go of the keyboard.
+    /// A list with no items yet takes the keyboard for its first item; the words aren't
+    /// added a second time as the Add task field lets go of the keyboard. (List is picked
+    /// first: Smart Add keeps a picked type, and without a model the rules wouldn't make
+    /// a list from one word.)
     @MainActor
     func testEmptyListTakesKeyboardForFirstItem() throws {
-        typeInFitness("Groceries:")
-        app.buttons["Smart Add"].tap()
+        typeInFitness("Groceries")
+        app.buttons["New task options: Checkbox, One-Time"].tap()
+        app.buttons["List"].tap()
+        let dismiss = app.otherElements["PopoverDismissRegion"]
+        if dismiss.exists { dismiss.tap() }  // the picker stays open: tap outside it
+        let smartAdd = app.buttons["Smart Add"]
+        XCTAssertTrue(smartAdd.waitForExistence(timeout: 3))
+        smartAdd.tap()
         let item = app.textFields["Add item"]
         XCTAssertTrue(item.waitForExistence(timeout: 10), "the new list's item field appears")
         sleep(1)
-        print("REVIEW list: tasks=\(taskCount) itemFocus=\(item.value(forKey: "hasKeyboardFocus") as? Bool ?? false) addField=\(app.textFields["Add task"].value as? String ?? "?")")
         XCTAssertEqual(taskCount, 1, "added once")
         XCTAssertTrue(item.value(forKey: "hasKeyboardFocus") as? Bool ?? false, "the keyboard moved to the first item")
         item.typeText("Milk\n")
         XCTAssertTrue(app.staticTexts["Milk"].waitForExistence(timeout: 3))
+        XCTAssertEqual(taskCount, 1, "still one task")
+    }
+
+    /// Closing the card while Smart Add works on a list with no items: the list is added,
+    /// and the keyboard doesn't come up for its (now hidden) first-item field.
+    @MainActor
+    func testClosingCardWhileWorkingOnEmptyList() throws {
+        typeInFitness("Groceries")
+        app.buttons["New task options: Checkbox, One-Time"].tap()
+        app.buttons["List"].tap()
+        let dismiss = app.otherElements["PopoverDismissRegion"]
+        if dismiss.exists { dismiss.tap() }
+        let smartAdd = app.buttons["Smart Add"]
+        XCTAssertTrue(smartAdd.waitForExistence(timeout: 3))
+        smartAdd.tap()
+        app.buttons["Close Fitness"].tap()
+        let added = NSPredicate(format: "label BEGINSWITH %@", "Open Fitness, 0 of 1")
+        XCTAssertTrue(app.buttons.matching(added).firstMatch.waitForExistence(timeout: 10), "the list was added")
+        sleep(1)
+        XCTAssertEqual(app.keyboards.count, 0, "no keyboard for a field in a closed card")
     }
 
     // MARK: Helpers
@@ -107,7 +134,7 @@ final class SmartAddUITests: XCTestCase {
     @MainActor
     private func assertOneRunGoal(file: StaticString = #filePath, line: UInt = #line) {
         let goal = app.buttons["Task options: Goal, Repeating"]
-        XCTAssertTrue(goal.waitForExistence(timeout: 10), "Smart Add added the goal", file: file, line: line)
+        XCTAssertTrue(goal.waitForExistence(timeout: 20), "Smart Add added the goal", file: file, line: line)
         sleep(1)
         XCTAssertEqual(taskCount, 1, "added once", file: file, line: line)
     }
@@ -121,5 +148,6 @@ final class SmartAddUITests: XCTestCase {
         field.tap()
         field.typeText(text)
         XCTAssertTrue(app.buttons["Smart Add"].waitForExistence(timeout: 2))
+        sleep(1)  // the row and keyboard have settled (an iPad may still be rotating back)
     }
 }

@@ -39,10 +39,40 @@ struct TaskOptionsPicker: View {
     var onAdd: (() -> Void)? = nil
 
     @State private var pendingType: TaskType?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        // Scrolls when it's taller than the screen (accessibility text sizes).
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }
+        }
+        .padding(16)
+        .frame(minWidth: 300)
+        // A keyboard that's up (typing a new task) mustn't push the options out of the
+        // popover: in landscape on iPad it pushed the first rows off the top.
+        .ignoresSafeArea(.keyboard)
+        .presentationCompactAdaptation(.popover)
+        .confirmationDialog("Change to \(pendingType?.label ?? "")?", isPresented: Binding(
+            get: { pendingType != nil },
+            set: { if !$0 { pendingType = nil } }
+        ), titleVisibility: .visible) {
+            Button("Change Type", role: .destructive) {
+                if let pendingType { onSelectType(pendingType) }
+                pendingType = nil
+            }
+        } message: {
+            Text("This clears the goal target and progress.")
+        }
+    }
+
+    /// Two columns side by side; one above the other at accessibility text sizes.
+    private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
+            let columns = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+            columns {
                 column("Type") {
                     ForEach(TaskType.allCases, id: \.self) { option in
                         optionButton(option.label, symbol: option.symbol,
@@ -76,20 +106,6 @@ struct TaskOptionsPicker: View {
                 .tint(Theme.accent(theme, rc: rc))
             }
         }
-        .padding(16)
-        .frame(minWidth: 300)
-        .presentationCompactAdaptation(.popover)
-        .confirmationDialog("Change to \(pendingType?.label ?? "")?", isPresented: Binding(
-            get: { pendingType != nil },
-            set: { if !$0 { pendingType = nil } }
-        ), titleVisibility: .visible) {
-            Button("Change Type", role: .destructive) {
-                if let pendingType { onSelectType(pendingType) }
-                pendingType = nil
-            }
-        } message: {
-            Text("This clears the goal target and progress.")
-        }
     }
 
     private func selectType(_ option: TaskType) {
@@ -121,6 +137,8 @@ struct TaskOptionsPicker: View {
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        // Checkbox's checkmark icon would make it read "selected" when it isn't.
+        .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
     }
 }
 
@@ -138,6 +156,7 @@ struct OptionButtonLabel: View {
     let rc: RetroColor
     var alignment: HorizontalAlignment = .center
     var isEnabled = true
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: 8) {
@@ -147,7 +166,7 @@ struct OptionButtonLabel: View {
                 .frame(width: 22)
             Text(title)
                 .foregroundStyle(isEnabled ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 0)
         }

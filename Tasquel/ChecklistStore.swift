@@ -31,6 +31,8 @@ final class ChecklistStore {
     /// The last delete, offered as "Deleted … · Undo" for a few seconds. Not saved.
     struct UndoableDelete: Equatable {
         let description: String
+        /// The week it was deleted from, so Undo can show it coming back there.
+        var week: DayKey? = nil
         let token = UUID()
     }
     private(set) var lastDelete: UndoableDelete?
@@ -479,9 +481,15 @@ final class ChecklistStore {
     func addSavedCategory(name: String, symbol: String) {
         let name = Self.cleanName(name)
         guard !name.isEmpty, !Self.containsName(name, in: savedCategories.map(\.name)) else { return }
-        let template = CategoryTemplate(name: name, symbol: symbol)
         clearUndo()  // Undo puts saved categories back too; it mustn't undo this
-        savedCategories.append(template)
+        appendSavedCategory(name: name, symbol: symbol)
+    }
+
+    /// Adds a saved category whose name is clean and free, without ending a delete's Undo:
+    /// a deleted category keeps its template this way, and undoing the delete takes the
+    /// template back out with everything else.
+    private func appendSavedCategory(name: String, symbol: String) {
+        savedCategories.append(CategoryTemplate(name: name, symbol: symbol))
         removedSavedCategoryNames.removeAll { Self.cleanName($0).caseInsensitiveCompare(name) == .orderedSame }
         saveSettings()
     }
@@ -985,9 +993,10 @@ final class ChecklistStore {
             }
         }
         saveDelete()
-        if !category.isThisWeekOnly && !savedCategories.contains(where: { $0.name == category.name })
-            && !Self.containsName(category.name, in: removedSavedCategoryNames) {
-            addSavedCategory(name: category.name, symbol: category.symbol)
+        let name = Self.cleanName(category.name)
+        if !category.isThisWeekOnly && !name.isEmpty && !Self.containsName(name, in: savedCategories.map(\.name))
+            && !Self.containsName(name, in: removedSavedCategoryNames) {
+            appendSavedCategory(name: name, symbol: category.symbol)
         }
     }
 
@@ -1225,6 +1234,14 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].goalUnitKind = nil
             weeks[wi].categories[ci].tasks[ti].goalStep = nil
         }
+        // Done or not as its new type counts it: a goal when its target is met (a new one
+        // has none yet), a list when it has items and all are checked. A checkbox keeps it.
+        let task = weeks[wi].categories[ci].tasks[ti]
+        switch type {
+        case .goal: weeks[wi].categories[ci].tasks[ti].isCompleted = task.goalIsComplete
+        case .list: weeks[wi].categories[ci].tasks[ti].isCompleted = !task.subtasks.isEmpty && task.subtasks.allSatisfy(\.isCompleted)
+        case .checkbox: break
+        }
         noteEdit(categoryID)
         save()
     }
@@ -1387,8 +1404,10 @@ final class ChecklistStore {
         return categories.enumerated().sorted { a, b in
             switch (categoryEditTimes[a.element.name], categoryEditTimes[b.element.name]) {
             case let (x?, y?) where x != y: return newestFirst ? x > y : x < y
-            case (_?, nil): return true
-            case (nil, _?): return false
+            // Never edited counts as oldest: last when recent comes first, first when the
+            // least recent does (the card just edited mustn't lead "least recent").
+            case (_?, nil): return newestFirst
+            case (nil, _?): return !newestFirst
             default: return a.offset < b.offset
             }
         }.map(\.element)
@@ -1400,7 +1419,7 @@ final class ChecklistStore {
     private func rememberForUndo(_ description: String) {
         weeksBeforeDelete = weeks
         savedCategoriesBeforeDelete = savedCategories
-        lastDelete = UndoableDelete(description: description)
+        lastDelete = UndoableDelete(description: description, week: selectedWeek?.startDay)
     }
 
     /// Saves a delete without ending its undo.

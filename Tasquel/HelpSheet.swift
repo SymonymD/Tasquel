@@ -29,7 +29,7 @@ struct HelpSheet: View {
             ("hand.draw", "Rename, Reorder and Delete", "Tap a task's or sub-task's name to rename it. Tap a card's edit button to show a trash can and a handle on each task (hold and drag the handle to reorder), and a red − on each sub-task or list item. Deleting doesn't ask: tap Undo in the message that appears. A goal's editor also has Delete Task. Tap the green checkmark when you're done to add tasks again."),
         ]),
         ("After This Week", [
-            ("1.circle", "One-Time", "This week only. New tasks start as One-Time; a type or mode you pick stays picked for the next task you add to that card."),
+            ("1.circle", "One-Time", "This week only. New tasks start as One-Time; a type or mode you pick stays picked for the next task you add to that card, and the Add task field says so (\"Add repeating goal\")."),
             ("arrow.uturn.forward", "Carry Over", "If it isn't finished by the end of the week, it moves to next week. A list or sub-tasks bring only what's left; a goal keeps its progress."),
             ("repeat", "Repeating", "Comes back every week, unchecked, whether or not you finished it. A repeating goal starts from zero; a repeating list keeps its items, with checked ones still checked."),
         ]),

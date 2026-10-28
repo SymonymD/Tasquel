@@ -57,6 +57,7 @@ struct ContentView: View {
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
     @State private var homeIndicatorInset: CGFloat = 34
     @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -166,7 +167,6 @@ struct ContentView: View {
                         }
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekPageWidth = $0 }
-                    .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
                     .simultaneousGesture(weekSwipeGesture)
                     .onChange(of: isWeekSwiping) { _, swiping in
                         // Cancelled rather than ended: put the page back.
@@ -190,10 +190,11 @@ struct ContentView: View {
                     if !isKeyboardVisible {
                         bottomBar
                             // Not while the events panel follows a finger: the grid would re-pad
-                            // itself on every frame of the drag. Not under a sheet either (see
-                            // `homeIndicatorInset`).
+                            // itself on every frame of the drag. (Under a sheet it's still
+                            // measured: Settings can change the bar, e.g. turning off calendar
+                            // events removes its panel.)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                if !isEventsPanelDragged && !isSheetPresented { bottomBarHeight = height }
+                                if !isEventsPanelDragged { bottomBarHeight = height }
                             }
                             .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
@@ -215,6 +216,7 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     undoDeleteMessage(deletion)
+                        .frame(maxWidth: 560)  // not the width of an iPad
                         .padding(.horizontal, 16)
                         .padding(.bottom, isKeyboardVisible
                                  ? Self.keyboardDoneClearance + 8
@@ -230,26 +232,11 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
         }
-        // Ignoring the keyboard, the bottom inset is the home indicator's alone. Not measured
-        // while a sheet covers the screen: a keyboard in a sheet over a sheet (Choose Emoji…
-        // in Add Category or Saved Categories) lifts this screen's inset to ~380pt, and the
-        // bar, padded by it, then chased it in a layout loop that froze the app.
-        .background {
-            Color.clear
-                .ignoresSafeArea(.keyboard)
-                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
-                    if !isSheetPresented { homeIndicatorInset = inset }
-                }
-        }
+        .background { windowMeasurements }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: store.lastDelete)
         .preferredColorScheme(store.colorScheme)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            // A keyboard for a field in a sheet isn't this screen's: on iPad the bar would
-            // change around the form sheet.
-            guard !isSheetPresented else { return }
-            withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = true }
-        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { keyboardWillShow($0) }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = false }
         }
@@ -258,18 +245,21 @@ struct ContentView: View {
                             theme: theme, rc: rc) { date in
                 changeWeek(to: date)
             }
-            .presentationDetents([.medium, .large])
+            // Full height on iPad, where half a form sheet cut the content off.
+            .presentationDetents(horizontalSizeClass == .regular ? [.large] : [.medium, .large])
             .preferredColorScheme(store.colorScheme)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsSheet(store: store, calendar: calendarService)
+            // The main screen follows the device in System mode, so its scheme is the device's.
+            SettingsSheet(store: store, calendar: calendarService, systemColorScheme: colorScheme)
         }
         .sheet(isPresented: $showAddCategory) {
             AddCategorySheet(store: store) { name, symbol, thisWeekOnly in
                 store.addCategory(name: name, symbol: symbol, thisWeekOnly: thisWeekOnly)
                 isEditing = false
             }
-            .presentationDetents([.medium, .large])
+            // Full height on iPad, where half a form sheet cut the content off.
+            .presentationDetents(horizontalSizeClass == .regular ? [.large] : [.medium, .large])
             .preferredColorScheme(store.colorScheme)
         }
         .sheet(isPresented: $showOnboarding) {
@@ -298,27 +288,32 @@ struct ContentView: View {
             guard scenePhase == .active else { return }
             // Only after a real trip away: Notification Center or Control Center (inactive)
             // mustn't re-sort cards that are in use.
-            if backgroundedAt != nil { refreshSortOrder() }
+            let wasAway = backgroundedAt != nil
+            if wasAway { refreshSortOrder() }
             today = Date()
             returnToCurrentWeekIfAway()
-            // Calendars may have changed (or access revoked) while away.
+            // Calendars may have changed (or access revoked) while away. Not after Control
+            // Center or the icon-change alert: reloading made an open events panel flash.
+            // (Changes while the app is open arrive through EventKit's notification.)
             calendarService.refreshAuthorization()
-            calendarService.invalidate()
-            Task { await calendarService.loadCalendars() }
+            if wasAway {
+                calendarService.invalidate()
+                Task { await calendarService.loadCalendars() }
+            }
         }
         .onChange(of: isEditing) {
             // Edit mode is for managing categories: collapse everything, and reopen the
-            // same cards afterwards.
+            // same cards afterwards, each where it was (at the start of its row).
             withAnimation(cardAnimation) {
+                categoryDisplayOrder.removeAll()
                 if isEditing {
                     expandedBeforeEditing = expandedCategoryKeys
                     expandedCategoryKeys.removeAll()
                     editingCategoryKeys.removeAll()
                 } else {
-                    expandedCategoryKeys = expandedBeforeEditing
+                    reopenCards(expandedBeforeEditing)
                     expandedBeforeEditing.removeAll()
                 }
-                categoryDisplayOrder.removeAll()
                 lastToggledCategory = nil
             }
         }
@@ -504,18 +499,58 @@ struct ContentView: View {
 
     // MARK: - Undo
 
+    /// The window's measurements, behind everything (see the comments for why each is
+    /// measured as it is).
+    private var windowMeasurements: some View {
+        ZStack {
+            // Ignoring the keyboard, the bottom inset is the home indicator's alone. Not
+            // measured while a sheet covers the screen: a keyboard in a sheet over a sheet
+            // (Choose Emoji… in Add Category or Saved Categories) lifts this screen's inset to
+            // ~380pt, and the bar, padded by it, then chased it in a layout loop that froze
+            // the app. (The home indicator's real inset doesn't change while a sheet is up.)
+            Color.clear
+                .ignoresSafeArea(.keyboard)
+                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
+                    if !isSheetPresented { homeIndicatorInset = inset }
+                }
+            // Landscape from the window itself, which keyboards don't change: measured in
+            // SwiftUI, the space above an iPad's keyboard made portrait "landscape" (4 columns).
+            WindowSizeReader { size in isLandscape = size.width > size.height }
+        }
+    }
+
+    /// The bottom bar makes way for this screen's keyboard. A keyboard for a field in a
+    /// sheet isn't this screen's (on iPad the bar would change around the form sheet); with
+    /// a hardware keyboard, iPadOS shows only a short shortcuts bar, so the bar stays.
+    private func keyboardWillShow(_ note: Notification) {
+        guard !isSheetPresented else { return }
+        let height = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect)?.height ?? .infinity
+        withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = height > 100 }
+    }
+
+    /// Undoes the last delete. From another week, it goes back to the week of the delete
+    /// first, so what returns is seen returning.
+    private func undoDelete() {
+        let week = store.lastDelete?.week
+        withAnimation(cardAnimation) { store.undoLastDelete() }
+        if let week, week != store.selectedWeek?.startDay {
+            changeWeek(to: week.date(in: store.calendar))
+        }
+    }
+
     /// Shown for five seconds after a delete; deleting no longer asks first, so this is
     /// how a mistaken delete is taken back.
     private func undoDeleteMessage(_ deletion: ChecklistStore.UndoableDelete) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "trash")
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .hiddenFromVoiceOver()
             Text(Theme.isRetro(theme) ? "deleted \(deletion.description)" : "Deleted \(deletion.description)")
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             Button(Theme.isRetro(theme) ? "[UNDO]" : "Undo") {
-                withAnimation(cardAnimation) { store.undoLastDelete() }
+                undoDelete()
             }
             .buttonStyle(.plain)
             .fontWeight(.semibold)
@@ -587,10 +622,14 @@ struct ContentView: View {
                     if Theme.isRetro(theme) {
                         Text(anyExpanded ? "[-]" : "[+]")
                             .font(.system(.body, design: .monospaced).bold())
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     } else {
                         Image(systemName: anyExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .font(.title3)
                             .contentTransition(.symbolEffect(.replace))
+                            // Grows no further at the largest text sizes, so it stays clear of
+                            // the week title.
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     }
                 }
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
@@ -846,6 +885,11 @@ struct ContentView: View {
     private var weekTitleText: some View {
         let title = arrivingWeekTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
         return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityActions {
+                if store.lastDelete != nil { Button("Undo delete") { undoDelete() } }
+            }
     }
 
     /// Today's date, in the bottom bar: shorter forms on narrow screens or at large text
@@ -931,7 +975,9 @@ struct ContentView: View {
             VStack(spacing: 8) {
                 // Expanded cards take a full row; other open cards remain open.
                 CategoryGridLayout(spacing: 8, columns: gridColumns) {
-                    ForEach(gridEntries(for: week)) { entry in
+                    // By category ID, not by the entry's name key: a renamed card stays the
+                    // same view, so a menu, sheet or field open in it survives the rename.
+                    ForEach(gridEntries(for: week), id: \.category.id) { entry in
                         let isExpanded = expandedCategoryKeys.contains(entry.id)
                         CategoryGridCard(
                             category: entry.category,
@@ -985,6 +1031,8 @@ struct ContentView: View {
                         ))
                         .accessibilityActions {
                             if !store.isPastWeek(week) && !isExpanded && store.categorySort == .manual { cardMoveActions(entry.id, in: week) }
+                            // Also on the week title; the Undo button itself stays while VoiceOver is on.
+                            if store.lastDelete != nil { Button("Undo delete") { undoDelete() } }
                         }
                         // Outside the modifiers above, where the grid layout can read it.
                         .categoryGridFullWidth(isExpanded || usesSingleColumn)
@@ -1024,11 +1072,6 @@ struct ContentView: View {
         .modifier(PullToCloseAll(isEnabled: !expandedCategoryKeys.isEmpty && !isEditing && !isKeyboardVisible,
                                  theme: theme, rc: rc, onClose: collapseAllCards))
         .scrollDisabled(cardDrag != nil)
-        .accessibilityActions {
-            if store.lastDelete != nil {
-                Button("Undo delete") { withAnimation(cardAnimation) { store.undoLastDelete() } }
-            }
-        }
         .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
         .sensoryFeedback(.selection, trigger: liveCardOrder)
         // Keeps the field being edited (and its options) clear of the Done button.
@@ -1045,7 +1088,9 @@ struct ContentView: View {
 
     }
 
-    /// Keyed by `CategoryLayoutKey` so a card keeps its identity across weeks.
+    /// `id` (name and occurrence) carries a card's open and editing state and its place
+    /// across weeks, where category IDs change. Within a week the grid keys cards by
+    /// category ID (see `weekContent`).
     private struct CategoryGridEntry: Identifiable {
         let id: CategoryLayoutKey
         let category: Category
@@ -1085,6 +1130,15 @@ struct ContentView: View {
     /// Re-sorts at the calm moments `sortedNames` describes.
     private var sortOrderWatcher: some View {
         Color.clear
+            // Turning calendar events off closes the panel for good, so turning them on
+            // again doesn't reopen it unasked.
+            .onChange(of: showsEventsToggle) { _, shown in
+                if !shown {
+                    showEventsPanel = false
+                    isEventsPanelMounted = false
+                }
+            }
+            .onChange(of: viewedCategories) { old, new in reconcileCardKeys(from: old, to: new) }
             // Categories added or deleted while editing take their sorted places.
             .onChange(of: isEditing) { _, editing in
                 if !editing { refreshSortOrder() }
@@ -1095,6 +1149,13 @@ struct ContentView: View {
                 }
             }
             .onChange(of: store.selectedWeek?.startDay, initial: true) { refreshSortOrder() }
+            // A card's own edit mode is for that week's card, not its copies in other weeks.
+            .onChange(of: store.selectedWeek?.startDay) {
+                editingCategoryKeys.removeAll()
+                if let title = store.selectedWeek?.displayTitle {
+                    AccessibilityNotification.Announcement(title).post()
+                }
+            }
             .onChange(of: store.categorySort) { withAnimation(cardAnimation) { refreshSortOrder() } }
             .onChange(of: expandedCategoryKeys.isEmpty) { _, allClosed in
                 if allClosed { withAnimation(cardAnimation) { refreshSortOrder() } }
@@ -1112,11 +1173,30 @@ struct ContentView: View {
 
     /// Takes the current sort order (see `sortedNames`).
     private func refreshSortOrder() {
-        guard store.categorySort != .manual, let week = store.selectedWeek else {
-            sortedNames = []
+        let week = store.selectedWeek
+        let names = store.categorySort == .manual ? [] : week.map { store.sortedCategories($0.categories).map(\.name) } ?? []
+        guard names != sortedNames else { return }
+        sortedNames = names
+        // Open cards moved to the start of their rows go where the new order puts them
+        // (their places would otherwise hold the old order until every card is closed).
+        if !categoryDisplayOrder.isEmpty { reopenCards(expandedCategoryKeys) }
+    }
+
+    /// Opens `keys` again on top of the week's current order, as if opened one by one: each
+    /// at the start of its row. Keys of cards not in this week stay open for other weeks.
+    private func reopenCards(_ keys: Set<CategoryLayoutKey>) {
+        guard let week = store.selectedWeek else {
+            expandedCategoryKeys = keys
             return
         }
-        sortedNames = store.sortedCategories(week.categories).map(\.name)
+        let toggled = lastToggledCategory
+        categoryDisplayOrder.removeAll()
+        expandedCategoryKeys.removeAll()
+        for key in gridEntries(for: week).map(\.id) where keys.contains(key) {
+            expandCategory(key, in: week)
+        }
+        expandedCategoryKeys.formUnion(keys)
+        lastToggledCategory = toggled
     }
 
     /// Expanding a card that isn't first in its row moves it into the row's first
@@ -1194,7 +1274,7 @@ struct ContentView: View {
         lastCardDrop = Date()
         // A card held and let go where it was changes nothing (and saves nothing).
         if let order = liveCardOrder, order != liftedCardOrder {
-            store.setCategoryOrder(order.map(\.name))
+            store.setCategoryOrder(savedOrder(moving: drag.key, shownAs: order, in: week).map(\.name))
             if !categoryDisplayOrder.isEmpty { categoryDisplayOrder = order }
         }
         let grab = drag.grab ?? .zero
@@ -1235,35 +1315,105 @@ struct ContentView: View {
         let order = gridEntries(for: week).map(\.id)
         if let index = order.firstIndex(of: key) {
             if index > 0 {
-                Button("Move Earlier") { moveCard(key, by: -1, in: order) }
+                Button("Move Earlier") { moveCard(key, by: -1, in: order, week: week) }
             }
             if index < order.count - 1 {
-                Button("Move Later") { moveCard(key, by: 1, in: order) }
+                Button("Move Later") { moveCard(key, by: 1, in: order, week: week) }
             }
         }
     }
 
-    private func moveCard(_ key: CategoryLayoutKey, by offset: Int, in order: [CategoryLayoutKey]) {
+    private func moveCard(_ key: CategoryLayoutKey, by offset: Int, in order: [CategoryLayoutKey], week: Week) {
         guard let from = order.firstIndex(of: key), order.indices.contains(from + offset) else { return }
         var order = order
         order.swapAt(from, from + offset)
         withAnimation(.snappy(duration: 0.25)) {
-            store.setCategoryOrder(order.map(\.name))
+            store.setCategoryOrder(savedOrder(moving: key, shownAs: order, in: week).map(\.name))
             if !categoryDisplayOrder.isEmpty { categoryDisplayOrder = order }
         }
+    }
+
+    /// The order to save after moving one card: the week's own order with `key` moved to
+    /// just before the card that follows it on screen. (On screen, an open card may sit at
+    /// the start of its row only while it's open; that mustn't be saved.)
+    private func savedOrder(moving key: CategoryLayoutKey, shownAs shown: [CategoryLayoutKey], in week: Week) -> [CategoryLayoutKey] {
+        let keysByID = categoryKeys(for: week.categories)
+        var order = week.categories.compactMap { keysByID[$0.id] }.filter { $0 != key }
+        let after = shown.drop { $0 != key }.dropFirst()
+        if let next = after.first(where: { order.contains($0) }), let index = order.firstIndex(of: next) {
+            order.insert(key, at: index)
+        } else {
+            order.append(key)
+        }
+        return order
     }
 
     /// A renamed category gets a new layout key (keys follow names), so its open, editing
     /// and order state moves to the new key; otherwise the card would close.
     private func renameCardKey(_ old: CategoryLayoutKey, to name: String) {
-        let new = CategoryLayoutKey(name: name, occurrence: old.occurrence)
+        moveCardKey(old, to: CategoryLayoutKey(name: name, occurrence: old.occurrence))
+    }
+
+    /// A card's open and editing state, place and sort rank follow it to its new key.
+    private func moveCardKey(_ old: CategoryLayoutKey, to new: CategoryLayoutKey) {
+        guard old != new else { return }
         let move = { (key: CategoryLayoutKey) in key == old ? new : key }
         if expandedCategoryKeys.remove(old) != nil { expandedCategoryKeys.insert(new) }
         if editingCategoryKeys.remove(old) != nil { editingCategoryKeys.insert(new) }
+        if expandedBeforeEditing.remove(old) != nil { expandedBeforeEditing.insert(new) }
         categoryDisplayOrder = categoryDisplayOrder.map(move)
         lastToggledCategory = lastToggledCategory.map(move)
+        // The card isn't rebuilt by the rename, so its place for dragging moves with it.
+        for day in cardFrameStore.frames.keys {
+            if let frame = cardFrameStore.frames[day]?.removeValue(forKey: old) {
+                cardFrameStore.frames[day]?[new] = frame
+            }
+        }
         // A renamed card keeps its place in a sorted order.
-        sortedNames = sortedNames.map { $0 == old.name ? name : $0 }
+        if old.name != new.name { sortedNames = sortedNames.map { $0 == old.name ? new.name : $0 } }
+    }
+
+    /// A deleted card is forgotten, so it can't reopen when Edit ends or come back open
+    /// when a category with its name is added again.
+    private func forgetCardKey(_ key: CategoryLayoutKey) {
+        expandedCategoryKeys.remove(key)
+        editingCategoryKeys.remove(key)
+        expandedBeforeEditing.remove(key)
+        categoryDisplayOrder.removeAll { $0 == key }
+        if lastToggledCategory == key { lastToggledCategory = nil }
+    }
+
+    /// The viewed week's categories by ID, to notice renames made outside the card (Saved
+    /// Categories, Edit Saved Categories) and deletes.
+    private struct ViewedCategories: Equatable {
+        let week: DayKey?
+        let categories: [Entry]
+        struct Entry: Equatable { let id: UUID; let name: String }
+    }
+
+    private var viewedCategories: ViewedCategories {
+        ViewedCategories(week: store.selectedWeek?.startDay,
+                         categories: (store.selectedWeek?.categories ?? []).map { .init(id: $0.id, name: $0.name) })
+    }
+
+    /// Keys follow renamed categories and deleted ones are forgotten. Only within one week:
+    /// in another week the same cards have other IDs, and keys carry over by name.
+    private func reconcileCardKeys(from old: ViewedCategories, to new: ViewedCategories) {
+        guard old.week == new.week else { return }
+        let keys = { (entries: [ViewedCategories.Entry]) -> [UUID: CategoryLayoutKey] in
+            var occurrences: [String: Int] = [:]
+            var keys: [UUID: CategoryLayoutKey] = [:]
+            for entry in entries {
+                let occurrence = occurrences[entry.name, default: 0]
+                keys[entry.id] = CategoryLayoutKey(name: entry.name, occurrence: occurrence)
+                occurrences[entry.name] = occurrence + 1
+            }
+            return keys
+        }
+        let before = keys(old.categories), after = keys(new.categories)
+        for (id, key) in before {
+            if let moved = after[id] { moveCardKey(key, to: moved) } else { forgetCardKey(key) }
+        }
     }
 
     private func collapseCategory(_ key: CategoryLayoutKey) {
@@ -1317,7 +1467,7 @@ struct ContentView: View {
         if open {
             isEventsPanelMounted = true
             DispatchQueue.main.async {
-                withAnimation(.spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = true }
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = true }
             }
         } else {
             // No bounce: overshooting a height of zero makes the bar dip and spring back.
@@ -1565,6 +1715,49 @@ private struct PullToCloseAll: ViewModifier {
                 .padding(.top, 6)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)  // VoiceOver uses the Collapse All button
+        }
+    }
+}
+
+// MARK: - Window Size
+
+/// Reports the size of the window it's in, when it changes: rotation or an iPad window
+/// being resized, but not a keyboard (unlike sizes measured in SwiftUI).
+private struct WindowSizeReader: UIViewRepresentable {
+    let onChange: (CGSize) -> Void
+
+    func makeUIView(context: Context) -> ReaderView { ReaderView(onChange: onChange) }
+
+    func updateUIView(_ view: ReaderView, context: Context) { view.onChange = onChange }
+
+    final class ReaderView: UIView {
+        var onChange: (CGSize) -> Void
+        private var reported: CGSize?
+
+        init(onChange: @escaping (CGSize) -> Void) {
+            self.onChange = onChange
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        private func report() {
+            guard let size = window?.bounds.size, size != reported else { return }
+            reported = size
+            let onChange = onChange
+            // Not during the layout pass that noticed it.
+            DispatchQueue.main.async { onChange(size) }
         }
     }
 }

@@ -22,6 +22,8 @@ enum AppInfo {
 struct SettingsSheet: View {
     let store: ChecklistStore
     let calendar: CalendarService
+    /// The device's appearance, used while the app follows it (System).
+    var systemColorScheme: ColorScheme? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
     @State private var showTour = false
@@ -33,11 +35,18 @@ struct SettingsSheet: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if retro {
-                    retroSettings
-                } else {
-                    standardSettings
+            ScrollViewReader { proxy in
+                Group {
+                    if retro {
+                        retroSettings
+                    } else {
+                        standardSettings
+                    }
+                }
+                // A growing Feature Ideas comment stays above the keyboard, its newest line
+                // (and the caret) included.
+                .onChange(of: FeatureIdeasDraft.shared.comment) {
+                    proxy.scrollTo(FeatureIdeasSurvey.commentID, anchor: .bottom)
                 }
             }
             .navigationTitle(retro ? "> SETTINGS_" : "Settings")
@@ -47,6 +56,7 @@ struct SettingsSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if retro {
                         Button("[DONE]") { dismiss() }
+                            .accessibilityLabel("Done")
                             .font(.system(.subheadline, design: .monospaced).bold())
                             .foregroundStyle(Theme.accent(theme, rc: rc))
                     } else {
@@ -65,7 +75,9 @@ struct SettingsSheet: View {
                 await calendar.loadCalendars()
             }
         }
-        .preferredColorScheme(store.colorScheme)
+        // Always a scheme, never nil: an open sheet keeps its earlier Dark or Light when
+        // the preference goes back to nil, so choosing System here didn't show.
+        .preferredColorScheme(store.colorScheme ?? systemColorScheme)
     }
 
     // MARK: - Standard (System/Light/Dark) Settings
@@ -276,7 +288,8 @@ struct SettingsSheet: View {
                             .font(Theme.bodyFont(theme))
                             .foregroundStyle(store.appearanceMode == mode ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     } else {
-                        Label(mode.label, systemImage: mode.symbol).foregroundStyle(.primary)
+                        // Color.primary, not .primary: that takes the button's blue tint.
+                        Label(mode.label, systemImage: mode.symbol).foregroundStyle(Color.primary)
                     }
                     Spacer()
                     if store.appearanceMode == mode {
@@ -293,6 +306,9 @@ struct SettingsSheet: View {
                 .frame(minHeight: retro ? 44 : nil)
                 .contentShape(Rectangle())
             }
+            // In words, not "> RETRO, [*]"; the chosen one is selected in every theme.
+            .accessibilityLabel(mode.label)
+            .accessibilityAddTraits(store.appearanceMode == mode ? .isSelected : [])
         }
     }
 
@@ -346,21 +362,33 @@ struct SettingsSheet: View {
     private static let featureIdeasDescription = "Ideas being considered. They aren't in Tasquel yet. Tick the ones you'd use to help decide what comes next."
 
     /// Manual (hold and drag) or by when each category was last edited.
+    @ViewBuilder
     private var sortPicker: some View {
+        if retro {
+            // Outside a List a menu picker shows no label: it goes beside it.
+            HStack {
+                Text("> Sort Cards").font(Theme.bodyFont(theme))
+                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                Spacer()
+                sortMenu.labelsHidden()
+            }
+            .frame(minHeight: 44)
+            .accessibilityElement(children: .combine)
+        } else {
+            sortMenu
+        }
+    }
+
+    private var sortMenu: some View {
         Picker(selection: Binding(get: { store.categorySort }, set: { store.setCategorySort($0) })) {
             ForEach(CategorySortOrder.allCases, id: \.self) { order in
                 Text(retro ? order.label.uppercased() : order.label).tag(order)
             }
         } label: {
-            if retro {
-                Text("> Sort Cards").font(Theme.bodyFont(theme))
-            } else {
-                Label("Sort Cards", systemImage: "arrow.up.arrow.down")
-            }
+            Label("Sort Cards", systemImage: "arrow.up.arrow.down")
         }
         .pickerStyle(.menu)
         .tint(retro ? Theme.accent(theme, rc: rc) : nil)
-        .frame(minHeight: retro ? 44 : nil)
     }
 
     /// Sunday or Monday. Changing it moves saved weeks by a day so tasks stay with their week.

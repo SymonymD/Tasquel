@@ -1263,6 +1263,22 @@ struct GoalNumberTests {
     private let english = Locale(identifier: "en_US")
     private let german = Locale(identifier: "de_DE")
 
+    @Test("An amount that can't be used says why: over the maximum, or zero where it must be more")
+    func goalAmountProblems() {
+        var input = GoalAmountInput()
+        #expect(input.problem(for: .quantity, locale: english) == nil, "nothing typed")
+        input.number = "1000000"
+        #expect(input.problem(for: .quantity, locale: english) == "Up to 999,999")
+        input.number = "0"
+        #expect(input.problem(for: .quantity, locale: english) == "More than 0")
+        #expect(input.problem(for: .quantity, allowsZero: true, locale: english) == nil, "progress can be 0")
+        input.number = "12"
+        #expect(input.problem(for: .quantity, locale: english) == nil)
+        var time = GoalAmountInput()
+        time.hours = "16667"
+        #expect(time.problem(for: .time, locale: english) == "Up to 16,666 hours")
+    }
+
     @Test("A huge target is rejected in the field and capped in the store, without crashing")
     func hugeValues() {
         var input = GoalAmountInput()
@@ -2118,6 +2134,44 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
 
 // MARK: - Polish Batch
 
+/// Deleting a category whose saved category was removed (and renamed since) saves it
+/// again as a template, and can still be undone; Undo takes the template back out.
+@Test func deleteCategoryWithoutTemplateCanBeUndone() {
+    let store = makeIsolatedStore()
+    let category = store.selectedWeek!.categories[0]
+    let template = store.savedCategories.first { $0.name == category.name }!
+    store.removeSavedCategory(template.id)
+    #expect(store.renameCategory(category.id, newName: "Chores"))
+    #expect(!store.savedCategories.contains { $0.name == "Chores" })
+
+    store.deleteCategory(category.id)
+    #expect(store.lastDelete != nil, "the delete can be undone")
+    #expect(store.savedCategories.contains { $0.name == "Chores" }, "a deleted category keeps a template")
+    store.undoLastDelete()
+    #expect(store.selectedWeek!.categories.contains { $0.name == "Chores" })
+    #expect(!store.savedCategories.contains { $0.name == "Chores" }, "Undo takes the template back out")
+}
+
+/// Changing a task's type re-decides whether it's done: a finished checkbox becomes an
+/// unfinished goal (no target yet), and a list is done only when all its items are.
+@Test func changingTypeRedecidesDone() {
+    let store = makeIsolatedStore()
+    let categoryID = store.selectedWeek!.categories[0].id
+    let taskID = store.addTask(categoryID: categoryID, title: "Stretch")!
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    func task() -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == taskID }! }
+    #expect(task().isCompleted)
+
+    store.updateTaskType(categoryID: categoryID, taskID: taskID, type: .goal)
+    #expect(!task().isCompleted, "a goal with no target isn't done")
+
+    store.updateTaskType(categoryID: categoryID, taskID: taskID, type: .checkbox)
+    store.toggleTask(categoryID: categoryID, taskID: taskID)
+    #expect(task().isCompleted)
+    store.updateTaskType(categoryID: categoryID, taskID: taskID, type: .list)
+    #expect(!task().isCompleted, "a list with no items isn't done")
+}
+
 /// Deleting can be undone; any other change ends the chance.
 @Test func undoDeletes() {
     let store = makeIsolatedStore()
@@ -2167,8 +2221,9 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     #expect(week.displayTitle(now: nextYear, locale: Locale(identifier: "en_US"), calendar: gregorian) == "Week of Oct 5, 2026")
 }
 
-/// Cards can be sorted by when each category was last edited, either way round; ones never
-/// edited keep their arranged order after the rest. The choice is saved.
+/// Cards can be sorted by when each category was last edited, either way round. Ones never
+/// edited count as the oldest (in their arranged order): last with recent first, first with
+/// least recent first. The choice is saved.
 @Test func sortingCardsByLastEdit() {
     let clock = TestClock(2099, 3, 4)
     let directory = makeTempDirectory()
@@ -2185,10 +2240,11 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     #expect(store.sortedCategories(store.selectedWeek!.categories).map(\.name) == names, "manual keeps the arranged order")
     store.setCategorySort(.recentFirst)
     #expect(store.sortedCategories(store.selectedWeek!.categories).map(\.name).prefix(2) == [names[0], names[2]])
+    #expect(store.sortedCategories(store.selectedWeek!.categories).map(\.name)[2] == names[1], "never-edited ones follow, in their arranged order")
     store.setCategorySort(.oldestFirst)
     let oldest = store.sortedCategories(store.selectedWeek!.categories).map(\.name)
-    #expect(oldest.prefix(2) == [names[2], names[0]])
-    #expect(oldest[2] == names[1], "never-edited ones follow in their arranged order")
+    #expect(oldest.first == names[1], "never-edited ones lead, in their arranged order")
+    #expect(oldest.suffix(2) == [names[2], names[0]], "and the one edited last comes last")
 
     let reopened = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
     #expect(reopened.categorySort == .oldestFirst)

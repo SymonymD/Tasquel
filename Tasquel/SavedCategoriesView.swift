@@ -88,6 +88,7 @@ struct SavedCategoriesView: View {
                         withAnimation { editMode = editMode.isEditing ? .inactive : .active }
                     }
                     .labelStyle(.iconOnly)
+                    .accessibilityRemoveTraits(.isSelected)  // a checkmark icon reads as "selected"
                 }
             }
         }

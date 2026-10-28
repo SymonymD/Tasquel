@@ -71,13 +71,23 @@ enum SurveyForm {
     }
 }
 
+/// What's been ticked and typed in Feature Ideas, kept while Settings switches layout (Retro
+/// has its own) or closes and opens again; cleared once sent.
+@Observable
+final class FeatureIdeasDraft {
+    static let shared = FeatureIdeasDraft()
+    var picks: Set<UpcomingFeature> = []
+    var comment = ""
+}
+
 /// Settings ▸ Feature Ideas: tick the features you'd use (Tasquel's own check circles),
 /// add a comment if you like, and send. Rows only; Settings puts them in its section.
 struct FeatureIdeasSurvey: View {
     let store: ChecklistStore
+    /// The comment field, which Settings keeps in view as it grows.
+    static let commentID = "featureIdeasComment"
 
-    @State private var picks: Set<UpcomingFeature> = []
-    @State private var comment = ""
+    @Bindable private var draft = FeatureIdeasDraft.shared
     @State private var status = Status.idle
     /// Sent once already: shows thanks instead of the form, until Change. (The key keeps
     /// the section's old name so earlier answers are remembered.)
@@ -90,7 +100,7 @@ struct FeatureIdeasSurvey: View {
     private var retro: Bool { Theme.isRetro(theme) }
     private var canSend: Bool {
         SurveyForm.isConfigured && status != .sending
-            && (!picks.isEmpty || !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            && (!draft.picks.isEmpty || !draft.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     var body: some View {
@@ -110,10 +120,11 @@ struct FeatureIdeasSurvey: View {
             ForEach(UpcomingFeature.allCases) { feature in
                 featureRow(feature)
             }
-            TextField(retro ? "anything_else>" : "Anything else? (optional)", text: $comment, axis: .vertical)
+            TextField(retro ? "anything_else>" : "Anything else? (optional)", text: $draft.comment, axis: .vertical)
                 .font(retro ? Theme.bodyFont(theme) : .body)
                 .lineLimit(1...4)
                 .frame(minHeight: 44)
+                .id(Self.commentID)
             Button(action: send) {
                 HStack {
                     Text(sendTitle)
@@ -139,14 +150,15 @@ struct FeatureIdeasSurvey: View {
 
     /// The check circle matches a task's: filled when ticked.
     private func featureRow(_ feature: UpcomingFeature) -> some View {
-        let isPicked = picks.contains(feature)
+        let isPicked = draft.picks.contains(feature)
         return Button {
-            if isPicked { picks.remove(feature) } else { picks.insert(feature) }
+            if isPicked { draft.picks.remove(feature) } else { draft.picks.insert(feature) }
         } label: {
             HStack(spacing: 12) {
                 Group {
                     if retro {
                         Text(isPicked ? "[x]" : "[ ]")
+                            .hiddenFromVoiceOver()  // the row says it's selected
                             .font(.system(.subheadline, design: .monospaced).bold())
                             .foregroundStyle(isPicked ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     } else {
@@ -178,13 +190,13 @@ struct FeatureIdeasSurvey: View {
     private func send() {
         guard canSend else { return }
         status = .sending
-        let features = UpcomingFeature.allCases.filter(picks.contains)
+        let features = UpcomingFeature.allCases.filter(draft.picks.contains)
         Task {
             do {
-                try await SurveyForm.send(features, comment: comment)
+                try await SurveyForm.send(features, comment: draft.comment)
                 status = .idle
-                picks = []
-                comment = ""
+                draft.picks = []
+                draft.comment = ""
                 didSend = true
             } catch {
                 status = .failed

@@ -18,6 +18,16 @@ enum AppIconSwitcher {
         let wanted = matchingTheme && mode == .retro ? retroIconName : nil
         let app = UIApplication.shared
         guard app.supportsAlternateIcons, app.alternateIconName != wanted else { return }
-        app.setAlternateIconName(wanted)
+        Task {
+            do {
+                try await app.setAlternateIconName(wanted)
+            } catch {
+                // iOS can refuse a change that comes too soon after another ("resource
+                // temporarily unavailable"): try once more.
+                try? await Task.sleep(for: .seconds(1))
+                guard app.alternateIconName != wanted else { return }
+                try? await app.setAlternateIconName(wanted)
+            }
+        }
     }
 }

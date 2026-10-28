@@ -45,8 +45,9 @@ struct AddCategorySheet: View {
             }
             // Room below the last row, so it isn't lost under the sheet's rounded bottom edge.
             .contentMargins(.bottom, 24, for: .scrollContent)
-            .scrollContentBackground(Theme.isDark(store.appearanceMode) ? .hidden : .automatic)
-            .background(Theme.isDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
+            // The app's own dark background in Dark and Retro (Retro was plain grey).
+            .scrollContentBackground(Theme.isCustomDark(store.appearanceMode) ? .hidden : .automatic)
+            .background(Theme.isCustomDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -128,6 +129,7 @@ struct AddCategorySheet: View {
                     Label(isEditingSaved ? "Done Editing" : "Edit Saved Categories",
                           systemImage: isEditingSaved ? "checkmark" : "pencil")
                 }
+                .accessibilityRemoveTraits(.isSelected)  // a checkmark icon reads as "selected"
             } header: {
                 Text("Saved Categories")
             } footer: {

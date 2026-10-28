@@ -284,7 +284,13 @@ final class CalendarService {
     func loadCalendars() async {
         guard isAuthorized else { availableCalendars = []; hasLoadedCalendars = false; return }
         availableCalendars = await provider.calendars()
-            .sorted { ($0.sourceTitle, $0.title) < ($1.sourceTitle, $1.title) }
+            // As people read them: "iCloud" before "Other" whatever the case.
+            .sorted { lhs, rhs in
+                let source = lhs.sourceTitle.localizedStandardCompare(rhs.sourceTitle)
+                return source == .orderedSame
+                    ? lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                    : source == .orderedAscending
+            }
         hasLoadedCalendars = true
     }
 

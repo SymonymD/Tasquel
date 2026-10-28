@@ -24,8 +24,6 @@ struct CalendarEventsPanel: View {
     /// cancelled drag can't leave the panel shrunk with its events disabled.
     @GestureState private var isDragging = false
     @State private var isDismissing = false
-    /// Set when a press on an event is held: letting go then doesn't open Calendar.
-    @State private var wasHeld = false
 
     private let maxListHeight: CGFloat = 280
     private var listScrolls: Bool { listHeight > maxListHeight }
@@ -75,8 +73,9 @@ struct CalendarEventsPanel: View {
             }
             .frame(height: max(0, min(max(listHeight, 20), maxListHeight) - dragOffset), alignment: .top)
             .clipped()
-            // A drag that starts on an event must not open it.
-            .disabled(dragOffset > 0)
+            // A drag that starts on an event must not open it, whichever way it goes. (When
+            // the list scrolls, scrolling cancels the tap instead.)
+            .disabled(dragOffset > 0 || isDragging)
             // Attached outside `.disabled`, which would otherwise cancel this drag as it starts.
             .simultaneousGesture(dismissDrag, including: listScrolls ? .subviews : .all)
         }
@@ -133,7 +132,6 @@ struct CalendarEventsPanel: View {
                         .foregroundStyle(Calendar.current.isDateInToday(day.date) ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     ForEach(day.events) { dayEvent in
                         Button {
-                            guard !wasHeld else { wasHeld = false; return }
                             onOpen(dayEvent.event)
                         } label: {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -153,13 +151,9 @@ struct CalendarEventsPanel: View {
                             }
                             .contentShape(Rectangle())
                         }
+                        // No long-press gesture here: in the scrolling list it claimed every
+                        // touch, so the list couldn't scroll (and a swipe up opened the event).
                         .buttonStyle(EventButtonStyle())
-                        // Only a tap opens the event; holding (or pausing before a swipe) doesn't.
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.4)
-                                .onChanged { _ in wasHeld = false }
-                                .onEnded { _ in wasHeld = true }
-                        )
                         .accessibilityLabel("\(dayEvent.event.title), \(dayEvent.timeLabel)")
                         .accessibilityHint("Opens Calendar")
                     }

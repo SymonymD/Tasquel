@@ -196,6 +196,7 @@ struct SheetDoneButton: View {
     var body: some View {
         Button("Done", systemImage: "checkmark", action: action)
             .labelStyle(.iconOnly)
+            .accessibilityRemoveTraits(.isSelected)  // a checkmark icon reads as "selected"
     }
 }
 

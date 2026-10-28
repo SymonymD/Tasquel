@@ -121,14 +121,14 @@ struct CalendarPicker: View {
                         .accessibilityAddTraits(selected.contains(info.id) ? .isSelected : [])
                     }
                 }
-                .listRowBackground(Theme.isDark(theme) ? Theme.cardFill(theme) : nil)
+                .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
             }
             Section {} footer: {
                 Text("At least one calendar stays selected. To hide events, turn off Show Calendar Events.")
             }
         }
-        .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
-        .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
+        .scrollContentBackground(Theme.isCustomDark(theme) ? .hidden : .automatic)
+        .background(Theme.isCustomDark(theme) ? Theme.background(theme) : Color.clear)
         .navigationTitle(retro ? "> CALENDARS_" : "Calendars")
         .navigationBarTitleDisplayMode(.inline)
         .task { await calendar.loadCalendars() }

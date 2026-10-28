@@ -129,6 +129,28 @@ final class CalendarUITests: XCTestCase {
                       "events show after relaunch without visiting Settings")
     }
 
+    /// A week with more events than fit scrolls in the panel, and a short swipe up that
+    /// starts on an event scrolls rather than opening Calendar.
+    @MainActor
+    func testEventsListScrolls() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", "light"]
+        app.launch()
+        let show = app.buttons["Show events"]
+        XCTAssertTrue(show.waitForExistence(timeout: 10))
+        show.tap()
+        let standup = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Team Standup")).firstMatch
+        let market = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Farmers Market")).firstMatch
+        XCTAssertTrue(standup.waitForExistence(timeout: 5))
+        sleep(1)
+        XCTAssertFalse(market.isHittable, "the last event starts out of view")
+        let start = standup.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)), withVelocity: .default, thenHoldForDuration: 0.1)
+        sleep(1)
+        XCTAssertEqual(app.state, .runningForeground, "the swipe didn't open Calendar")
+        XCTAssertTrue(market.isHittable, "the list scrolled to it")
+    }
+
     /// Settings ▸ Calendar is a few rows down; a List only builds rows on screen.
     @MainActor
     private func calendarToggle(in app: XCUIApplication) -> XCUIElement {
