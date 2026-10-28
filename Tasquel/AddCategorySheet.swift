@@ -58,6 +58,7 @@ struct AddCategorySheet: View {
             }
             .savedCategoryRemoval($templateToRemove, store: store)
         }
+        .emojiPickerHost()
         .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
         .tint(Theme.isRetro(store.appearanceMode) ? Theme.accent(store.appearanceMode, rc: store.retroColor) : nil)
     }

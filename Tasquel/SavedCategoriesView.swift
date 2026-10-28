@@ -73,6 +73,7 @@ struct SavedCategoriesView: View {
                 Text("Tap a name to rename it, or an icon to change it. Tap the pencil to remove or reorder. These are offered in Add Category. A new name or icon also applies to the category's card this week and in later weeks.")
             }
         }
+        .emojiPickerHost()
         .environment(\.editMode, $editMode)
         .scrollContentBackground(Theme.isCustomDark(theme) ? .hidden : .automatic)
         .background(Theme.isCustomDark(theme) ? Theme.background(theme) : Color.clear)
@@ -231,6 +232,7 @@ private struct TemplateEditor: View {
             }
             .onAppear { if draft.id == nil { isNameFocused = true } }
         }
+        .emojiPickerHost()
         .preferredColorScheme(store.colorScheme)
         .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
     }

@@ -48,13 +48,25 @@ struct CategorySymbolMenu<Label: View>: View {
     @Binding var symbol: String
     @ViewBuilder let label: () -> Label
     @State private var isChoosingEmoji = false
+    /// The picker of the sheet this menu is in (see `emojiPickerHost`); without one the
+    /// menu shows the picker itself.
+    @Environment(\.emojiPicker) private var emojiPicker
     /// A sheet doesn't inherit the app's appearance setting, so it's passed on.
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Menu {
             Button {
-                isChoosingEmoji = true
+                // The field with the keyboard lets it go first. Otherwise iOS hands it back as
+                // the picker closes and takes it away again a moment later, so the sheet below
+                // jumped up with the keyboard and dropped back down.
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                if let emojiPicker {
+                    let symbol = $symbol
+                    emojiPicker { symbol.wrappedValue = $0 }
+                } else {
+                    isChoosingEmoji = true
+                }
             } label: {
                 SwiftUI.Label("Choose Emoji…", systemImage: "face.smiling")
             }
@@ -76,6 +88,49 @@ struct CategorySymbolMenu<Label: View>: View {
 }
 
 // MARK: - Emoji Picker
+
+extension View {
+    /// Shows the emoji picker for the icon menus inside this view from here rather than from
+    /// the menu. For a sheet whose icon menus sit in List or Form rows: the List removes and
+    /// rebuilds rows while another sheet opens over it, and a picker shown from a row was
+    /// rebuilt with it (three times as it opened), each new emoji field taking the keyboard
+    /// down and up again.
+    func emojiPickerHost() -> some View {
+        modifier(EmojiPickerHost())
+    }
+}
+
+extension EnvironmentValues {
+    /// Set by `emojiPickerHost`.
+    @Entry var emojiPicker: EmojiPickerAction? = nil
+}
+
+/// Opens the emoji picker; the emoji chosen goes to `onPick`.
+struct EmojiPickerAction {
+    fileprivate let open: (@escaping (String) -> Void) -> Void
+
+    func callAsFunction(onPick: @escaping (String) -> Void) { open(onPick) }
+}
+
+private struct EmojiPickerHost: ViewModifier {
+    @State private var request: Request?
+    /// A sheet doesn't inherit the app's appearance setting, so it's passed on.
+    @Environment(\.colorScheme) private var colorScheme
+
+    private struct Request: Identifiable {
+        let id = UUID()
+        let onPick: (String) -> Void
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.emojiPicker, EmojiPickerAction { request = Request(onPick: $0) })
+            .sheet(item: $request) { request in
+                EmojiPickerSheet(onPick: request.onPick)
+                    .preferredColorScheme(colorScheme)
+            }
+    }
+}
 
 /// Opens with the emoji keyboard up; the first emoji typed becomes the icon.
 private struct EmojiPickerSheet: View {
