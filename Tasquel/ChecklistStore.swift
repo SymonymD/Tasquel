@@ -153,6 +153,7 @@ final class ChecklistStore {
         load()
         guard weekLoadError == nil else { return }
         inferWeekStartIfSettingsMissing()
+        saveThisWeekOnlyCategories()
         pruneEditTimes()
         let currentWeek = ensureWeekExists(for: now())
         migrateStartersIfNeeded(into: currentWeek)
@@ -1015,10 +1016,64 @@ final class ChecklistStore {
             }
         }
         saveDelete()
+        keepSavedCategory(for: category)
+    }
+
+    /// Makes sure `category` has a saved category, unless the user removed that saved
+    /// category (deleting or keeping the card mustn't bring it back).
+    private func keepSavedCategory(for category: Category) {
         let name = Self.cleanName(category.name)
-        if !category.isThisWeekOnly && !name.isEmpty && !Self.containsName(name, in: savedCategories.map(\.name))
+        if !name.isEmpty && !Self.containsName(name, in: savedCategories.map(\.name))
             && !Self.containsName(name, in: removedSavedCategoryNames) {
             appendSavedCategory(name: name, symbol: category.symbol)
+        }
+    }
+
+    /// Turns "This week only" on or off for a category in the viewed week (its card's
+    /// edit mode). On: its carry-over and repeating tasks become one-time, since nothing
+    /// in it comes back, and later weeks lose it, keeping only tasks the user added or
+    /// changed there. Off: it comes back in later weeks like any category.
+    func setCategoryThisWeekOnly(_ categoryID: UUID, _ thisWeekOnly: Bool) {
+        guard let wi = editableSelectedWeekIndex(),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              weeks[wi].categories[ci].isThisWeekOnly != thisWeekOnly else { return }
+        let category = weeks[wi].categories[ci]
+        weeks[wi].categories[ci].isThisWeekOnly = thisWeekOnly
+        if thisWeekOnly {
+            for ti in category.tasks.indices where category.tasks[ti].mode != .oneTime {
+                weeks[wi].categories[ci].tasks[ti].mode = .oneTime
+                weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+            }
+            // Later weeks lose the copies of its tasks the user hasn't touched there, and the
+            // category itself once nothing of theirs is left in it.
+            let fromDay = weeks[wi].startDay
+            for index in weeks.indices where weeks[index].startDay > fromDay {
+                guard let li = weeks[index].categories.firstIndex(where: { $0.name == category.name }) else { continue }
+                weeks[index].categories[li].tasks.removeAll {
+                    !$0.isUserEdited && !$0.isCompleted && !$0.subtasks.contains(where: \.isCompleted)
+                }
+                if weeks[index].categories[li].tasks.isEmpty { weeks[index].categories.remove(at: li) }
+            }
+        }
+        noteEdit(categoryID)
+        save()
+        if !thisWeekOnly { keepSavedCategory(for: category) }
+    }
+
+    /// A carry-over or repeating task comes back next week, so its category has to as
+    /// well: adding one to a "This week only" category (or changing a task to one) turns
+    /// that off.
+    private func keepCategory(_ wi: Int, _ ci: Int, for mode: TaskMode) {
+        guard mode != .oneTime, weeks[wi].categories[ci].isThisWeekOnly else { return }
+        weeks[wi].categories[ci].isThisWeekOnly = false
+        keepSavedCategory(for: weeks[wi].categories[ci])
+    }
+
+    /// Categories added for this week only before they were kept in Saved Categories
+    /// get a saved category too (unless the user removed one with that name).
+    private func saveThisWeekOnlyCategories() {
+        for week in weeks where !isPastWeek(week) {
+            for category in week.categories where category.isThisWeekOnly { keepSavedCategory(for: category) }
         }
     }
 
@@ -1116,6 +1171,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }) else { return nil }
         let task = ChecklistTask(title: title, mode: mode, taskType: type, isUserEdited: true)
         weeks[wi].categories[ci].tasks.append(task)
+        keepCategory(wi, ci, for: mode)
         noteEdit(categoryID)
         save()
         return task.id
@@ -1155,6 +1211,7 @@ final class ChecklistStore {
         var task = task
         task.isUserEdited = true
         weeks[wi].categories[ci].tasks.append(task)
+        keepCategory(wi, ci, for: task.mode)
         noteEdit(categoryID)
         save()
         return task.id
@@ -1225,6 +1282,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        keepCategory(wi, ci, for: mode)
         noteEdit(categoryID)
         save()
     }

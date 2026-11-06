@@ -355,6 +355,50 @@ nonisolated private struct CardCompletion: Equatable {
     }
 }
 
+// MARK: - This Week Only
+
+/// In a card's own edit mode: whether the category is for the viewed week only.
+private struct ThisWeekOnlyToggle: View {
+    let category: Category
+    let store: ChecklistStore
+
+    private var theme: AppearanceMode { store.appearanceMode }
+    private var rc: RetroColor { store.retroColor }
+    private var design: Font.Design { Theme.isRetro(theme) ? .monospaced : .default }
+
+    /// What the switch does beyond its name.
+    private var note: String? {
+        if category.isThisWeekOnly {
+            return "It won't come back next week. Adding a carry-over or repeating task turns this off."
+        }
+        return category.tasks.contains { $0.mode != .oneTime }
+            ? "Turning this on makes its carry-over and repeating tasks one-time."
+            : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(isOn: Binding(
+                get: { category.isThisWeekOnly },
+                set: { on in
+                    withAnimation(.snappy(duration: 0.2)) { store.setCategoryThisWeekOnly(category.id, on) }
+                }
+            )) {
+                Text(Theme.isRetro(theme) ? "> This week only" : "This week only")
+                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+            }
+            .font(.expandedCard(.subheadline, design: design))
+            .tint(Theme.accent(theme, rc: rc))
+            if let note {
+                Text(note)
+                    .font(.expandedCard(.caption1, design: design))
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 // MARK: - Collapsed Content
 
 /// Task preview dots and the open arrow, shown below the header when collapsed.
@@ -449,11 +493,16 @@ private struct ExpandedCategoryContent: View {
                 )
             }
 
-            // Adding is off while the card is in edit mode.
+            // Adding is off while the card is in edit mode. The This week only switch takes
+            // the add row's place then, so no row above it moves as editing starts (a tap
+            // meant for a task's delete button landed on the row below instead).
             if !isPastWeek && !isEditing {
                 AddTaskRowCard(categoryID: category.id, store: store)
                     // Clear of the sub-task or item rows above: the field's fill reaches past
                     // its text (see cardField), which crowded the last row.
+                    .padding(.top, 8 * expandedCardScale)
+            } else if !isPastWeek {
+                ThisWeekOnlyToggle(category: category, store: store)
                     .padding(.top, 8 * expandedCardScale)
             }
 

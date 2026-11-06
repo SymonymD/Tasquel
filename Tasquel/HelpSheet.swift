@@ -39,9 +39,10 @@ struct HelpSheet: View {
         ]),
         ("Managing Categories", [
             ("square.grid.2x2", "Edit Mode", "Tap Edit in the bottom bar to add or delete categories. Open cards close while editing and reopen when you tap Done. In Add Category, turn on This week only for a category you won't need next week."),
+            ("calendar", "This Week Only", "A This week only category doesn't come back next week. Open its card and tap its edit button to turn This week only on or off. Turning it on makes its carry-over and repeating tasks one-time; adding a carry-over or repeating task to it turns it off."),
             ("character.cursor.ibeam", "Rename a Category", "Open a card and tap its edit button, then edit the name, or tap the icon to change it. The new name applies to this week and later weeks. The icon can also be any emoji: pick Choose Emoji… from the icon menu."),
-            ("trash", "Deleting Categories", "Tap Edit, then the red − on a card. Once you confirm, it's deleted with its tasks from this week on (a This week only category, from this week alone). Past weeks keep their history. Tap Undo in the message to bring it back. A category for every week stays in Saved Categories (unless you removed it there), so you can add it again, but its tasks won't return."),
-            ("square.stack", "Saved Categories", "Add Category offers your saved categories; tap Edit Saved Categories there to rename, re-icon or remove them. Reorder them in Settings ▸ Saved Categories. A new name or icon also applies to the category's card this week and in later weeks. A category you add for every week is saved automatically."),
+            ("trash", "Deleting Categories", "Tap Edit, then the red − on a card. Once you confirm, it's deleted with its tasks from this week on (a This week only category, from this week alone). Past weeks keep their history. Tap Undo in the message to bring it back. The category stays in Saved Categories (unless you removed it there), so you can add it again, but its tasks won't return."),
+            ("square.stack", "Saved Categories", "Add Category offers your saved categories; tap Edit Saved Categories there to rename, re-icon or remove them. Reorder them in Settings ▸ Saved Categories. A new name or icon also applies to the category's card this week and in later weeks. A category you add, also one for this week only, is saved automatically."),
         ]),
     ]
 

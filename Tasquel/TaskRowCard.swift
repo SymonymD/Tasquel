@@ -339,7 +339,9 @@ struct TaskRowCard: View {
                         store.updateTaskType(categoryID: categoryID, taskID: task.id, type: type)
                     }
                 },
-                onSelectMode: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) }
+                onSelectMode: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) },
+                onDone: { showOptions = false },
+                isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
             )
         }
     }
@@ -1408,7 +1410,9 @@ struct AddTaskRowCard: View {
                             onAdd: newTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : {
                                 showOptions = false
                                 addTask(keepTyping: true)
-                            }
+                            },
+                            onDone: { showOptions = false },
+                            isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
                         )
                     }
                 }

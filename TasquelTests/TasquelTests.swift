@@ -1769,7 +1769,7 @@ struct FutureCategoryDeletionTests {
         let trip = store.selectedWeek!.categories.first { $0.name == "Trip" }!
         store.deleteCategory(trip.id)
         #expect(!names(store).contains("Trip"))
-        #expect(!store.savedCategories.contains { $0.name == "Trip" })
+        #expect(store.savedCategories.contains { $0.name == "Trip" }, "kept so it can be added again")
     }
 }
 
@@ -2442,5 +2442,109 @@ func smartAddReadsAmounts(text: String, title: String, target: Double, kind: Goa
     let goalRest = goal.value(time: 5.0), goalDone = GoalStepsAnimation.Values.finished
     for path in [\GoalStepsAnimation.Values.progress, \.plusTap, \.minusTap, \.check] {
         #expect(abs(goalRest[keyPath: path] - goalDone[keyPath: path]) < 0.05)
+    }
+}
+
+// MARK: - This Week Only, Turned On and Off
+
+struct ThisWeekOnlyTests {
+    private let clock = TestClock(2099, 3, 4)
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func trip(_ store: ChecklistStore) -> Tasquel.Category? {
+        store.selectedWeek?.categories.first { $0.name == "Trip" }
+    }
+
+    private func makeStoreWithTrip() -> ChecklistStore {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        return store
+    }
+
+    @Test("Adding a carry-over or repeating task turns This week only off; a one-time task doesn't", arguments: [
+        TaskMode.carryOver, .repeating, .oneTime,
+    ])
+    func addingLastingTask(mode: TaskMode) {
+        let store = makeStoreWithTrip()
+        store.addParsedTask(ParsedTask(title: "Pack", mode: mode), categoryID: trip(store)!.id)
+        #expect(trip(store)!.isThisWeekOnly == (mode == .oneTime))
+        store.navigateToDate(nextWeek)
+        #expect((trip(store) != nil) == (mode != .oneTime), "it comes back next week only if it stopped being this week only")
+        #expect(store.savedCategories.contains { $0.name == "Trip" } == (mode != .oneTime))
+    }
+
+    @Test("Changing a task to carry over turns This week only off")
+    func changingModeKeepsCategory() {
+        let store = makeStoreWithTrip()
+        let category = trip(store)!
+        let id = store.addTask(categoryID: category.id, title: "Pack", mode: .oneTime)!
+        store.updateTaskMode(categoryID: category.id, taskID: id, mode: .carryOver)
+        #expect(trip(store)!.isThisWeekOnly == false)
+        store.navigateToDate(nextWeek)
+        #expect(trip(store)?.tasks.map(\.title) == ["Pack"])
+    }
+
+    @Test("Turning This week only on makes its tasks one-time and takes it out of next week")
+    func turningOn() {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        let category = trip(store)!
+        store.addTask(categoryID: category.id, title: "Pack", mode: .carryOver)
+        store.addTask(categoryID: category.id, title: "Stretch", mode: .repeating)
+        store.setCategoryThisWeekOnly(category.id, true)
+        #expect(trip(store)!.isThisWeekOnly)
+        #expect(trip(store)!.tasks.map(\.mode) == [.oneTime, .oneTime])
+        store.navigateToDate(nextWeek)
+        #expect(trip(store) == nil)
+    }
+
+    @Test("Turning it on takes it out of a saved later week, keeping only the user's own tasks there", arguments: [
+        false, true,
+    ])
+    func turningOnWithSavedNextWeek(userAddedNextWeek: Bool) {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        store.addTask(categoryID: trip(store)!.id, title: "Pack", mode: .carryOver)
+        store.navigateToDate(nextWeek)
+        if userAddedNextWeek {
+            store.addTask(categoryID: trip(store)!.id, title: "Unpack", mode: .oneTime)
+        } else {
+            // Saves next week through another card, leaving Trip's copy untouched.
+            store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Other", mode: .oneTime)
+        }
+        #expect(trip(store)?.tasks.map(\.title).contains("Pack") == true)
+        store.navigateToDate(clock.now)
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.navigateToDate(nextWeek)
+        #expect(trip(store)?.tasks.map(\.title) == (userAddedNextWeek ? ["Unpack"] : nil))
+    }
+
+    @Test("Turning it off brings it into next week and saves it")
+    func turningOff() {
+        let store = makeStoreWithTrip()
+        store.addTask(categoryID: trip(store)!.id, title: "Pack", mode: .oneTime)
+        store.setCategoryThisWeekOnly(trip(store)!.id, false)
+        #expect(trip(store)!.isThisWeekOnly == false)
+        #expect(store.savedCategories.contains { $0.name == "Trip" })
+        store.navigateToDate(nextWeek)
+        #expect(trip(store) != nil)
+    }
+
+    @Test("This-week-only categories from before get a saved category at launch, unless it was removed")
+    func savedAtLaunch() {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        store.addCategory(name: "Party", symbol: "gift", thisWeekOnly: true)
+        // Removed from Saved Categories by the user: stays removed.
+        store.addSavedCategory(name: "Party", symbol: "gift")
+        store.removeSavedCategory(store.savedCategories.first { $0.name == "Party" }!.id)
+        #expect(!store.savedCategories.contains { $0.name == "Trip" })
+
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(relaunched.savedCategories.contains { $0.name == "Trip" && $0.symbol == "airplane" })
+        #expect(!relaunched.savedCategories.contains { $0.name == "Party" })
+        #expect(trip(relaunched)!.isThisWeekOnly, "still this week only")
     }
 }

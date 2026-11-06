@@ -204,11 +204,11 @@ struct AddCategorySheet: View {
         add(name: name, symbol: newSymbol, isNew: true)
     }
 
-    /// A new category added for every week is also kept in Saved Categories;
-    /// one added for this week only isn't, since it's meant to be temporary.
+    /// A new category is also kept in Saved Categories, also one added for this week
+    /// only, so it can be added again another week.
     private func add(name: String, symbol: String, isNew: Bool) {
         didAdd = true
-        if isNew && !thisWeekOnly {
+        if isNew {
             store.addSavedCategory(name: name, symbol: symbol)
         }
         onAdd?(name, symbol, thisWeekOnly)

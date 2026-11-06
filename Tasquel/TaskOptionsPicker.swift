@@ -26,7 +26,8 @@ struct TaskOptionsLabel: View {
 // MARK: - Task Options Picker
 
 /// Two columns: what the task is (type) and what happens to it after this week (mode).
-/// Each tap applies right away. For a new task, `onAdd` shows an Add button.
+/// Each tap applies right away. For a new task, `onAdd` shows an Add Task button;
+/// otherwise `onDone` shows Done, which closes the picker.
 struct TaskOptionsPicker: View {
     let type: TaskType
     let mode: TaskMode
@@ -37,6 +38,9 @@ struct TaskOptionsPicker: View {
     let onSelectType: (TaskType) -> Void
     let onSelectMode: (TaskMode) -> Void
     var onAdd: (() -> Void)? = nil
+    var onDone: (() -> Void)? = nil
+    /// The task's card is for this week only: a mode that comes back next week turns that off.
+    var isThisWeekOnlyCategory = false
 
     @State private var pendingType: TaskType?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -92,19 +96,31 @@ struct TaskOptionsPicker: View {
                     }
                 }
             }
-            Text(mode.hint)
+            Text(hint)
                 .font(Theme.isRetro(theme) ? .system(.footnote, design: .monospaced) : .footnote)
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .fixedSize(horizontal: false, vertical: true)
-            if let onAdd {
-                Button(action: onAdd) {
-                    Text("Add Task")
+            if let action = onAdd ?? onDone {
+                Button(action: action) {
+                    Text(onAdd != nil ? "Add Task" : "Done")
                         .font(Theme.isRetro(theme) ? .system(.headline, design: .monospaced) : .headline)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent(theme, rc: rc))
             }
+        }
+    }
+
+    /// What the mode does. In a "This week only" card, a mode that comes back next week
+    /// says the card will too, in one line like the others: with the keyboard up, even one
+    /// more line pushed Add Task out of the popover.
+    private var hint: String {
+        guard isThisWeekOnlyCategory else { return mode.hint }
+        return switch mode {
+        case .carryOver: "Carries over, and this card comes back next week"
+        case .repeating: "Comes back every week, and so does this card"
+        case .oneTime: mode.hint
         }
     }
 
