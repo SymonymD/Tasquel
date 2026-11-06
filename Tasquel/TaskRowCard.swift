@@ -1257,11 +1257,24 @@ struct AddTaskRowCard: View {
     @State private var smartAddCount = 0
     /// What Smart Add just added, shown under the row for a few seconds with Undo.
     @State private var smartAddResult: SmartAddResult?
+    /// What Smart Add worked out, waiting to be added (see `finishSmartAdd`).
+    @State private var smartAddOutcome: SmartAddOutcome?
 
     private struct SmartAddResult: Equatable {
         let taskID: UUID
         let text: String
         let summary: String
+        let token = UUID()
+    }
+
+    private struct SmartAddOutcome: Equatable {
+        let parsed: ParsedTask
+        /// The words it was worked out from.
+        let text: String
+        /// Said after the summary when only the plain rules applied.
+        let note: String
+        /// The week it was typed in.
+        let weekStart: DayKey?
         let token = UUID()
     }
     /// Optional: Smart Add only shows when the parser can run on this device.
@@ -1318,6 +1331,11 @@ struct AddTaskRowCard: View {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy(duration: 0.25)) { smartAddResult = nil }
+        }
+        .onChange(of: smartAddOutcome) { _, outcome in
+            guard let outcome else { return }
+            smartAddOutcome = nil
+            finishSmartAdd(outcome)
         }
     }
 
@@ -1478,34 +1496,45 @@ struct AddTaskRowCard: View {
                 parsed = TaskTextHints.refine(ParsedTask(title: text), from: text)
                 rulesOnlyNote = " · set up from your words"
             }
-            isParsing = false
-            if pickedMode { parsed.mode = newMode }
-            if pickedType && parsed.type != newType {
-                parsed.type = newType
-                parsed.items = []
-                parsed.goalTarget = nil
-            }
-            // A goal without an amount takes the keyboard for its target; a list without
-            // items, for its first item.
-            let awaitsTarget = (parsed.type == .goal && parsed.goalTarget == nil) || (parsed.type == .list && parsed.items.isEmpty)
-            var added: UUID?
-            withAnimation(.snappy(duration: 0.2)) {
-                added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: weekStart)
-                // A goal it couldn't find an amount for takes the keyboard for its target.
-                if awaitsTarget, let added { store.taskAwaitingFirstInput = added }
-            }
-            guard let added else { return }
-            smartAddCount += 1
-            pickedType = false
-            pickedMode = false
-            let summary = Self.describe(parsed, separator: " · ") + rulesOnlyNote
-            withAnimation(.snappy(duration: 0.25)) {
-                smartAddResult = SmartAddResult(taskID: added, text: text, summary: summary)
-            }
-            AccessibilityNotification.Announcement("Added \(Self.describe(parsed)). Undo is below.").post()
-            // Anything typed meanwhile stays.
-            if newTitle.trimmingCharacters(in: .whitespaces) == text { newTitle = "" }
+            // Added from `onChange`, during SwiftUI's own update like a tap, not from this
+            // task: changing the store here (inside withAnimation) made SwiftUI first redraw
+            // pending views from the week as it was before the change, and a screen redrawn
+            // that way missed the change, so the card showed no task under "Added …".
+            smartAddOutcome = SmartAddOutcome(parsed: parsed, text: text, note: rulesOnlyNote, weekStart: weekStart)
         }
+    }
+
+    /// Adds what Smart Add worked out (see `smartAdd`). Still parsing until now, so the
+    /// words can't also be added as typed meanwhile.
+    private func finishSmartAdd(_ outcome: SmartAddOutcome) {
+        isParsing = false
+        var parsed = outcome.parsed
+        if pickedMode { parsed.mode = newMode }
+        if pickedType && parsed.type != newType {
+            parsed.type = newType
+            parsed.items = []
+            parsed.goalTarget = nil
+        }
+        // A goal without an amount takes the keyboard for its target; a list without
+        // items, for its first item.
+        let awaitsTarget = (parsed.type == .goal && parsed.goalTarget == nil) || (parsed.type == .list && parsed.items.isEmpty)
+        var added: UUID?
+        withAnimation(.snappy(duration: 0.2)) {
+            added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: outcome.weekStart)
+            // A goal it couldn't find an amount for takes the keyboard for its target.
+            if awaitsTarget, let added { store.taskAwaitingFirstInput = added }
+        }
+        guard let added else { return }
+        smartAddCount += 1
+        pickedType = false
+        pickedMode = false
+        let summary = Self.describe(parsed, separator: " · ") + outcome.note
+        withAnimation(.snappy(duration: 0.25)) {
+            smartAddResult = SmartAddResult(taskID: added, text: outcome.text, summary: summary)
+        }
+        AccessibilityNotification.Announcement("Added \(Self.describe(parsed)). Undo is below.").post()
+        // Anything typed meanwhile stays.
+        if newTitle.trimmingCharacters(in: .whitespaces) == outcome.text { newTitle = "" }
     }
 
     /// "Run, repeating goal of 3" (VoiceOver), or with " · " for the message under the row.
