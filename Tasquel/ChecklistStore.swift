@@ -572,6 +572,7 @@ final class ChecklistStore {
 
     @discardableResult
     func ensureWeekExists(for date: Date) -> Week {
+        finishSkippedWeeks()
         let monday = weekStartDay(containing: date)
         if let wi = storedWeekIndex(startingOn: monday) {
             return weeks[wi]
@@ -688,6 +689,7 @@ final class ChecklistStore {
     /// picks up what changed since: unfinished carry-over tasks, and for a future week
     /// also its categories and recurring tasks.
     private func syncWithPreviousWeek(for date: Date) {
+        finishSkippedWeeks()
         let monday = weekStartDay(containing: date)
         guard let wi = storedWeekIndex(startingOn: monday),
               !isPastWeek(weeks[wi]),
@@ -710,6 +712,26 @@ final class ChecklistStore {
             changed = true
         }
         if changed { save() }
+    }
+
+    /// A saved future week the app was never opened in while it was current never got
+    /// its final sync, so it still shows the week before as it was when it was saved
+    /// (a task since finished, a repeating task since renamed). Gives each such week,
+    /// oldest first, the final sync it missed, so weeks built or synced from it don't
+    /// bring those back.
+    private func finishSkippedWeeks() {
+        let skipped = weeks.indices
+            .filter { weeks[$0].didFinalSync == false && isPastWeek(weeks[$0]) }
+            .sorted { weeks[$0].startDay < weeks[$1].startDay }
+        guard !skipped.isEmpty else { return }
+        for wi in skipped {
+            if let source = mostRecentWeekBefore(weeks[wi].startDay) {
+                _ = Self.syncRecurringTasks(into: &weeks[wi], from: source, addsCategories: false)
+                _ = Self.syncCarryOverTasks(into: &weeks[wi], from: source, followsSource: true)
+            }
+            weeks[wi].didFinalSync = true
+        }
+        save()
     }
 
     /// Adds `source`'s unfinished carry-over tasks that `week` is missing, skipping ones

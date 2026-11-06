@@ -1570,6 +1570,40 @@ extension FinalSyncTests {
         let later = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
         #expect(!study(later).contains("Books"), "the old future week got its final sync")
     }
+
+    @Test("A saved week the app never opens while it's current still passes on this week's changes")
+    func skippedWeekIsBuiltFrom() {
+        let (directory, clock, store, categoryID) = setUp()
+        let tasks = store.selectedWeek!.categories[0].tasks
+        store.toggleTask(categoryID: categoryID, taskID: tasks[0].id)  // finish Call bank
+        store.renameTask(categoryID: categoryID, taskID: tasks[1].id, newTitle: "Essays")
+
+        // Two weeks later: next week came and went without the app being opened.
+        let start = clock.now
+        clock.now = clock.weeks(2, from: start)
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(relaunched) == ["Essays"])
+
+        // The skipped week itself got the sync it missed.
+        relaunched.navigateToDate(clock.weeks(1, from: start))
+        #expect(titles(relaunched) == ["Essays", "Dentist"])
+    }
+
+    @Test("A saved week that becomes current after a skipped week follows this week's changes")
+    func savedWeekAfterSkippedWeek() {
+        let (directory, clock, store, categoryID) = setUp()
+        let start = clock.now
+        store.navigateToDate(clock.weeks(2, from: start))
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Taxes", mode: .oneTime)
+        store.navigateToDate(start)
+        let tasks = store.selectedWeek!.categories[0].tasks
+        store.toggleTask(categoryID: categoryID, taskID: tasks[0].id)  // finish Call bank
+        store.renameTask(categoryID: categoryID, taskID: tasks[1].id, newTitle: "Essays")
+
+        clock.now = clock.weeks(2, from: start)
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        #expect(titles(relaunched) == ["Essays", "Taxes"])
+    }
 }
 
 // MARK: - Week Dates Are Gregorian
