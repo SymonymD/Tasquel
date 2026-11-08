@@ -1339,18 +1339,12 @@ struct AppInfoTests {
 // MARK: - Accessibility
 
 struct TaskAccessibilityTests {
-    @Test("Today's date uses the user's language, with an ordinal day only in English")
-    func todayDateString() {
-        let clock = TestClock(2099, 3, 22)
+    @Test("Today's pill in the week's strip says the day as an ordinal, in the user's language")
+    func todayOrdinal() {
         let us = Locale(identifier: "en_US")
-        #expect(ContentView.dateString(clock.now, weekday: .wide, locale: us).hasSuffix("Mar 22nd"))
-        #expect(ContentView.dateString(TestClock(2099, 3, 11).now, weekday: nil, locale: us) == "Mar 11th")
-        let german = ContentView.dateString(clock.now, weekday: .wide, locale: Locale(identifier: "de_DE"))
-        #expect(german.contains("22") && !german.contains("nd"))
-        #expect(!ContentView.dateString(clock.now, weekday: nil, locale: Locale(identifier: "en_GB")).hasSuffix("nd"),
-                "the day doesn't come last here, so no suffix")
-        // The shortest form, for the largest text sizes.
-        #expect(ContentView.numericDateString(clock.now, locale: us) == "3/22")
+        #expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31].map { WeekDayStrip.ordinal($0, locale: us) }
+                == ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st"])
+        #expect(WeekDayStrip.ordinal(7, locale: Locale(identifier: "de_DE")) == "7.")
     }
 
     @Test("Checkboxes say what tapping them does")
@@ -2420,6 +2414,113 @@ func smartAddReadsAmounts(text: String, title: String, target: Double, kind: Goa
     for text in ["Dentist at 3 today", "Renew passport in 2 days", "Read chapter 3", "Print 4 x 6 photos", "Room 101 cleanup"] {
         #expect(TaskTextHints.refine(ParsedTask(title: text), from: text).type == .checkbox, "\(text)")
     }
+}
+
+// MARK: - Smart Add Rules, 1.0.2
+
+/// What Smart Add's rules make of the model's answer: `model` is the mode it gave, with
+/// the words as its title.
+private func smartAddRules(_ text: String, model mode: TaskMode = .oneTime) -> ParsedTask {
+    TaskTextHints.refine(TaskTextHints.dropInvented(ParsedTask(title: text, mode: mode), from: text), from: text)
+}
+
+/// Days a week, day lists, weekends, days of this week, "sometime" and daily amounts.
+@Test(arguments: [
+    ("gym 3 days a week", TaskMode.oneTime, "Gym", TaskType.goal, TaskMode.repeating, 3.0, GoalUnitKind.quantity, ""),
+    ("run 5 days per week", .oneTime, "Run", .goal, .repeating, 5, .quantity, ""),
+    ("yoga 3 days/week", .oneTime, "Yoga", .goal, .repeating, 3, .quantity, ""),
+    ("gym three days a week", .oneTime, "Gym", .goal, .repeating, 3, .quantity, ""),
+    ("yoga each Monday", .oneTime, "Yoga", .checkbox, .repeating, nil, .quantity, ""),
+    ("swim Mondays and Thursdays", .oneTime, "Swim", .goal, .repeating, 2, .quantity, ""),
+    ("lift Mon, Wed, Fri", .oneTime, "Lift", .goal, .repeating, 3, .quantity, ""),
+    ("tennis Tuesdays & Saturdays", .oneTime, "Tennis", .goal, .repeating, 2, .quantity, ""),
+    ("run every Monday and Thursday", .oneTime, "Run", .goal, .repeating, 2, .quantity, ""),
+    ("clean the garage on weekends", .oneTime, "Clean the garage", .goal, .repeating, 2, .quantity, ""),
+    ("hike every weekend", .oneTime, "Hike", .goal, .repeating, 2, .quantity, ""),
+    ("call the dentist tomorrow", .carryOver, "Call the dentist", .checkbox, .oneTime, nil, .quantity, ""),
+    ("dinner with Sam on Friday", .repeating, "Dinner with Sam", .checkbox, .oneTime, nil, .quantity, ""),
+    ("pack for this weekend", .carryOver, "Pack", .checkbox, .oneTime, nil, .quantity, ""),
+    ("fix the bike sometime", .oneTime, "Fix the bike", .checkbox, .carryOver, nil, .quantity, ""),
+    ("Fix the bike, no rush", .oneTime, "Fix the bike", .checkbox, .carryOver, nil, .quantity, ""),
+    ("call mom when I get a chance", .oneTime, "Call mom", .checkbox, .carryOver, nil, .quantity, ""),
+    ("meditate 10 min daily", .oneTime, "Meditate", .goal, .repeating, 70, .time, ""),
+    ("read 20 pages daily", .oneTime, "Read", .goal, .repeating, 140, .custom, "pages"),
+    ("Drink 8 glasses of water a day", .oneTime, "Drink water", .goal, .repeating, 56, .custom, "glasses"),
+    ("practice piano 30 min Mon, Wed, Fri", .oneTime, "Practice piano", .goal, .repeating, 90, .time, ""),
+    ("water plants", .repeating, "water plants", .checkbox, .oneTime, nil, .quantity, ""),
+    ("water plants every week", .repeating, "Water plants", .checkbox, .repeating, nil, .quantity, ""),
+] as [(String, TaskMode, String, TaskType, TaskMode, Double?, GoalUnitKind, String)])
+func smartAddNewRules(text: String, model: TaskMode, title: String, type: TaskType, mode: TaskMode,
+                      target: Double?, kind: GoalUnitKind, unit: String) {
+    let task = smartAddRules(text, model: model)
+    #expect(task.title == title)
+    #expect(task.type == type)
+    #expect(task.mode == mode)
+    #expect(task.goalTarget == target)
+    #expect(task.goalKind == kind)
+    #expect(task.goalUnit == unit)
+}
+
+/// Words that only look like the new rules are read as before.
+@Test func smartAddNewRulesLeaveLookalikes() {
+    for text in ["Move Monday's meeting to Friday", "Friday team lunch", "Measure twice, cut once", "Print 4 x 6 photos",
+                 "Room 101 cleanup", "Renew passport in 3 days", "Dentist every other Tuesday", "Plan 3 days in Rome"] {
+        #expect(smartAddRules(text) == ParsedTask(title: text), "\(text)")
+    }
+    #expect(smartAddRules("Dentist every other Tuesday", model: .repeating).mode == .oneTime, "every other week isn't repeating")
+    #expect(smartAddRules("Daily standup") == ParsedTask(title: "Daily standup", type: .goal, mode: .repeating, goalTarget: 7))
+    #expect(smartAddRules("Weekly report") == ParsedTask(title: "Weekly report", mode: .repeating))
+    // An amount "in a day" isn't each day's.
+    #expect(smartAddRules("Run 5 km in a day") == ParsedTask(title: "Run in a day", type: .goal, goalTarget: 5, goalKind: .custom, goalUnit: "km"))
+    // A count per day stays a count.
+    #expect(smartAddRules("Take 2 pills twice a day").goalTarget == 14)
+    // "Monday's" isn't a day in a list; the day's name stays in the title mid-sentence.
+    #expect(smartAddRules("Lunch on Friday with Sam").title == "Lunch on Friday with Sam")
+    #expect(smartAddRules("Lunch on Friday with Sam", model: .repeating).mode == .oneTime)
+}
+
+/// The model's amount for one day becomes the week's.
+@Test func smartAddDailyAmountOverridesModel() {
+    let model = ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 10, goalKind: .time)
+    let task = TaskTextHints.refine(TaskTextHints.dropInvented(model, from: "meditate 10 min daily"), from: "meditate 10 min daily")
+    #expect(task == ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 70, goalKind: .time))
+}
+
+/// A mode the model gave stays when the words give a reason for it, and goes when they don't.
+@Test func smartAddModeNeedsAReason() {
+    for text in ["Water plants again", "Stretch regularly", "Morning routine", "Reading habit", "Ongoing cleanup",
+                 "Keep the plants alive", "Pay rent monthly"] {
+        #expect(TaskTextHints.dropInvented(ParsedTask(title: text, mode: .repeating), from: text).mode == .repeating, "\(text)")
+    }
+    #expect(TaskTextHints.dropInvented(ParsedTask(title: "Finish the report", mode: .carryOver), from: "Finish the report").mode == .oneTime)
+    #expect(TaskTextHints.dropInvented(ParsedTask(title: "Paint the fence", mode: .carryOver), from: "Paint the fence until done").mode == .carryOver)
+}
+
+/// Words with no real word and no digit skip the model and are added as typed; others
+/// go to it, and the rules check what it says.
+@MainActor @Test func smartAddSkipsTheModelForNoRealWords() async throws {
+    var asked = false
+    do {
+        _ = try await AppleIntelligenceTaskParser.parse("asldkjlkd") { _ in
+            asked = true
+            return ParsedTask(title: "Asldkjlkd", mode: .repeating)
+        }
+        Issue.record("the model's answer was used")
+    } catch {
+        #expect(error as? TaskTextParserError == .noRealWords)
+    }
+    #expect(!asked, "the model isn't asked")
+    // What Smart Add then adds: the words as typed, a one-time checkbox.
+    #expect(TaskTextHints.refine(ParsedTask(title: "asldkjlkd"), from: "asldkjlkd") == ParsedTask(title: "asldkjlkd"))
+    #expect(!AppleIntelligenceTaskParser.hasRealWords("asldkjlkd qwpoeiru"))
+    for text in ["water plants", "zxqv 3x", "Siobhan's party", "a"] {
+        #expect(AppleIntelligenceTaskParser.hasRealWords(text), "\(text)")
+    }
+
+    let dentist = try await AppleIntelligenceTaskParser.parse("call the dentist tomorrow") { _ in
+        ParsedTask(title: "Call the dentist", mode: .carryOver)
+    }
+    #expect(dentist == ParsedTask(title: "Call the dentist"), "a one-time checkbox")
 }
 
 /// The Welcome Tour's extra animations loop in 6 seconds and come to rest on their

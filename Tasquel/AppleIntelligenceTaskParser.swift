@@ -30,16 +30,43 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
 
     func parse(_ text: String) async throws -> ParsedTask? {
         guard isAvailable else { return nil }
-        let session = preparedSession ?? Self.makeSession()
-        preparedSession = nil
-        // Greedy sampling: the same words give the same task.
-        let response = try await session.respond(
-            to: "Note: \(text)",
-            generating: TaskDraft.self,
-            options: GenerationOptions(sampling: .greedy)
-        )
-        let parsed = TaskTextHints.dropInvented(response.content.parsedTask(fallbackTitle: text), from: text)
-        return Self.fixingTypos(TaskTextHints.refine(parsed, from: text), typed: text)
+        return try await Self.parse(text) { text in
+            let session = preparedSession ?? Self.makeSession()
+            preparedSession = nil
+            // Greedy sampling: the same words give the same task.
+            let response = try await session.respond(
+                to: "Note: \(text)",
+                generating: TaskDraft.self,
+                options: GenerationOptions(sampling: .greedy)
+            )
+            return response.content.parsedTask(fallbackTitle: text)
+        }
+    }
+
+    /// What `model` makes of the words, checked by the rules. Words with no real word and no
+    /// digit ("asldkjlkd") don't go to the model, which gave them a made-up schedule: it
+    /// throws `TaskTextParserError.noRealWords`, and they're added as typed.
+    static func parse(_ text: String, model: (String) async throws -> ParsedTask) async throws -> ParsedTask {
+        guard hasRealWords(text) else { throw TaskTextParserError.noRealWords }
+        let parsed = TaskTextHints.dropInvented(try await model(text), from: text)
+        return fixingTypos(TaskTextHints.refine(parsed, from: text), typed: text)
+    }
+
+    /// A digit, or a word the system spell checker knows.
+    static func hasRealWords(_ text: String) -> Bool {
+        if text.contains(where: \.isNumber) { return true }
+        let checker = UITextChecker()
+        let language = spellingLanguage
+        let words = text as NSString
+        var found = false
+        words.enumerateSubstrings(in: NSRange(location: 0, length: words.length), options: .byWords) { _, range, _, stop in
+            let miss = checker.rangeOfMisspelledWord(in: text, range: range, startingAt: range.location, wrap: false, language: language)
+            if miss.location == NSNotFound {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
     }
 
     // MARK: Spelling
@@ -68,7 +95,7 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
         let letters = word.trimmingCharacters(in: .punctuationCharacters)
         guard letters.count >= 4, letters.allSatisfy(\.isLetter) else { return word }
         let checker = UITextChecker()
-        let language = UITextChecker.availableLanguages.first { $0.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en") } ?? "en_US"
+        let language = spellingLanguage
         let range = NSRange(location: 0, length: (letters as NSString).length)
         let miss = checker.rangeOfMisspelledWord(in: letters, range: range, startingAt: 0, wrap: false, language: language)
         guard miss.location != NSNotFound,
@@ -78,6 +105,11 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
         // Keep the typed capitalisation of the first letter.
         let fixed = letters.first?.isUppercase == true ? guess.prefix(1).uppercased() + guess.dropFirst() : guess
         return word.replacingOccurrences(of: letters, with: fixed)
+    }
+
+    /// The spell checker's language for the user's.
+    private static var spellingLanguage: String {
+        UITextChecker.availableLanguages.first { $0.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en") } ?? "en_US"
     }
 
     private static func editDistance(_ a: String, _ b: String) -> Int {
@@ -102,8 +134,9 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
             Turn a short note into one task for a weekly checklist.
             Title: short, in the note's own words, without the schedule, amount or items.
             Kind: checkbox for one thing to do; goal for an amount to reach; list when several items are named.
-            Recurrence: repeating when the note says how often, like "3x per week", "weekly" or "every Monday"; \
-            carryOver when it should stay until done; otherwise oneTime.
+            Recurrence: repeating when the note says how often, like "3x per week", "weekly", "every Monday" or "on weekends"; \
+            carryOver when it should stay until done or has no set time, like "sometime" or "no rush"; \
+            otherwise oneTime, as for one day, like "tomorrow" or "on Friday".
             Never add amounts or items that aren't in the note.
             Fix obvious spelling mistakes in the title and unit, but keep names as written.
             Examples:
@@ -113,8 +146,15 @@ final class AppleIntelligenceTaskParser: TaskTextParser {
             "Groceries: milk, eggs" -> Groceries, list, oneTime, items milk and eggs.
             "Water plants weekly" -> Water plants, checkbox, repeating.
             "Meditate daily" -> Meditate, goal, repeating, amount 7, unit count.
+            "Meditate 10 min daily" -> Meditate, goal, repeating, amount 70, unit minutes.
             "Stretch every weekday" -> Stretch, goal, repeating, amount 5, unit count.
+            "Yoga 3 days a week" -> Yoga, goal, repeating, amount 3, unit count.
+            "Swim Mondays and Thursdays" -> Swim, goal, repeating, amount 2, unit count.
+            "Hike on weekends" -> Hike, goal, repeating, amount 2, unit count.
+            "Yoga each Monday" -> Yoga, checkbox, repeating.
+            "Dinner with Sam on Friday" -> Dinner with Sam, checkbox, oneTime.
             "Paint the fence until done" -> Paint the fence, checkbox, carryOver.
+            "Fix the bike sometime" -> Fix the bike, checkbox, carryOver.
             """)
     }
 }
@@ -182,11 +222,17 @@ struct TaskDraft {
 
 /// The parser Smart Add uses: Apple Intelligence or, in debug builds launched with
 /// `-smartAddRules`, the plain rules after a 2-second pause like the model's, so Smart Add
-/// can be tested in a simulator (which has no model).
+/// can be tested in a simulator (which has no model). `-smartAddDelay 6` makes the pause
+/// longer, for a test that does something else meanwhile.
 enum SmartAddParser {
     static let current: TaskTextParser = {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-smartAddRules") { return RulesOnlyTaskParser() }
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-smartAddRules") {
+            let delay = arguments.firstIndex(of: "-smartAddDelay")
+                .flatMap { arguments.indices.contains($0 + 1) ? Double(arguments[$0 + 1]) : nil }
+            return RulesOnlyTaskParser(delay: delay ?? 2)
+        }
         #endif
         return AppleIntelligenceTaskParser.shared
     }()
@@ -195,11 +241,13 @@ enum SmartAddParser {
 #if DEBUG
 /// Smart Add without a model, for simulators: the rules Smart Add applies after the model.
 struct RulesOnlyTaskParser: TaskTextParser {
+    /// Seconds, like the model's pause.
+    var delay: Double = 2
     var isAvailable: Bool { true }
     func prepare() {}
     func parse(_ text: String) async throws -> ParsedTask? {
-        try await Task.sleep(for: .seconds(2))
-        return TaskTextHints.refine(TaskTextHints.dropInvented(ParsedTask(title: text), from: text), from: text)
+        try await Task.sleep(for: .seconds(delay))
+        return try await AppleIntelligenceTaskParser.parse(text) { ParsedTask(title: $0) }
     }
 }
 #endif

@@ -5,8 +5,8 @@ import Foundation
 
 /// `-demoData` (debug builds only): throwaway storage, no onboarding, and a current week
 /// filled with sample tasks across the starter categories, for App Store screenshots.
-/// `-demoAppearance <system|light|dark|retro>` picks the theme. Calendar events come from
-/// `-fakeCalendar`.
+/// `-demoAppearance <system|light|dark|retro>` picks the theme and `-demoFirstCard <name>`
+/// puts one card first. Calendar events come from `-fakeCalendar`.
 extension ChecklistStore {
     static var launchesWithDemoData: Bool {
         ProcessInfo.processInfo.arguments.contains("-demoData")
@@ -25,6 +25,11 @@ extension ChecklistStore {
         guard let wi = weeks.firstIndex(where: { $0.id == current.id }) else { return }
         for ci in weeks[wi].categories.indices {
             weeks[wi].categories[ci].tasks = Self.demoTasks(for: weeks[wi].categories[ci].name)
+        }
+        // `-demoFirstCard <name>` puts that card first, so it opens at the top.
+        if let index = arguments.firstIndex(of: "-demoFirstCard"), arguments.indices.contains(index + 1),
+           let ci = weeks[wi].categories.firstIndex(where: { $0.name == arguments[index + 1] }) {
+            weeks[wi].categories.insert(weeks[wi].categories.remove(at: ci), at: 0)
         }
         save()
     }

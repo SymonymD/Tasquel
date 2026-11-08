@@ -57,7 +57,7 @@ final class CardOrderUITests: XCTestCase {
     func testSortChangeAppliesWhileACardIsOpen() throws {
         // Appointments edited last.
         card("Appointments").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Dentist\n")

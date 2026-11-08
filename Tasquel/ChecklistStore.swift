@@ -22,6 +22,9 @@ final class ChecklistStore {
     /// A list or goal just created from the add-task row, whose first field (a list's item,
     /// a goal's target) should take the keyboard when it appears. Not saved.
     var taskAwaitingFirstInput: UUID?
+    /// A task Smart Add just added, its row lit for a moment so it's seen (not with Reduce
+    /// Motion). Not saved.
+    var highlightedTaskID: UUID?
     /// How category cards are ordered (Settings ▸ Categories).
     var categorySort: CategorySortOrder = .manual
     /// When each category (by name) last had a task added, changed or removed, for the

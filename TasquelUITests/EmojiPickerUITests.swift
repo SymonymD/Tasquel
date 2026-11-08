@@ -52,7 +52,7 @@ final class EmojiPickerUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        XCTAssertTrue(app.textFields["Add task"].waitForExistence(timeout: 3), "the card is open")
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3), "the card is open")
         let editCard = app.buttons["Edit Errands"]
         XCTAssertTrue(editCard.waitForExistence(timeout: 3))
         sleep(1)  // the edit button fades in as the card opens
@@ -77,7 +77,7 @@ final class EmojiPickerUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        XCTAssertTrue(app.textFields["Add task"].waitForExistence(timeout: 3), "the card is open")
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3), "the card is open")
         let editCard = app.buttons["Edit Errands"]
         XCTAssertTrue(editCard.waitForExistence(timeout: 3))
         sleep(1)  // the edit button fades in as the card opens

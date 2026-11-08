@@ -3,8 +3,8 @@ import XCTest
 /// The bottom bar and what's placed by its height (the Undo message, the grid's bottom
 /// padding) after something under a sheet changed the bar.
 final class BottomBarUITests: XCTestCase {
-    /// Turning calendar events off in Settings shrinks the bar (its events panel goes). The
-    /// Undo message afterwards sits just above the bar, as before, not where the panel was.
+    /// Turning calendar events on and off in Settings, under a sheet, changes the bar's
+    /// calendar button. The Undo message afterwards sits just above the bar, as before.
     @MainActor
     func testUndoMessageFollowsBarAfterSettingsChange() throws {
         XCUIDevice.shared.orientation = .portrait
@@ -20,11 +20,9 @@ final class BottomBarUITests: XCTestCase {
         let before = undoGap(in: app, task: "Milk")
 
         setCalendarEvents(in: app)  // on
-        app.buttons["Show events"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Dentist")).firstMatch
-            .waitForExistence(timeout: 5), "the events panel is open")
-        setCalendarEvents(in: app)  // off, with the panel open
-        XCTAssertFalse(app.buttons["Show events"].exists)
+        XCTAssertTrue(app.buttons["Calendar and events"].waitForExistence(timeout: 3))
+        setCalendarEvents(in: app)  // off
+        XCTAssertTrue(app.buttons["Go to week"].waitForExistence(timeout: 3))
 
         let after = undoGap(in: app, task: "Eggs")
         print("REVIEW gap before=\(before) after=\(after)")
@@ -40,7 +38,7 @@ final class BottomBarUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 3))
         errands.tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         for task in tasks { field.typeText(task + "\n") }

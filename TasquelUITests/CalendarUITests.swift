@@ -1,10 +1,68 @@
 import XCTest
 
-/// End-to-end check of calendar events in the bottom bar, using the built-in test
+/// End-to-end check of the calendar sheet (the week selector's calendar button): the week
+/// picker, and with calendar events on the viewed week's events, using the built-in test
 /// calendar (`-fakeCalendar`) and throwaway app data (`-isolatedData`).
 final class CalendarUITests: XCTestCase {
+    /// With events on, the sheet opens on them; Weeks shows months where the viewed week is
+    /// picked, a tap on another week picks all of it, and Go goes there. With events off the
+    /// same button is just Go to Week.
     @MainActor
-    func testEventsInBottomBar() throws {
+    func testWeekPicker() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData", "-fakeCalendar"]
+        app.launch()
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10))
+        let title = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch
+        let thisWeek = title.label
+        calendar.tap()
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForExistence(timeout: 3), "opens on the events")
+        app.buttons["Weeks"].tap()
+        let weeks = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of"))
+        XCTAssertTrue(weeks.firstMatch.waitForExistence(timeout: 3))
+        let picked = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND selected == true", "Week of"))
+        XCTAssertEqual(picked.count, 1, "the viewed week is picked, as one row")
+        let rows = weeks.allElementsBoundByIndex
+        let index = try XCTUnwrap(rows.firstIndex { $0.isSelected })
+        let next = rows[index + 1]
+        next.tap()
+        XCTAssertTrue(next.isSelected, "a tap picks the whole week")
+        XCTAssertEqual(picked.count, 1)
+        app.buttons["Go"].tap()
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForNonExistence(timeout: 3))
+        XCTAssertNotEqual(title.label, thisWeek, "went to the picked week")
+
+        // Earlier adds the month before the first one shown, at the top.
+        app.buttons["Calendar and events"].tap()
+        app.buttons["Weeks"].tap()
+        let firstMonth = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^[A-Z][a-z]+ [0-9]{4}$")).firstMatch
+        XCTAssertTrue(firstMonth.waitForExistence(timeout: 3))
+        let opening = firstMonth.label
+        app.buttons["Show earlier month"].tap()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "LLLL yyyy"
+        let monthBefore = try XCTUnwrap(formatter.date(from: opening).flatMap { Calendar.current.date(byAdding: .month, value: -1, to: $0) })
+        XCTAssertTrue(app.staticTexts[formatter.string(from: monthBefore)].waitForExistence(timeout: 3), "the month before \(opening)")
+        app.buttons["Cancel"].tap()
+
+        let plain = XCUIApplication()
+        plain.launchArguments = ["-isolatedData"]
+        plain.launch()
+        if plain.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { plain.buttons["Skip"].tap() }
+        let goToWeek = plain.buttons["Go to week"]
+        XCTAssertTrue(goToWeek.waitForExistence(timeout: 5), "without events, just the week picker")
+        goToWeek.tap()
+        XCTAssertTrue(plain.navigationBars["Go to Week"].waitForExistence(timeout: 3))
+        XCTAssertFalse(plain.buttons["Events"].exists)
+    }
+
+    /// Turning calendar events on in Settings turns the calendar button green with a person
+    /// and gives its sheet the viewed week's events; turning them off again goes back.
+    @MainActor
+    func testEventsInCalendarSheet() throws {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-fakeCalendar", "-isolatedData"]
@@ -18,7 +76,8 @@ final class CalendarUITests: XCTestCase {
         }
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Show events"].exists, "no calendar toggle until turned on in Settings")
+        XCTAssertTrue(app.buttons["Go to week"].exists)
+        XCTAssertFalse(app.buttons["Calendar and events"].exists, "no events until turned on in Settings")
 
         // Turn it on in Settings.
         settings.tap()
@@ -30,68 +89,33 @@ final class CalendarUITests: XCTestCase {
         XCTAssertTrue(calendarsRow.label.contains("2 selected"), "own calendars selected, Birthdays left out")
         app.buttons["Done"].firstMatch.tap()
 
-        // Events live in the bottom bar, not the grid.
-        let showEvents = app.buttons["Show events"]
-        XCTAssertTrue(showEvents.waitForExistence(timeout: 3), "calendar toggle next to Settings")
+        // Events live in the calendar sheet, not the grid.
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 3))
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Events")).firstMatch.exists)
         let dentist = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Dentist")).firstMatch
-        XCTAssertFalse(dentist.exists, "events hidden until the toggle is on")
-
-        XCTAssertEqual(showEvents.value as? String, "Has events this week", "icon shows the week has events")
-        showEvents.tap()
-        XCTAssertTrue(dentist.waitForExistence(timeout: 3), "toggle reveals the week's events")
+        XCTAssertFalse(dentist.exists)
+        calendar.tap()
+        XCTAssertTrue(dentist.waitForExistence(timeout: 3), "the sheet opens on the week's events")
         XCTAssertTrue(app.staticTexts["3 events"].exists)
-        let header = app.staticTexts["This Week's Events"]
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Sam's Birthday")).firstMatch.exists)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(dentist.waitForNonExistence(timeout: 3))
 
-        // With the events open, the grid still scrolls its last card clear of the bar.
-        let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label != %@", "Open ", "Open all cards"))
-        let lastCard = cards.element(boundBy: cards.count - 1)
-        let grid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-        for _ in 0..<3 { grid.press(forDuration: 0.05, thenDragTo: grid.withOffset(CGVector(dx: 0, dy: -400))) }
-        XCTAssertLessThan(lastCard.frame.maxY, header.frame.minY, "the bottom row can be reached above the events")
-        // Closing the events while scrolled down brings the top cards back.
-        let firstCard = cards.element(boundBy: 0)
-        app.buttons["Hide events"].tap()
-        _ = firstCard.waitForExistence(timeout: 1)
-        XCTAssertGreaterThan(firstCard.frame.minY, app.buttons["Next week"].frame.maxY, "the top row comes back into view")
-        app.buttons["Show events"].tap()
-        XCTAssertTrue(dentist.waitForExistence(timeout: 3))
-
-        // The panel follows the viewed week.
+        // The events follow the viewed week.
         app.buttons["Next week"].tap()
+        calendar.tap()
         XCTAssertTrue(dentist.waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
         app.buttons["Previous week"].tap()
 
-        app.buttons["Hide events"].tap()
-        XCTAssertFalse(dentist.waitForExistence(timeout: 1), "toggle hides the events")
-
-        // Swiping down on the events minimizes them; a short drag doesn't.
-        app.buttons["Show events"].tap()
-        XCTAssertTrue(dentist.waitForExistence(timeout: 3))
-        let start = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 20)))
-        XCTAssertTrue(dentist.waitForExistence(timeout: 1), "a short drag springs back")
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 200)),
-                    withVelocity: .fast, thenHoldForDuration: 0)
-        XCTAssertFalse(dentist.waitForExistence(timeout: 2), "swiping down minimizes the events")
-        XCTAssertTrue(app.buttons["Show events"].exists)
-
-        // A short list can be dragged from an event too, without opening it in Calendar.
-        app.buttons["Show events"].tap()
-        XCTAssertTrue(dentist.waitForExistence(timeout: 3))
-        let onEvent = dentist.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        onEvent.press(forDuration: 0.05, thenDragTo: onEvent.withOffset(CGVector(dx: 0, dy: 200)),
-                      withVelocity: .fast, thenHoldForDuration: 0)
-        XCTAssertFalse(dentist.waitForExistence(timeout: 2), "dragging from an event minimizes the events")
-        XCTAssertEqual(app.state, .runningForeground, "the drag didn't open Calendar")
-
-        // Turning the setting off removes the toggle.
+        // Turning the setting off: just the week picker again.
         settings.tap()
         XCTAssertTrue(calendarToggle(in: app).exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         app.buttons["Done"].firstMatch.tap()
-        XCTAssertFalse(app.buttons["Show events"].waitForExistence(timeout: 1))
+        XCTAssertTrue(app.buttons["Go to week"].waitForExistence(timeout: 3))
+        XCTAssertFalse(calendar.exists)
     }
 
     /// Regression: after relaunching, events didn't appear until the setting was
@@ -120,35 +144,60 @@ final class CalendarUITests: XCTestCase {
         // Relaunch with the same data; don't open Settings.
         app.terminate()
         app.launch()
-        let showEvents = app.buttons["Show events"]
-        XCTAssertTrue(showEvents.waitForExistence(timeout: 5))
-        let hasEvents = expectation(for: NSPredicate(format: "value == %@", "Has events this week"), evaluatedWith: showEvents)
-        wait(for: [hasEvents], timeout: 5)
-        showEvents.tap()
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 5))
+        calendar.tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Dentist")).firstMatch.waitForExistence(timeout: 3),
                       "events show after relaunch without visiting Settings")
     }
 
-    /// A week with more events than fit scrolls in the panel, and a short swipe up that
-    /// starts on an event scrolls rather than opening Calendar.
+    /// A sideways swipe on the events goes to the next or previous week, even one that starts
+    /// on an event, which doesn't open Calendar.
+    @MainActor
+    func testSwipeChangesEventsWeek() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", "light"]
+        app.launch()
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10))
+        calendar.tap()
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForExistence(timeout: 3))
+        let standup = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Team Standup")).firstMatch
+        XCTAssertTrue(standup.waitForExistence(timeout: 5))
+        sleep(1)
+        let onEvent = standup.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        onEvent.press(forDuration: 0.05, thenDragTo: onEvent.withOffset(CGVector(dx: -250, dy: 0)))
+        let nextWeek = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Events, Week of")).firstMatch
+        XCTAssertTrue(nextWeek.waitForExistence(timeout: 3), "on to next week's events")
+        XCTAssertEqual(app.state, .runningForeground, "the swipe didn't open Calendar")
+
+        let list = app.staticTexts["Events, Week of"].exists ? app.staticTexts["Events, Week of"] : nextWeek
+        let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 60))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 250, dy: 0)))
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForExistence(timeout: 3), "and back")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// A swipe up that starts on an event scrolls (or grows the sheet) rather than opening
+    /// Calendar, and the week's last event can be reached.
     @MainActor
     func testEventsListScrolls() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", "light"]
         app.launch()
-        let show = app.buttons["Show events"]
-        XCTAssertTrue(show.waitForExistence(timeout: 10))
-        show.tap()
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10))
+        calendar.tap()
         let standup = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Team Standup")).firstMatch
         let market = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Farmers Market")).firstMatch
         XCTAssertTrue(standup.waitForExistence(timeout: 5))
         sleep(1)
-        XCTAssertFalse(market.isHittable, "the last event starts out of view")
         let start = standup.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)), withVelocity: .default, thenHoldForDuration: 0.1)
         sleep(1)
         XCTAssertEqual(app.state, .runningForeground, "the swipe didn't open Calendar")
-        XCTAssertTrue(market.isHittable, "the list scrolled to it")
+        XCTAssertTrue(market.isHittable, "the last event is in view")
     }
 
     /// Settings ▸ Calendar is a few rows down; a List only builds rows on screen.

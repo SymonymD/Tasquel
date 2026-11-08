@@ -39,14 +39,6 @@ struct ContentView: View {
     @State private var expandedBeforeEditing: Set<CategoryLayoutKey> = []
     @State private var showOnboarding = false
     @State private var showStartFreshConfirmation = false
-    /// The bottom bar's calendar toggle: expands the bar to show the week's events.
-    @State private var showEventsPanel = false
-    /// The events panel is in the bar: from opening until its closing animation ends.
-    /// (SwiftUI doesn't clip or move a view while removing it, so the panel used to sit
-    /// in place over the grid while the bar shrank away from it.)
-    @State private var isEventsPanelMounted = false
-    /// The events panel is being dragged down; the grid ignores the bar's height meanwhile.
-    @State private var isEventsPanelDragged = false
     /// While the keyboard is up, the bottom bar turns into a Done button.
     @State private var isKeyboardVisible = false
     private var isSheetPresented: Bool {
@@ -66,12 +58,14 @@ struct ContentView: View {
     @State private var backgroundedAt: Date?
     /// Today, for the bottom bar's date. Updated when the day changes while the app is open.
     @State private var today = Date()
+    /// The week's title: 5% under .title2's 22pt, and growing with Dynamic Type like it.
+    @ScaledMetric(relativeTo: .title2) private var weekTitleSize: CGFloat = 20.9
 
     // Week paging (swipe or arrows): last/this/next week sit side by side.
     // Read only by PagerTrack, so dragging moves the pages without rebuilding them.
     @State private var pager = WeekPagerState()
     @State private var pagerTarget: PagerTarget?
-    @State private var arrivingWeekTitle: String?  // shown from release until the new week takes over
+    @State private var arrivingWeek: Week?  // its title and days show from release until it takes over
     @State private var weekSwipeAxis: Axis?
     /// Resets on its own when iOS cancels the touch (onEnded isn't called then), so a
     /// cancelled swipe can't leave the page disabled and the grid unable to scroll.
@@ -96,17 +90,8 @@ struct ContentView: View {
             Theme.background(theme).ignoresSafeArea()
 
             VStack(spacing: 12) {
-                // The viewed week; today's date is shown in the bottom bar.
-                weekTitleText
-                    .font(Theme.titleFont(theme))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .padding(.horizontal, 56)  // clear of the Expand All button
-                    .frame(maxWidth: .infinity)
-                .overlay(alignment: .trailing) { expandAllButton }
-                .padding(.top, 8)
-
                 if let error = store.persistenceError {
+                    weekTitleRow
                     Spacer()
                     ContentUnavailableView {
                         Label("Planner Unavailable", systemImage: "externaldrive.badge.exclamationmark")
@@ -134,23 +119,6 @@ struct ContentView: View {
                     }
                     Spacer()
                 } else if let week = store.selectedWeek {
-                    weekNavigationBar
-                    if isPastWeek {
-                        // Past weeks can't be changed; say so before a tap does nothing.
-                        Label(Theme.isRetro(theme) ? "PAST_WEEK // READ_ONLY" : "Past week · view only", systemImage: "lock")
-                            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
-                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                            .padding(.bottom, -4)
-                    } else if isEditing {
-                        Text(editModeHint)
-                            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
-                            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                            .padding(.bottom, -4)
-                            .transition(.opacity)
-                    }
-                    if store.isSaveFailing && store.saveError == nil {
-                        saveFailingNotice
-                    }
                     PagerTrack(pager: pager) {
                         // Keyed by week, so the page that slides in keeps its identity when
                         // it becomes current; only the new off-screen neighbor is built.
@@ -174,7 +142,10 @@ struct ContentView: View {
                         weekSwipeAxis = nil
                         if !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
                     }
+                    // The cards scroll up under the header's frosted glass.
+                    .safeAreaInset(edge: .top, spacing: 0) { weekHeader(week) }
                 } else {
+                    weekTitleRow
                     Spacer()
                     ContentUnavailableView("No Week Data", systemImage: "calendar.badge.exclamationmark")
                     Spacer()
@@ -189,12 +160,8 @@ struct ContentView: View {
                     Spacer(minLength: 0)
                     if !isKeyboardVisible {
                         bottomBar
-                            // Not while the events panel follows a finger: the grid would re-pad
-                            // itself on every frame of the drag. (Under a sheet it's still
-                            // measured: Settings can change the bar, e.g. turning off calendar
-                            // events removes its panel.)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                if !isEventsPanelDragged { bottomBarHeight = height }
+                                bottomBarHeight = height
                             }
                             .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
@@ -241,9 +208,12 @@ struct ContentView: View {
             withAnimation(.snappy(duration: 0.3)) { isKeyboardVisible = false }
         }
         .sheet(isPresented: $showDatePicker) {
-            DatePickerSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday,
-                            theme: theme, rc: rc) { date in
-                changeWeek(to: date)
+            CalendarSheet(selectedDate: store.selectedDate, firstWeekday: store.firstWeekday, today: today,
+                          theme: theme, rc: rc, showsEvents: showsEventsToggle,
+                          eventsWeek: (arrivingWeek ?? store.selectedWeek)?.startDay,
+                          onSelectWeek: { changeWeek(to: $0) },
+                          onSwipeWeek: { changeWeek(by: $0, velocity: $1) }) { week in
+                eventsList(for: week)
             }
             // Full height on iPad, where half a form sheet cut the content off.
             .presentationDetents(horizontalSizeClass == .regular ? [.large] : [.medium, .large])
@@ -478,7 +448,7 @@ struct ContentView: View {
         isChangingWeek = true
         // The title switches now; the page hands over only once the slide has fully
         // settled, so the cards never snap the last few points into place.
-        arrivingWeekTitle = store.previewWeek(for: date).displayTitle
+        arrivingWeek = store.previewWeek(for: date)
         let endOffset = -CGFloat(slot) * weekPageWidth
         withAnimation(pagingSpring(to: endOffset, velocity: velocity), completionCriteria: .removed) {
             pager.offset = endOffset
@@ -490,7 +460,7 @@ struct ContentView: View {
             withTransaction(settle) {
                 store.navigateToDate(date)
                 pagerTarget = nil
-                arrivingWeekTitle = nil
+                arrivingWeek = nil
                 pager.offset = 0
             }
             isChangingWeek = false
@@ -642,6 +612,30 @@ struct ContentView: View {
         }
     }
 
+    /// The Tasquel mark (the app icon's ring and t), in one color, at the top left: back to
+    /// this week (what Go to Today in the bottom bar used to do).
+    @ViewBuilder
+    private var homeButton: some View {
+        if store.persistenceError == nil {
+            Button { changeWeek(to: today) } label: {
+                // Retro's is its icon's: the t in brackets.
+                Image(Theme.isRetro(theme) ? "TasquelMarkRetro" : "TasquelMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    // Retro's brackets are wide; the ring is 5% larger.
+                    .frame(height: Theme.isRetro(theme) ? 28.6 : 30)
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 12)
+            .accessibilityLabel("This Week")
+            .accessibilityHint("Goes back to the current week")
+        }
+    }
+
     private func collapseAllCards() {
         dismissKeyboard()  // see collapseCategory
         withAnimation(cardAnimation) {
@@ -652,70 +646,55 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Navigation Capsule
+    // MARK: - Week Selector
 
+    /// Previous week, a week picked from a calendar, next week: in the bottom bar, as
+    /// narrow as the bar needs. Each button's tap area is its own slice of the capsule.
     private var weekNavigationBar: some View {
-        HStack(spacing: 20) {
-            Button {
-                changeWeek(by: -1)
-            } label: {
-                Image(systemName: "chevron.left").font(.body.bold())
-                    .touchTarget()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Previous week")
-            Button { showDatePicker = true } label: {
-                Image(systemName: "calendar").font(.body)
-                    .touchTarget()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Go to week")
-            Button {
-                changeWeek(by: 1)
-            } label: {
-                Image(systemName: "chevron.right").font(.body.bold())
-                    .touchTarget()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Next week")
+        HStack(spacing: 0) {
+            weekNavButton("chevron.left", label: "Previous week") { changeWeek(by: -1) }
+            // The calendar sheet: weeks, and with calendar events on your events too (a green
+            // calendar with a person then).
+            weekNavButton(showsEventsToggle ? "calendar.and.person" : "calendar",
+                          label: showsEventsToggle ? "Calendar and events" : "Go to week",
+                          color: showsEventsToggle ? eventsGreen : nil) { showDatePicker = true }
+                // The viewed week's events load ahead, so the sheet opens with them.
+                .task(id: showsEventsToggle ? eventsLoadKey : nil) {
+                    guard showsEventsToggle, let key = eventsLoadKey else { return }
+                    await calendarService.load(weekStarting: key.weekStart, calendarIDs: key.calendarIDs)
+                }
+            weekNavButton("chevron.right", label: "Next week") { changeWeek(by: 1) }
         }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background {
-            if Theme.isRetro(theme) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.navCapsule(theme))
-                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-            } else {
-                Capsule().fill(Theme.navCapsule(theme))
-            }
+        .padding(.horizontal, 6)
+        .modifier(BarBackground(shape: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Capsule()),
+                                theme: theme, rc: rc))
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+
+    private func weekNavButton(_ symbol: String, label: String, color: Color? = nil,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(symbol.hasPrefix("chevron") ? .body.bold() : .body)
+                .foregroundStyle(color ?? Theme.textPrimary(theme, rc: rc))
+                .frame(minWidth: 28, maxWidth: 44, minHeight: Self.barButtonSize)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     // MARK: - Bottom Bar
 
-    @ViewBuilder
+    /// The bottom row of buttons, each with its own background (Liquid Glass, or Retro's
+    /// boxes) and no bar behind them, so taps between them reach the cards. They sit
+    /// above the home indicator.
     private var bottomBar: some View {
-        if Theme.isRetro(theme) {
-            retroBottomBar
-        } else {
-            // Flush with the bottom of the screen, like a tab bar: a flat translucent
-            // bar with only a top border, running down behind the home indicator
-            // while the buttons stay above it.
-            // The content shape makes the whole bar a touch target. Without it, taps on
-            // Settings/Edit fell through to the scrolling grid behind the see-through
-            // bar and the buttons never fired.
-            bottomBarStack
-                .padding(.horizontal, 28)
-                .padding(.top, 8)
-                .padding(.bottom, homeIndicatorInset)
-                .contentShape(Rectangle())
-                .background {
-                    Rectangle().fill(.bar)
-                        .overlay(alignment: .top) { Divider() }
-                }
-        }
+        bottomBarContent
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, homeIndicatorInset)
     }
 
     /// The keyboard's Done, at the right just above the keyboard.
@@ -767,80 +746,32 @@ struct ContentView: View {
         )
     }
 
-    private var retroBottomBar: some View {
-        bottomBarStack
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-            .padding(.bottom, homeIndicatorInset)
-            .contentShape(Rectangle())
-            .background {
-                Theme.navCapsule(theme)
-                    .overlay(alignment: .top) { Theme.cardBorder(theme, rc: rc).frame(height: 1) }
-            }
-    }
-
-    /// The bar's row, with the events panel expanding above it when toggled on.
-    private var bottomBarStack: some View {
-        VStack(spacing: 0) {
-            if isEventsPanelMounted && showsEventsToggle {
-                VStack(spacing: 8) {
-                    eventsPanel
-                    Divider()
-                }
-                .padding(.bottom, 8)
-                .modifier(EventsPanelCollapse(isCollapsed: !showEventsPanel))
-            }
-            bottomBarContent
-        }
-    }
-
     private var bottomBarContent: some View {
-        HStack {
-            // Settings and the calendar toggle (fixed width so the date stays centered)
-            HStack(spacing: 4) {
+        // No spacing of its own: the spacers keep the selector clear, and on a 375pt-wide
+        // phone it needs all the rest.
+        HStack(spacing: 0) {
+            // Settings (in a group as wide as Edit's, so the week selector stays centered)
+            HStack(spacing: Self.barButtonGap) {
             Button { showSettings = true } label: {
                 Image(systemName: Theme.isRetro(theme) ? "terminal" : "gearshape.fill")
                     .font(.system(size: Self.barIconSize))
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .frame(width: Self.barButtonSize, height: Self.barButtonSize)
-                    .background {
-                        if Theme.isRetro(theme) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Theme.cardFill(theme))
-                                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-                        }
-                    }
+                    .modifier(BarBackground(shape: Self.barButtonShape(theme), theme: theme, rc: rc))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
-            if showsEventsToggle {
-                eventsToggle
             }
-            }
-            .frame(width: Self.barButtonSize * 2 + 4, alignment: .leading)
+            .frame(width: Self.barSideWidth, alignment: .leading)
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Today's date / Go to Today
-            if store.selectedWeek.map(store.isCurrentWeek) == true {
-                todayText
-            } else {
-                Button {
-                    changeWeek(to: today)
-                } label: {
-                    VStack(spacing: 1) {
-                        todayText
-                        Text(Theme.isRetro(theme) ? "> GO_TO_TODAY" : "Go to Today")
-                            .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
-                            .foregroundStyle(Theme.accent(theme, rc: rc))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
+            // The week selector (the Tasquel mark at the top goes back to this week, as Go
+            // to Today here did; today's date is in the day strip). It takes the room it can.
+            weekNavigationBar
+                .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 4)
 
             // Edit / Done
             if !isPastWeek {
@@ -857,33 +788,87 @@ struct ContentView: View {
                         .foregroundStyle(color)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .padding(.horizontal, 12)
-                        .frame(minWidth: Self.barButtonSize, minHeight: Self.barButtonSize * 0.75)
+                        .padding(.horizontal, Theme.isRetro(theme) ? 12 : 18)
+                        .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
                         .background {
                             if Theme.isRetro(theme) {
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(Theme.cardFill(theme))
                                     .overlay(RoundedRectangle(cornerRadius: 2).stroke(color, lineWidth: isEditing ? 1.5 : 1))
-                            } else if isEditing {
-                                Capsule().fill(.green.opacity(0.15))
-                                    .overlay(Capsule().stroke(.green, lineWidth: 1.5))
                             }
                         }
+                        .modifier(BarBackground(shape: Capsule(), theme: theme, rc: rc,
+                                                tint: isEditing ? .green.opacity(0.25) : nil, isRetroBoxed: false))
+                        .overlay { if isEditing && !Theme.isRetro(theme) { Capsule().stroke(.green, lineWidth: 1.5) } }
                         .frame(height: Self.barButtonSize)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
-                .frame(width: Self.barButtonSize * 2 + 4, alignment: .trailing)
+                .frame(width: Self.barSideWidth, alignment: .trailing)
             } else {
-                Color.clear.frame(width: Self.barButtonSize * 2 + 4, height: Self.barButtonSize)
+                Color.clear.frame(width: Self.barSideWidth, height: Self.barButtonSize)
+            }
+        }
+    }
+
+    /// The viewed week, between the Tasquel mark (back to this week) and Open/Close All.
+    private var weekTitleRow: some View {
+        weekTitleText
+            .font(.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .padding(.horizontal, 56)  // clear of the buttons on either side
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .leading) { homeButton }
+            .overlay(alignment: .trailing) { expandAllButton }
+            .padding(.top, 8)
+    }
+
+    /// The bar at the top: the week's title, its days (today's date among them), and what
+    /// applies to the week now (past, being edited, not saving). Frosted glass, reaching up
+    /// behind the status bar, with the cards scrolling under it; in Retro a solid bar with
+    /// a rule under it.
+    private func weekHeader(_ week: Week) -> some View {
+        VStack(spacing: 12) {
+            weekTitleRow
+            WeekDayStrip(weekStart: (arrivingWeek ?? week).startDay, today: DayKey(today, in: store.calendar),
+                         todayDate: today, theme: theme, rc: rc)
+                .padding(.horizontal, 16)
+            if isPastWeek {
+                // Past weeks can't be changed; say so before a tap does nothing.
+                Label(Theme.isRetro(theme) ? "PAST_WEEK // READ_ONLY" : "Past week · view only", systemImage: "lock")
+                    .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .padding(.bottom, -4)
+            } else if isEditing {
+                Text(editModeHint)
+                    .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .padding(.bottom, -4)
+                    .transition(.opacity)
+            }
+            if store.isSaveFailing && store.saveError == nil {
+                saveFailingNotice
+            }
+        }
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity)
+        .background {
+            if Theme.isRetro(theme) {
+                Theme.background(theme)
+                    .overlay(alignment: .bottom) { Theme.cardBorder(theme, rc: rc).frame(height: 1) }
+                    .ignoresSafeArea(edges: .top)
+            } else {
+                Rectangle().fill(.thinMaterial)
+                    .ignoresSafeArea(edges: .top)
             }
         }
     }
 
     /// "Week of 10/5/26" for the viewed week (or the one arriving while paging).
     private var weekTitleText: some View {
-        let title = arrivingWeekTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
+        let title = arrivingWeek?.displayTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
         return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
             .accessibilityLabel(title)
             .accessibilityAddTraits(.isHeader)
@@ -892,58 +877,19 @@ struct ContentView: View {
             }
     }
 
-    /// Today's date, in the bottom bar: shorter forms on narrow screens or at large text
-    /// sizes instead of cutting it off ("Wednesday, Oct 21st", "Wed, Oct 21st", "Oct 21st",
-    /// then the numeric "10/21"). VoiceOver always hears the full date.
-    private var todayText: some View {
-        ViewThatFits(in: .horizontal) {
-            todayLabel(weekday: .wide)
-            todayLabel(weekday: .abbreviated)
-            todayLabel(weekday: nil)
-            todayLabel(Self.numericDateString(today))
-                .minimumScaleFactor(0.6)
-        }
-        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .subheadline.bold())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(today.formatted(date: .complete, time: .omitted))
-    }
-
-    private func todayLabel(weekday: Date.FormatStyle.Symbol.Weekday?) -> some View {
-        todayLabel(Self.dateString(today, weekday: weekday))
-    }
-
-    private func todayLabel(_ date: String) -> some View {
-        Text(Theme.isRetro(theme) ? "[\(date)]" : date)
-            .lineLimit(1)
-    }
-
-    /// The shortest form, month and day in digits in the user's order ("10/21", "21.10.").
-    static func numericDateString(_ date: Date, locale: Locale = .current) -> String {
-        date.formatted(Date.FormatStyle(locale: locale).month(.defaultDigits).day())
-    }
-
-    /// The date in the user's language and region. English adds the day's ordinal
-    /// suffix where the day comes last ("Oct 21st"); other languages use their own form.
-    static func dateString(_ date: Date, weekday: Date.FormatStyle.Symbol.Weekday?, locale: Locale = .current) -> String {
-        var style = Date.FormatStyle(locale: locale).month(.abbreviated).day()
-        if let weekday { style = style.weekday(weekday) }
-        let text = date.formatted(style)
-        let day = Calendar(identifier: .gregorian).component(.day, from: date)
-        guard locale.language.languageCode == .english, text.hasSuffix(" \(day)") else { return text }
-        let suffix = switch day {
-        case 1, 21, 31: "st"
-        case 2, 22: "nd"
-        case 3, 23: "rd"
-        default: "th"
-        }
-        return text + suffix
-    }
-
     // MARK: - Week Content
 
     /// Bottom bar icons: 20% larger than the original .title3 (20pt), with matching tap areas.
     private static let barIconSize: CGFloat = 24
     private static let barButtonSize: CGFloat = 52
+    /// Between Settings and the calendar toggle, so their glass stays apart.
+    private static let barButtonGap: CGFloat = 8
+    /// The groups either side of the week selector, the same width so it stays centered.
+    private static let barSideWidth: CGFloat = barButtonSize * 2 + barButtonGap
+
+    private static func barButtonShape(_ theme: AppearanceMode) -> AnyShape {
+        Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle())
+    }
     /// Room below the grid for the Undo message while it shows.
     private static let undoMessageClearance: CGFloat = 64
     /// Room above the keyboard taken by the Done button.
@@ -971,111 +917,115 @@ struct ContentView: View {
         let categories = week.categories
         let showAdd = isEditing && !store.isPastWeek(week)
 
-        ScrollView {
-            VStack(spacing: 8) {
-                // Expanded cards take a full row; other open cards remain open.
-                CategoryGridLayout(spacing: 8, columns: gridColumns) {
-                    // By category ID, not by the entry's name key: a renamed card stays the
-                    // same view, so a menu, sheet or field open in it survives the rename.
-                    ForEach(gridEntries(for: week), id: \.category.id) { entry in
-                        let isExpanded = expandedCategoryKeys.contains(entry.id)
-                        CategoryGridCard(
-                            category: entry.category,
-                            store: store,
-                            isExpanded: isExpanded,
-                            isEditing: isEditing,
-                            isEditingTasks: isEditing || editingCategoryKeys.contains(entry.id),
-                            isPastWeek: store.isPastWeek(week),
-                            onToggleEdit: {
-                                withAnimation(.snappy(duration: 0.25)) {
-                                    if editingCategoryKeys.contains(entry.id) {
-                                        editingCategoryKeys.remove(entry.id)
-                                    } else {
-                                        editingCategoryKeys.insert(entry.id)
+        // The reader lets a field keep itself in view (see `cardGridScroll`).
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(spacing: 8) {
+                    // Expanded cards take a full row; other open cards remain open.
+                    CategoryGridLayout(spacing: 8, columns: gridColumns) {
+                        // By category ID, not by the entry's name key: a renamed card stays the
+                        // same view, so a menu, sheet or field open in it survives the rename.
+                        ForEach(gridEntries(for: week), id: \.category.id) { entry in
+                            let isExpanded = expandedCategoryKeys.contains(entry.id)
+                            CategoryGridCard(
+                                category: entry.category,
+                                store: store,
+                                isExpanded: isExpanded,
+                                isEditing: isEditing,
+                                isEditingTasks: isEditing || editingCategoryKeys.contains(entry.id),
+                                isPastWeek: store.isPastWeek(week),
+                                onToggleEdit: {
+                                    withAnimation(.snappy(duration: 0.25)) {
+                                        if editingCategoryKeys.contains(entry.id) {
+                                            editingCategoryKeys.remove(entry.id)
+                                        } else {
+                                            editingCategoryKeys.insert(entry.id)
+                                        }
                                     }
-                                }
-                            },
-                            onExpand: { expandCard(entry.id, in: week) },
-                            onCollapse: {
-                                withAnimation(cardAnimation) { collapseCategory(entry.id) }
-                            },
-                            onRenamed: { renameCardKey(entry.id, to: $0) }
-                        )
-                        // Deleting a card's last task while editing it ends its edit mode, so
-                        // the Add task row is back (empty, as a checkbox and one-time) without
-                        // tapping the checkmark first.
-                        .onChange(of: entry.category.tasks.isEmpty) { _, isEmpty in
-                            guard isEmpty, editingCategoryKeys.contains(entry.id) else { return }
-                            withAnimation(.snappy(duration: 0.25)) { _ = editingCategoryKeys.remove(entry.id) }
+                                },
+                                onExpand: { expandCard(entry.id, in: week) },
+                                onCollapse: {
+                                    withAnimation(cardAnimation) { collapseCategory(entry.id) }
+                                },
+                                onRenamed: { renameCardKey(entry.id, to: $0) }
+                            )
+                            // Deleting a card's last task while editing it ends its edit mode, so
+                            // the Add task row is back (empty, as a checkbox and one-time) without
+                            // tapping the checkmark first.
+                            .onChange(of: entry.category.tasks.isEmpty) { _, isEmpty in
+                                guard isEmpty, editingCategoryKeys.contains(entry.id) else { return }
+                                withAnimation(.snappy(duration: 0.25)) { _ = editingCategoryKeys.remove(entry.id) }
+                            }
+                            // The dragged card leaves a gap where it will land; a lifted copy
+                            // follows the finger (see the overlay below).
+                            .opacity(cardDrag?.key == entry.id ? 0 : 1)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
+                                cardFrameStore.frames[week.startDay, default: [:]][entry.id] = frame
+                            }
+                            // Closed cards can be held and dragged to a new place. (Holding inside an
+                            // open card is for its tasks.)
+                            .modifier(CardDragGesture(
+                                isCollapsed: !isExpanded,
+                                // Sorted by last edit, cards stay where the sort puts them.
+                                canDrag: !store.isPastWeek(week) && store.categorySort == .manual,
+                                onTap: {
+                                    // A hold that's released without moving isn't a tap.
+                                    guard cardDrag == nil, Date().timeIntervalSince(lastCardDrop) > 0.5 else { return }
+                                    expandCard(entry.id, in: week)
+                                },
+                                onLift: { liftCard(entry.id, in: week) },
+                                onMove: { start, location in moveDraggedCard(start: start, to: location) },
+                                onDrop: { dropCard(in: week) }
+                            ))
+                            .accessibilityActions {
+                                if !store.isPastWeek(week) && !isExpanded && store.categorySort == .manual { cardMoveActions(entry.id, in: week) }
+                                // Also on the week title; the Undo button itself stays while VoiceOver is on.
+                                if store.lastDelete != nil { Button("Undo delete") { undoDelete() } }
+                            }
+                            // Outside the modifiers above, where the grid layout can read it.
+                            .categoryGridFullWidth(isExpanded || usesSingleColumn)
+                            // The card being opened or closed stays above neighbors sliding past it.
+                            .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                         }
-                        // The dragged card leaves a gap where it will land; a lifted copy
-                        // follows the finger (see the overlay below).
-                        .opacity(cardDrag?.key == entry.id ? 0 : 1)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
-                            cardFrameStore.frames[week.startDay, default: [:]][entry.id] = frame
+                        if showAdd {
+                            addCategoryButton
+                                .transition(.opacity)
                         }
-                        // Closed cards can be held and dragged to a new place. (Holding inside an
-                        // open card is for its tasks.)
-                        .modifier(CardDragGesture(
-                            isCollapsed: !isExpanded,
-                            // Sorted by last edit, cards stay where the sort puts them.
-                            canDrag: !store.isPastWeek(week) && store.categorySort == .manual,
-                            onTap: {
-                                // A hold that's released without moving isn't a tap.
-                                guard cardDrag == nil, Date().timeIntervalSince(lastCardDrop) > 0.5 else { return }
-                                expandCard(entry.id, in: week)
-                            },
-                            onLift: { liftCard(entry.id, in: week) },
-                            onMove: { start, location in moveDraggedCard(start: start, to: location) },
-                            onDrop: { dropCard(in: week) }
-                        ))
-                        .accessibilityActions {
-                            if !store.isPastWeek(week) && !isExpanded && store.categorySort == .manual { cardMoveActions(entry.id, in: week) }
-                            // Also on the week title; the Undo button itself stays while VoiceOver is on.
-                            if store.lastDelete != nil { Button("Undo delete") { undoDelete() } }
-                        }
-                        // Outside the modifiers above, where the grid layout can read it.
-                        .categoryGridFullWidth(isExpanded || usesSingleColumn)
-                        // The card being opened or closed stays above neighbors sliding past it.
-                        .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                     }
-                    if showAdd {
-                        addCategoryButton
-                            .transition(.opacity)
-                    }
-                }
-                .coordinateSpace(.named(Self.cardGridSpace))
-                .overlay(alignment: .topLeading) { liftedCard(in: week) }
+                    .coordinateSpace(.named(Self.cardGridSpace))
+                    .overlay(alignment: .topLeading) { liftedCard(in: week) }
 
-                if categories.isEmpty && !isEditing {
-                    ContentUnavailableView(
-                        "No Categories",
-                        systemImage: store.isPastWeek(week) ? "folder" : "folder.badge.plus",
-                        description: Text(store.isPastWeek(week) ? "Nothing was planned this week." : "Tap Edit below to add categories.")
-                    )
-                    .padding(.top, 40)
+                    if categories.isEmpty && !isEditing {
+                        ContentUnavailableView(
+                            "No Categories",
+                            systemImage: store.isPastWeek(week) ? "folder" : "folder.badge.plus",
+                            description: Text(store.isPastWeek(week) ? "Nothing was planned this week." : "Tap Edit below to add categories.")
+                        )
+                        .padding(.top, 40)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                // Clear of the bottom bar, which grows when the events panel is open.
+                // (The bar is hidden while the keyboard is up; the Done button is covered by
+                // keyboardDoneClearance below.)
+                .padding(.bottom, (isKeyboardVisible ? 80 : max(80, bottomBarHeight - homeIndicatorInset + 16))
+                         // Room for the Undo message, so it never sits over the last row.
+                         + (store.lastDelete != nil ? Self.undoMessageClearance : 0))
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            // Clear of the bottom bar, which grows when the events panel is open.
-            // (The bar is hidden while the keyboard is up; the Done button is covered by
-            // keyboardDoneClearance below.)
-            .padding(.bottom, (isKeyboardVisible ? 80 : max(80, bottomBarHeight - homeIndicatorInset + 16))
-                     // Room for the Undo message, so it never sits over the last row.
-                     + (store.lastDelete != nil ? Self.undoMessageClearance : 0))
+            // Dragging down into the keyboard closes it; scrolling up keeps it open.
+            .scrollDismissesKeyboard(.interactively)
+            // Pull down past the top and let go to close every card (like pull to refresh).
+            // Off while typing: dragging down to put the keyboard away mustn't also close cards.
+            .modifier(PullToCloseAll(isEnabled: !expandedCategoryKeys.isEmpty && !isEditing && !isKeyboardVisible,
+                                     theme: theme, rc: rc, onClose: collapseAllCards))
+            .scrollDisabled(cardDrag != nil)
+            .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
+            .sensoryFeedback(.selection, trigger: liveCardOrder)
+            // Keeps the field being edited (and its options) clear of the Done button.
+            .safeAreaPadding(.bottom, isKeyboardVisible ? Self.keyboardDoneClearance : 0)
+            .environment(\.cardGridScroll, scroll)
         }
-        // Dragging down into the keyboard closes it; scrolling up keeps it open.
-        .scrollDismissesKeyboard(.interactively)
-        // Pull down past the top and let go to close every card (like pull to refresh).
-        // Off while typing: dragging down to put the keyboard away mustn't also close cards.
-        .modifier(PullToCloseAll(isEnabled: !expandedCategoryKeys.isEmpty && !isEditing && !isKeyboardVisible,
-                                 theme: theme, rc: rc, onClose: collapseAllCards))
-        .scrollDisabled(cardDrag != nil)
-        .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
-        .sensoryFeedback(.selection, trigger: liveCardOrder)
-        // Keeps the field being edited (and its options) clear of the Done button.
-        .safeAreaPadding(.bottom, isKeyboardVisible ? Self.keyboardDoneClearance : 0)
     }
 
     // MARK: - Grid Order & Expansion
@@ -1130,14 +1080,6 @@ struct ContentView: View {
     /// Re-sorts at the calm moments `sortedNames` describes.
     private var sortOrderWatcher: some View {
         Color.clear
-            // Turning calendar events off closes the panel for good, so turning them on
-            // again doesn't reopen it unasked.
-            .onChange(of: showsEventsToggle) { _, shown in
-                if !shown {
-                    showEventsPanel = false
-                    isEventsPanelMounted = false
-                }
-            }
             .onChange(of: viewedCategories) { old, new in reconcileCardKeys(from: old, to: new) }
             // Categories added or deleted while editing take their sorted places.
             .onChange(of: isEditing) { _, editing in
@@ -1428,66 +1370,13 @@ struct ContentView: View {
 
     // MARK: - Calendar Events (bottom bar)
 
-    /// The calendar toggle appears once events are turned on in Settings.
+    /// Calendar events are on (in Settings, and allowed): the calendar sheet has an Events side.
     private var showsEventsToggle: Bool {
         FeatureAccess.isCalendarUnlocked && store.calendarEventsEnabled && calendarService.isAuthorized
     }
 
-    private var eventsToggle: some View {
-        Button {
-            setEventsPanel(open: !showEventsPanel)
-        } label: {
-            Image(systemName: Theme.isRetro(theme) ? "calendar" : (showEventsPanel ? "calendar.circle.fill" : "calendar"))
-                .font(.system(size: Self.barIconSize))
-                .foregroundStyle(weekHasEvents ? eventsGreen : (showEventsPanel ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)))
-                .frame(width: Self.barButtonSize, height: Self.barButtonSize)
-                .background {
-                    if Theme.isRetro(theme) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Theme.cardFill(theme))
-                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(
-                                showEventsPanel ? Theme.accent(theme, rc: rc) : Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(showEventsPanel ? "Hide events" : "Show events")
-        .accessibilityValue(weekHasEvents ? "Has events this week" : "")
-        // Load the viewed week's events even while the panel is closed, to color the icon.
-        .task(id: eventsLoadKey) {
-            guard let key = eventsLoadKey else { return }
-            await calendarService.load(weekStarting: key.weekStart, calendarIDs: key.calendarIDs)
-        }
-    }
-
-    /// Opens or closes the events panel. It's added to the bar collapsed and then opened,
-    /// and closed before it's taken out, so the bar and the panel shrink together.
-    /// `velocity` (panel heights per second) continues a swipe down at the finger's speed.
-    private func setEventsPanel(open: Bool, velocity: Double = 0) {
-        if open {
-            isEventsPanelMounted = true
-            DispatchQueue.main.async {
-                withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.12)) { showEventsPanel = true }
-            }
-        } else {
-            // No bounce: overshooting a height of zero makes the bar dip and spring back.
-            let animation = Animation.interpolatingSpring(duration: 0.35, bounce: 0, initialVelocity: velocity)
-            withAnimation(animation, completionCriteria: .removed) {
-                showEventsPanel = false
-            } completion: {
-                if !showEventsPanel { isEventsPanelMounted = false }
-            }
-        }
-    }
-
     private var eventsGreen: Color {
         Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green
-    }
-
-    /// Whether the viewed week has any events from the chosen calendars.
-    private var weekHasEvents: Bool {
-        guard let key = eventsLoadKey else { return false }
-        return !(calendarService.days(forWeekStarting: key.weekStart, calendarIDs: key.calendarIDs) ?? []).isEmpty
     }
 
     private var eventsLoadKey: EventsLoadKey? {
@@ -1499,23 +1388,19 @@ struct ContentView: View {
         )
     }
 
-    @ViewBuilder
-    private var eventsPanel: some View {
-        if let week = store.selectedWeek {
-            let calendarIDs = Set(calendarService.effectiveSelection(store.selectedCalendarIDs))
-            CalendarEventsPanel(
-                store: store,
-                days: calendarService.days(forWeekStarting: week.startDate, calendarIDs: calendarIDs),
-                onOpen: openInCalendar,
-                onDismiss: { velocity in
-                    isEventsPanelDragged = false
-                    setEventsPanel(open: false, velocity: velocity)
-                },
-                onDragChanged: { isEventsPanelDragged = $0 }
-            )
-            .task(id: EventsLoadKey(weekStart: week.startDate, calendarIDs: calendarIDs, generation: calendarService.generation)) {
-                await calendarService.load(weekStarting: week.startDate, calendarIDs: calendarIDs)
-            }
+    /// A week's events, for the calendar sheet's Events side (the viewed week, and while a
+    /// swipe drags it, the one beside it).
+    private func eventsList(for day: DayKey) -> some View {
+        let week = Week(startDay: day)
+        let calendarIDs = Set(calendarService.effectiveSelection(store.selectedCalendarIDs))
+        return CalendarEventsList(
+            store: store,
+            title: store.isCurrentWeek(week) ? "This Week's Events" : "Events, \(week.displayTitle)",
+            days: calendarService.days(forWeekStarting: week.startDate, calendarIDs: calendarIDs),
+            onOpen: openInCalendar
+        )
+        .task(id: EventsLoadKey(weekStart: week.startDate, calendarIDs: calendarIDs, generation: calendarService.generation)) {
+            await calendarService.load(weekStarting: week.startDate, calendarIDs: calendarIDs)
         }
     }
 
@@ -1580,13 +1465,43 @@ private struct PagerTrack<Content: View>: View {
 
 /// The events panel opening and closing in the bottom bar: it fades while its height
 /// grows from, or shrinks to, nothing, clipped so it never covers the bar's buttons.
-private struct EventsPanelCollapse: ViewModifier {
-    let isCollapsed: Bool
+/// A bottom bar button's own background: Liquid Glass, tinted when it's on, or in Retro a
+/// bordered box.
+private struct BarBackground: ViewModifier {
+    let shape: AnyShape
+    let theme: AppearanceMode
+    let rc: RetroColor
+    var tint: Color? = nil
+    /// False where the view draws its own Retro box (Edit).
+    var isRetroBoxed = true
+
+    init<S: Shape>(shape: S, theme: AppearanceMode, rc: RetroColor, tint: Color? = nil,
+                   isRetroBoxed: Bool = true) {
+        self.shape = AnyShape(shape)
+        self.theme = theme
+        self.rc = rc
+        self.tint = tint
+        self.isRetroBoxed = isRetroBoxed
+    }
 
     func body(content: Content) -> some View {
-        content
-            .modifier(CardContentCrossFade(isHidden: isCollapsed))
-            .clipped()
+        if Theme.isRetro(theme) {
+            if isRetroBoxed {
+                content
+                    .background {
+                        shape.fill(Theme.cardFill(theme))
+                            .overlay(shape.stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+                    }
+                    .contentShape(shape)
+            } else {
+                content
+            }
+        } else {
+            let glass = tint.map { Glass.regular.tint($0) } ?? .regular
+            content
+                .glassEffect(glass.interactive(), in: shape)
+                .contentShape(shape)
+        }
     }
 }
 

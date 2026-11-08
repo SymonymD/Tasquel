@@ -71,7 +71,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testEditButtonKeepsTypedTask() throws {
         card("Errands").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Buy stamps")  // no Return
@@ -86,7 +86,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testEditButtonKeepsTypedSubtask() throws {
         card("Errands").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Milk\n")
@@ -106,7 +106,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testCardEditModeStaysInItsWeek() throws {
         card("Work").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Report\n")
@@ -116,14 +116,14 @@ final class CardStateUITests: XCTestCase {
         app.buttons["Next week"].tap()
         sleep(2)
         XCTAssertFalse(app.buttons["Done editing Work"].exists, "next week's Work isn't in edit mode")
-        XCTAssertTrue(app.textFields["Add task"].exists, "and can be added to")
+        XCTAssertTrue(app.addTaskRow.exists, "and can be added to")
     }
 
     /// Undo from another week goes back to the week of the delete, where the task returns.
     @MainActor
     func testUndoFromAnotherWeekGoesBack() throws {
         card("Work").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Report\n")
@@ -148,7 +148,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testRenameToTakenNameSaysWhy() throws {
         card("Errands").tap()
-        XCTAssertTrue(app.textFields["Add task"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3))
         let edit = app.buttons["Edit Errands"]
         XCTAssertTrue(edit.waitForExistence(timeout: 3))
         sleep(1)  // the edit button fades in as the card opens
@@ -168,7 +168,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testAddFieldSaysPickedType() throws {
         card("Fitness").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         XCTAssertEqual(field.placeholderValue, "Add task")
         field.tap()
@@ -180,7 +180,8 @@ final class CardStateUITests: XCTestCase {
         field.tap()
         field.typeText("\n")
         XCTAssertTrue(app.buttons["Task options: Goal, One-Time"].waitForExistence(timeout: 3))
-        XCTAssertEqual(field.placeholderValue, "Add goal", "the next task will be a goal, and the field says so")
+        // The new goal took the keyboard for its target, so the empty field folded to its +.
+        XCTAssertEqual(app.addTaskField.placeholderValue, "Add goal", "the next task will be a goal, and the field says so")
     }
 
     /// Return adds each task and keeps the keyboard for the next; typing straight on after
@@ -188,7 +189,7 @@ final class CardStateUITests: XCTestCase {
     @MainActor
     func testFastTypingAfterReturn() throws {
         card("Errands").tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         // One key at a time (about a quick typist's pace; a single typeText of all four

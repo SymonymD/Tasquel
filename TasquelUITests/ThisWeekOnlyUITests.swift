@@ -33,7 +33,7 @@ final class ThisWeekOnlyUITests: XCTestCase {
         attachScreenshot("Card edit mode")
         app.buttons["Done editing Trip"].tap()
 
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Pack")
@@ -54,7 +54,7 @@ final class ThisWeekOnlyUITests: XCTestCase {
     @MainActor
     func testTurningOnMakesTasksOneTime() throws {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch.tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Report")
@@ -78,7 +78,7 @@ final class ThisWeekOnlyUITests: XCTestCase {
     @MainActor
     func testExistingTaskPickerHasDone() throws {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch.tap()
-        let field = app.textFields["Add task"]
+        let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
         field.tap()
         field.typeText("Report\n")

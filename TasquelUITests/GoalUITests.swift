@@ -1,6 +1,6 @@
 import XCTest
 
-/// Goal setup with a unit, Add Progress, closing the keyboard, and list tasks, using
+/// Goal setup with a unit, the goal row and its steps, closing the keyboard, and list tasks, using
 /// throwaway app data (`-isolatedData`).
 final class GoalUITests: XCTestCase {
     /// Launches with throwaway data and skips onboarding.
@@ -32,7 +32,7 @@ final class GoalUITests: XCTestCase {
     }
 
     @MainActor
-    func testTimeGoalAddProgressAndKeyboardDone() throws {
+    func testTimeGoalStepsAndKeyboardDone() throws {
         let app = launchFresh()
 
         let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
@@ -40,7 +40,7 @@ final class GoalUITests: XCTestCase {
         work.tap()
 
         // Add a task and make it a goal.
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Practice\n")
@@ -73,38 +73,34 @@ final class GoalUITests: XCTestCase {
         app.buttons["Done"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "Done closes the keyboard")
         XCTAssertTrue(app.staticTexts["0m / 2h"].waitForExistence(timeout: 3), "Done set the goal")
-        XCTAssertFalse(app.textFields["Amount minutes"].exists, "progress entry hidden until Add Progress")
-
-        // Add Progress reveals the entry with the keyboard up; Add hides both.
-        app.buttons["Add progress"].tap()
-        let amountMinutes = app.textFields["Amount minutes"]
-        XCTAssertTrue(amountMinutes.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2), "entry is focused when revealed")
-        amountMinutes.tap()
-        amountMinutes.typeText("45")
-        app.buttons["Add"].tap()
-        XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 3))
-        XCTAssertTrue(amountMinutes.waitForNonExistence(timeout: 2), "entry hides after Add")
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2), "keyboard closes after Add")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2), "bottom bar returns")
 
-        // − takes one step back (15 minutes toward a 2-hour goal), + adds it again.
+        // + adds a step (15 minutes toward a 2-hour goal), − takes one back.
+        let plus = app.buttons["Add 15 minutes"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 2))
+        for _ in 0..<3 { plus.tap() }
+        XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 2))
         app.buttons["Remove 15 minutes"].tap()
         XCTAssertTrue(app.staticTexts["30m / 2h"].waitForExistence(timeout: 2))
-        app.buttons["Add 15 minutes"].tap()
+        plus.tap()
         XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 2))
 
-        // Swiping down into the keyboard also closes it.
-        app.buttons["Add progress"].tap()
+        // Swiping down into the keyboard also closes it (here in the goal's editor).
+        app.buttons["Edit goal"].tap()
+        let editHours = app.textFields["Target hours"]
+        XCTAssertTrue(editHours.waitForExistence(timeout: 3))
+        editHours.tap()
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 3))
         let grid = app.staticTexts["45m / 2h"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         grid.press(forDuration: 0.05, thenDragTo: keyboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
+        app.buttons["Cancel editing goal"].tap()
+        XCTAssertTrue(editHours.waitForNonExistence(timeout: 2))
 
         // Adding a task below the goal: its options stay clear of the Done button, scrolling
         // up keeps the keyboard open, and choosing a type adds the task.
-        let addTask2 = app.textFields["Add task"]
+        let addTask2 = app.addTaskField
         addTask2.tap()
         addTask2.typeText("Stretch")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
@@ -113,15 +109,17 @@ final class GoalUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertLessThan(options.frame.maxY, done.frame.minY, "Done must not cover the new task's options")
 
-        let header = app.staticTexts["Work"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        header.press(forDuration: 0.05, thenDragTo: header.withOffset(CGVector(dx: 0, dy: -120)))
-        XCTAssertTrue(keyboard.exists, "scrolling up keeps the keyboard open")
-
         options.tap()
         app.buttons["Repeating"].firstMatch.tap()
         app.buttons["Add Task"].tap()
         XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "Add Task adds it")
         XCTAssertTrue(app.buttons["Task options: Checkbox, Repeating"].exists)
+
+        // Last: scrolling up can carry the card under the header bar, where a tap meant for
+        // it lands on the bar instead.
+        let header = app.staticTexts["Work"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        header.press(forDuration: 0.05, thenDragTo: header.withOffset(CGVector(dx: 0, dy: -120)))
+        XCTAssertTrue(keyboard.exists, "scrolling up keeps the keyboard open")
     }
 
     /// A repeating list: picking List in the new-task options goes straight to its first item, Return
@@ -133,7 +131,7 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
 
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Groceries")
@@ -184,7 +182,7 @@ final class GoalUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Return library books\n")
@@ -194,9 +192,9 @@ final class GoalUITests: XCTestCase {
         XCTAssertFalse(addTask.exists, "no adding while editing")
         app.buttons["Delete Return library books"].tap()
 
-        XCTAssertTrue(addTask.waitForExistence(timeout: 3), "the Add task row is back")
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3), "the Add task row is back")
         XCTAssertTrue(app.buttons["Edit Errands"].exists, "the card left edit mode")
-        addTask.tap()
+        app.addTaskField.tap()
         XCTAssertTrue(app.buttons["New task options: Checkbox, One-Time"].waitForExistence(timeout: 2))
     }
 
@@ -207,7 +205,7 @@ final class GoalUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         for name in ["Alpha", "Bravo", "Charlie"] {
@@ -241,7 +239,7 @@ final class GoalUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
 
@@ -309,7 +307,7 @@ final class GoalUITests: XCTestCase {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         XCTAssertTrue(errands.waitForExistence(timeout: 5))
         errands.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Pharmacy\n")
@@ -318,7 +316,7 @@ final class GoalUITests: XCTestCase {
         app.buttons["Done"].tap()
 
         app.buttons["Edit Errands"].tap()
-        XCTAssertFalse(app.textFields["Add task"].exists, "no adding tasks in edit mode")
+        XCTAssertFalse(app.addTaskRow.exists, "no adding tasks in edit mode")
         XCTAssertFalse(app.buttons["Add sub-task to Pharmacy"].exists, "no adding sub-tasks in edit mode")
         let deleteTask = app.buttons["Delete Pharmacy"]
         let deleteSubtask = app.buttons["Delete sub-task Refill"]
@@ -340,18 +338,19 @@ final class GoalUITests: XCTestCase {
         XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
     }
 
-    /// The + step stays where it is when − appears after the first tap (and at the
-    /// target), so two quick taps in the same place add twice instead of undoing.
+    /// A new goal's + is alone, centered under the bar. The first tap nudges it over to make
+    /// room for −, and a quick second tap where + was still adds instead of undoing.
     @MainActor
-    func testQuickStepsDontMove() throws {
+    func testFirstStepMakesRoomForMinus() throws {
         let app = launchFresh()
         let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         work.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Read\n")
+        sleep(1)  // the new row and the scroll after it have settled
         app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
         app.buttons["Goal"].firstMatch.tap()
         dismissPopover(app)
@@ -365,14 +364,106 @@ final class GoalUITests: XCTestCase {
         let plus = app.buttons["Add 1"]
         XCTAssertTrue(plus.waitForExistence(timeout: 3))
         sleep(1)
-        let spot = plus.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        XCTAssertFalse(app.buttons["Remove 1"].exists, "no − before there's progress")
+        let bar = app.progressIndicators.firstMatch.frame
+        XCTAssertEqual(plus.frame.midX, bar.midX, accuracy: 1, "+ alone, centered under the bar")
         let before = plus.frame
+        // Where + was, on the screen (a coordinate from the element would follow it).
+        let spot = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: before.midX, dy: before.midY))
         spot.tap()
         XCTAssertTrue(app.staticTexts["1/10"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Remove 1"].waitForExistence(timeout: 2), "− came in")
         sleep(1)
-        XCTAssertEqual(plus.frame.minX, before.minX, accuracy: 1, "+1 didn't move when − appeared")
+        XCTAssertGreaterThan(plus.frame.minX, before.minX, "+ moved over for it")
         spot.tap()
-        XCTAssertTrue(app.staticTexts["2/10"].waitForExistence(timeout: 3), "the second tap added too")
+        XCTAssertTrue(app.staticTexts["2/10"].waitForExistence(timeout: 3), "a second tap where + was still adds")
+    }
+
+    /// The goal's sliders button sits left of the bar (8pt, twice the system one), and the − and + steps
+    /// are centered under the bar, together about a third of its width, their tap areas
+    /// side by side, and + stays at the target. A six-digit step's pill grows to fit it on one line. The button opens
+    /// the editor and closes it again; switching the unit to Time carries the progress
+    /// over (1 → 1h).
+    @MainActor
+    func testGoalRowLayout() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Read\n")
+        sleep(1)  // the new row and the scroll after it have settled
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
+        let targetField = app.textFields["Target"]
+        XCTAssertTrue(targetField.waitForExistence(timeout: 3))
+        targetField.tap()
+        targetField.typeText("10")
+        app.buttons["Set"].tap()
+        if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
+
+        let plus = app.buttons["Add 1"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 3))
+        plus.tap()
+        let minus = app.buttons["Remove 1"]
+        XCTAssertTrue(minus.waitForExistence(timeout: 3))
+        sleep(1)
+        let bar = app.progressIndicators.firstMatch.frame
+        let editGoal = app.buttons["Edit goal"]
+        XCTAssertEqual(bar.height, 8, accuracy: 0.5, "twice the system bar's height")
+        XCTAssertLessThan(editGoal.frame.midX, bar.minX, "the button is left of the bar")
+        XCTAssertEqual(editGoal.frame.midY, bar.midY, accuracy: 1, "in line with it")
+        XCTAssertGreaterThan(minus.frame.midY, bar.maxY, "the steps are under the bar")
+        let steps = minus.frame.union(plus.frame)
+        XCTAssertEqual(steps.midX, bar.midX, accuracy: 1, "centered under the bar")
+        // The frames include the tap areas, 16pt out on each side.
+        XCTAssertEqual((steps.width - 32) / bar.width, 1.0 / 3, accuracy: 0.06, "about a third of the bar")
+        XCTAssertLessThanOrEqual(minus.frame.maxX, plus.frame.minX + 0.5, "the tap areas don't overlap")
+        XCTAssertFalse(app.buttons["Add progress"].exists)
+
+        editGoal.tap()
+        XCTAssertTrue(app.textFields["Target"].waitForExistence(timeout: 3), "the button opens the editor")
+        XCTAssertFalse(app.textFields["Progress"].exists, "progress isn't typed in")
+        XCTAssertFalse(plus.exists, "the steps hide while editing")
+        editGoal.tap()
+        XCTAssertTrue(app.textFields["Target"].waitForNonExistence(timeout: 3), "the button closes it again")
+        XCTAssertTrue(plus.waitForExistence(timeout: 2))
+
+        let smallPlus = plus.frame
+        editGoal.tap()
+        let stepField = app.textFields["Auto"].firstMatch
+        XCTAssertTrue(stepField.waitForExistence(timeout: 3))
+        stepField.tap()
+        stepField.typeText("999999")
+        app.buttons["Save Goal"].tap()
+        let bigPlus = app.buttons["Add 999,999"]
+        XCTAssertTrue(bigPlus.waitForExistence(timeout: 3))
+        XCTAssertEqual(bigPlus.frame.height, smallPlus.height, accuracy: 1, "still one line")
+        XCTAssertGreaterThan(bigPlus.frame.width, smallPlus.width + 20, "the pill grew to fit")
+        XCTAssertEqual(app.buttons["Remove 999,999"].frame.union(bigPlus.frame).midX, bar.midX, accuracy: 1, "still centered")
+
+        editGoal.tap()
+        app.textFields["Auto"].firstMatch.clearAndType("")
+        app.buttons["Goal unit: Quantity"].tap()
+        app.buttons["Time"].firstMatch.tap()
+        let hours = app.textFields["Target hours"]
+        XCTAssertTrue(hours.waitForExistence(timeout: 3))
+        hours.clearAndType("3")
+        app.buttons["Save Goal"].tap()
+        XCTAssertTrue(app.staticTexts["1h / 3h"].waitForExistence(timeout: 3), "the progress came along as 1h")
+
+        // At the target + stays, so the goal can be beaten.
+        editGoal.tap()
+        app.textFields["Target hours"].clearAndType("1")
+        app.buttons["Save Goal"].tap()
+        XCTAssertTrue(app.staticTexts["1h / 1h"].waitForExistence(timeout: 3))
+        let pastTarget = app.buttons["Add 10 minutes"]
+        XCTAssertTrue(pastTarget.waitForExistence(timeout: 2), "+ stays at the target")
+        pastTarget.tap()
+        XCTAssertTrue(app.staticTexts["1h 10m / 1h"].waitForExistence(timeout: 3), "and counts past it")
     }
 
     /// One tap on any field in the goal editor opens the keyboard on it.
@@ -382,10 +473,11 @@ final class GoalUITests: XCTestCase {
         let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         work.tap()
-        let addTask = app.textFields["Add task"]
+        let addTask = app.addTaskField
         XCTAssertTrue(addTask.waitForExistence(timeout: 3))
         addTask.tap()
         addTask.typeText("Read\n")
+        sleep(1)  // the new row and the scroll after it have settled
         app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
         app.buttons["Goal"].firstMatch.tap()
         dismissPopover(app)
@@ -405,21 +497,22 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Read more"].waitForExistence(timeout: 2))
 
         app.buttons["Edit goal"].tap()
-        for label in ["Target", "Progress", "Target"] {
+        // Target and Step ("Auto" until one is set); progress moves by the steps only.
+        for label in ["Target", "Auto", "Target"] {
             let field = app.textFields[label].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 3))
             field.tap()
             XCTAssertEqual(field.value(forKey: "hasKeyboardFocus") as? Bool, true, "\(label) focuses on the first tap")
         }
+        XCTAssertFalse(app.textFields["Progress"].exists, "no Progress field")
         // The amount is selected on focus, so typing replaces it.
-        let progress = app.textFields["Progress"].firstMatch
-        progress.tap()
-        progress.typeText("3")
-        XCTAssertEqual(progress.value as? String, "3")
-        // A tap just below the box still focuses it.
         let target = app.textFields["Target"].firstMatch
-        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
-        XCTAssertEqual(target.value(forKey: "hasKeyboardFocus") as? Bool, true)
+        target.typeText("3")
+        XCTAssertEqual(target.value as? String, "3")
+        // A tap just below the box still focuses it.
+        let step = app.textFields["Auto"].firstMatch
+        step.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
+        XCTAssertEqual(step.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
         // Delete sits left of Save Goal; it can be undone instead of asking first.
         let delete = app.buttons["Delete task"]

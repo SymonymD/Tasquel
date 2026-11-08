@@ -7,7 +7,7 @@ import SwiftUI
 // MARK: - Smart Add Animation
 //
 // "gym 3x per week" is typed, the sparkles button is tapped, and the words become a
-// repeating goal of 3, with the "Added … · Undo" note under the row.
+// repeating goal of 3, with the "Added … · Undo" note under it.
 
 struct SmartAddAnimation: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -76,18 +76,31 @@ struct SmartAddAnimation: View {
                 IllustrationCheck(check: 1)
                 Illustration.bar(width: 58, check: 1)
             }
-            // The goal Smart Add made.
-            row {
-                IllustrationCheck(check: 0, progress: 0)
-                Text(verbatim: "Gym").font(.system(size: 8.5, weight: .semibold))
-                Text(verbatim: "0/3").font(.system(size: 7.5, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Illustration.icon("target").foregroundStyle(.secondary)
-                Illustration.icon("repeat").foregroundStyle(Illustration.doneColor)
+            // The goal Smart Add made, and the note under it (their room opens together,
+            // as in the app).
+            VStack(alignment: .leading, spacing: 0) {
+                row {
+                    IllustrationCheck(check: 0, progress: 0)
+                    Text(verbatim: "Gym").font(.system(size: 8.5, weight: .semibold))
+                    Text(verbatim: "0/3").font(.system(size: 7.5, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Illustration.icon("target").foregroundStyle(.secondary)
+                    Illustration.icon("repeat").foregroundStyle(Illustration.doneColor)
+                }
+                .opacity(v.added)
+                .scaleEffect(0.9 + 0.1 * v.added, anchor: .leading)
+                .frame(height: 16 * v.added, alignment: .top)
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles").foregroundStyle(Color.accentColor)
+                    Text(verbatim: "Added Gym · repeating goal of 3").foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Text(verbatim: "Undo").fontWeight(.semibold).foregroundStyle(Color.accentColor)
+                }
+                .font(.system(size: 7))
+                .opacity(v.note)
+                .frame(height: 10 * v.added, alignment: .top)
+                .padding(.top, 5 * v.added)
             }
-            .opacity(v.added)
-            .scaleEffect(0.9 + 0.1 * v.added, anchor: .leading)
-            .frame(height: 16 * v.added, alignment: .top)
             .clipped()
             // The add-task row: the words being typed, and the sparkles button.
             HStack(spacing: 6) {
@@ -108,14 +121,6 @@ struct SmartAddAnimation: View {
                     .overlay { Illustration.ripple(v.tap) }
             }
             .frame(height: 16)
-            HStack(spacing: 4) {
-                Image(systemName: "sparkles").foregroundStyle(Color.accentColor)
-                Text(verbatim: "Added Gym · repeating goal of 3").foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Text(verbatim: "Undo").fontWeight(.semibold).foregroundStyle(Color.accentColor)
-            }
-            .font(.system(size: 7))
-            .opacity(v.note)
         }
         .padding(12)
         .frame(width: 196, alignment: .leading)
@@ -388,30 +393,35 @@ struct GoalStepsAnimation: View {
                     Illustration.icon("target").foregroundStyle(.secondary)
                 }
                 .frame(height: 16)
+                // The goal's sliders, the bar and the amount; the steps centered under the bar.
                 HStack(spacing: 6) {
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.12))
-                        Capsule().fill(v.check > 0.5 ? Illustration.doneColor : Color.accentColor)
-                            .frame(width: 70 * v.progress)
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 7, weight: .medium)).foregroundStyle(.secondary)
+                    VStack(spacing: 5) {
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.12))
+                            Capsule().fill(v.check > 0.5 ? Illustration.doneColor : Color.accentColor)
+                                .frame(width: Self.barWidth * v.progress)
+                        }
+                        .frame(width: Self.barWidth, height: 6)
+                        HStack(spacing: 3) {
+                            pill("−", filled: false).overlay { Illustration.ripple(v.minusTap) }
+                            // Still there at the target: a goal can be beaten.
+                            pill("+20", filled: true).overlay { Illustration.ripple(v.plusTap) }
+                        }
                     }
-                    .frame(width: 70, height: 4)
+                    .alignmentGuide(VerticalAlignment.center) { $0[.top] + 3 }
                     Text(verbatim: "\(amount)/100").font(.system(size: 7.5, weight: .bold).monospacedDigit())
                     Text(verbatim: "push-ups").font(.system(size: 7)).foregroundStyle(.secondary)
                 }
-                .padding(.leading, 23)
-                HStack(spacing: 5) {
-                    Text(verbatim: "Edit Goal").font(.system(size: 7.5)).foregroundStyle(Color.accentColor)
-                    Spacer(minLength: 0)
-                    pill("−20", filled: false).overlay { Illustration.ripple(v.minusTap) }
-                    pill("+20", filled: true).overlay { Illustration.ripple(v.plusTap) }
-                        .opacity(1 - v.check)
-                }
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.leading, 23)
                 HStack(spacing: 4) {
                     Text(verbatim: "Step").foregroundStyle(.secondary)
                     Text(verbatim: "20").padding(.horizontal, 4).padding(.vertical, 1)
                         .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
-                    Text(verbatim: "in Edit Goal").foregroundStyle(.secondary)
+                    Text(verbatim: "set with").foregroundStyle(.secondary)
+                    Image(systemName: "slider.horizontal.3").foregroundStyle(.secondary)
                 }
                 .font(.system(size: 7))
                 .padding(.leading, 23)
@@ -425,10 +435,15 @@ struct GoalStepsAnimation: View {
         .accessibilityHidden(true)
     }
 
+    private static let barWidth: CGFloat = 62
+
     private func pill(_ title: String, filled: Bool) -> some View {
         Text(verbatim: title)
             .font(.system(size: 7.5, weight: .bold))
-            .padding(.horizontal, 7).padding(.vertical, 3)
+            .lineLimit(1)
+            .fixedSize()
+            .frame(minWidth: 8)
+            .padding(.horizontal, 6).padding(.vertical, 3)
             .foregroundStyle(filled ? Color.white : Color.accentColor)
             .background { if filled { Capsule().fill(Color.accentColor) } }
             .overlay { if !filled { Capsule().stroke(Color.accentColor.opacity(0.6), lineWidth: 0.75) } }

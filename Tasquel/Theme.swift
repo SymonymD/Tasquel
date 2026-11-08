@@ -149,7 +149,6 @@ enum Theme {
     // Font
     static func bodyFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced) : .subheadline }
     static func captionFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.caption, design: .monospaced) : .caption }
-    static func titleFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.title, design: .monospaced).bold() : .title.bold() }
 }
 
 // MARK: - Scanline Overlay (Retro)

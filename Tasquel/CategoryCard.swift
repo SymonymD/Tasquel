@@ -482,7 +482,9 @@ private struct ExpandedCategoryContent: View {
     private var rc: RetroColor { store.retroColor }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8 * expandedCardScale) {
+        // Wider than the gaps inside a task (sub-tasks, a goal's bar and buttons), so each
+        // task reads as one group.
+        VStack(alignment: .leading, spacing: 14 * expandedCardScale) {
             ForEach(category.tasks) { task in
                 TaskRowCard(
                     task: task,
@@ -586,4 +588,6 @@ extension EnvironmentValues {
     /// Whether the card holding a view is open. An open card's contents stay in place
     /// (hidden) while it's closed, so a field there mustn't take the keyboard then.
     @Entry var isCardOpen = true
+    /// Scrolls the week's grid of cards, so a field can bring itself wholly into view.
+    @Entry var cardGridScroll: ScrollViewProxy? = nil
 }

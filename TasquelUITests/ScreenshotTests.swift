@@ -24,35 +24,57 @@ final class ScreenshotTests: XCTestCase {
         var app = launch()
         snap("01-week")
 
-        // 2. A card open: a list, sub-tasks and a goal.
-        open("Errands", in: app)
-        snap("02-card-open")
+        // 2. Smart Add: a sentence becomes a repeating goal. (`-smartAddRules`: the same
+        // rules Smart Add applies after the model, since a simulator has no model.)
+        app = launch(extra: ["-smartAddRules", "-demoFirstCard", "Fitness"])
+        open("Fitness", in: app)
+        let field = app.addTaskField
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("Swim 3 times a week")
+        app.buttons["Smart Add"].tap()
+        XCTAssertTrue(app.buttons["Undo Smart Add"].waitForExistence(timeout: 10))
+        // With demo data the "Added …" message stays (it's gone after 4 seconds otherwise,
+        // which a slow simulator missed).
+        let keyboardDone = app.buttons["keyboard.chevron.compact.down"]
+        if keyboardDone.exists { keyboardDone.tap() }
+        XCTAssertTrue(app.buttons["Undo Smart Add"].exists)
+        snap("02-smart-add")
 
-        // 3. The type and mode picker.
+        // 3. A card open: a list, sub-tasks and a goal.
+        app = launch()
+        open("Errands", in: app)
+        snap("03-card-open")
+
+        // 4. The type and mode picker, in Dark.
+        app = launch(appearance: "dark")
+        open("Errands", in: app)
         let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:")).element(boundBy: 1)
         XCTAssertTrue(options.waitForExistence(timeout: 3))
         options.tap()
         XCTAssertTrue(app.buttons["Carry Over"].waitForExistence(timeout: 3))
-        snap("03-type-and-mode")
+        snap("04-type-and-mode")
 
-        // 4. The week's calendar events in the bottom bar.
-        app = launch()
-        let showEvents = app.buttons["Show events"]
+        // 5. Dark: the week's calendar events (the week selector's calendar sheet) over an
+        // open card of goals.
+        app = launch(appearance: "dark", extra: ["-demoFirstCard", "Fitness"])
+        open("Fitness", in: app)
+        let showEvents = app.buttons["Calendar and events"]
         XCTAssertTrue(showEvents.waitForExistence(timeout: 5))
         showEvents.tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Dentist")).firstMatch
             .waitForExistence(timeout: 5))
-        snap("04-calendar-events")
+        snap("05-calendar-events")
 
-        // 5. Retro, with goals showing.
+        // 6. Retro, with goals showing.
         app = launch(appearance: "retro")
         open("Fitness", in: app)
-        snap("05-retro")
+        snap("06-retro")
 
-        // 6. Dark.
+        // 7. Dark.
         app = launch(appearance: "dark")
         open("Work", in: app)
-        snap("06-dark")
+        snap("07-dark")
     }
 
     // MARK: Helpers
@@ -83,9 +105,9 @@ final class ScreenshotTests: XCTestCase {
     }
 
     @MainActor
-    private func launch(appearance: String = "light") -> XCUIApplication {
+    private func launch(appearance: String = "light", extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", appearance]
+        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", appearance] + extra
         app.launch()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
             .waitForExistence(timeout: 10))
