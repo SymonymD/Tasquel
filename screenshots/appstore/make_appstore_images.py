@@ -1,12 +1,14 @@
 """Lays out Tasquel's raw simulator screenshots as App Store images:
 a headline and subhead above the screenshot, in a device bezel, on the icon's navy."""
+import os
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 SRC = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
-FONT_DIR = "/usr/share/fonts/opentype/inter/"
+# Inter Display (rsms.me/inter: extras/otf in the release zip); INTER_DIR points elsewhere.
+FONT_DIR = os.path.join(os.environ.get("INTER_DIR", "/usr/share/fonts/opentype/inter/"), "")
 BOLD = FONT_DIR + "InterDisplay-Bold.otf"
 MEDIUM = FONT_DIR + "InterDisplay-Medium.otf"
 
@@ -21,11 +23,12 @@ BEZEL_EDGE = (150, 152, 172)
 # "\n" marks the iPhone line breaks; iPad, being wider, joins them into one line.
 SHOTS = [
     ("01-week", "Plan one week\nat a time", "Sort tasks into cards. Each new\nweek builds itself from the last."),
-    ("02-card-open", "Lists, sub-tasks\nand goals", "Tick off items, steps and progress,\nall in one card."),
-    ("03-type-and-mode", "Unfinished?\nIt carries over.", "Choose what happens to each\ntask when the week ends."),
-    ("04-calendar-events", "Your calendar,\nalongside", "See the week's events right\nnext to your tasks."),
-    ("05-retro", "Go retro", "A terminal theme in six phosphor\ncolors, with a matching icon."),
-    ("06-dark", "Easy on the eyes", "Light, Dark, or\nfollow your device."),
+    ("02-smart-add", "Write it like\nyou’d say it", "Smart Add, with Apple Intelligence,\nsets the goal and schedule."),
+    ("03-card-open", "Lists, sub-tasks\nand goals", "Tick off items, steps and progress,\nall in one card."),
+    ("04-type-and-mode", "Unfinished?\nIt carries over.", "Choose what happens to each\ntask when the week ends."),
+    ("05-calendar-events", "Your calendar,\nalongside", "See the week’s events right\nnext to your tasks."),
+    ("06-retro", "Go retro", "A terminal theme in six phosphor\ncolors, with a matching icon."),
+    ("07-dark", "Easy on the eyes", "Light, Dark, or\nfollow your device."),
 ]
 
 DEVICES = {
