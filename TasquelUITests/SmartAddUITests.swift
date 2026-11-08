@@ -52,6 +52,19 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "run 3x per week", "the words are still there to try again")
     }
 
+    /// Swiping to another week while typing lets go of the keyboard (it stayed up with no
+    /// field before, and the bar with it), and what was typed is added to the week it was
+    /// typed in.
+    @MainActor
+    func testSwipingWeekWhileTypingClosesKeyboard() throws {
+        typeInFitness("Stretch")
+        swipeWeek(forward: true)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), "the keyboard went")
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 3), "the bar is back")
+        swipeWeek(forward: false)
+        XCTAssertTrue(app.staticTexts["Stretch"].waitForExistence(timeout: 3), "added to this week")
+    }
+
     /// The keyboard's Done button while Smart Add works: the task is added once, as Smart
     /// Add worked it out, not also as the plain typed text.
     @MainActor

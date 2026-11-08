@@ -2742,3 +2742,206 @@ struct ThisWeekOnlyTests {
         #expect(trip(relaunched)!.isThisWeekOnly, "still this week only")
     }
 }
+
+// MARK: - Audit 2026-11-08
+
+/// A repeating task deleted from a week three weeks ahead stays deleted there as the weeks
+/// between come and go: each week its source is a copy of a copy, linked down the chain.
+@Test func deletedRepeatingTaskStaysDeletedAsWeeksPass() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    store.addParsedTask(ParsedTask(title: "Gym", mode: .repeating), categoryID: category().id)
+    store.navigateToDate(clock.weeks(3, from: clock.now))
+    let gym = try! #require(category().tasks.first { $0.title == "Gym" })
+    store.deleteTask(categoryID: category().id, taskID: gym.id)
+    store.clearUndo()
+    for week in 1...3 {
+        clock.now = clock.weeks(1, from: clock.now)
+        store.navigateToDate(clock.now)
+        #expect(category().tasks.contains { $0.title == "Gym" } == (week < 3), "week \(week)")
+    }
+}
+
+/// A carry-over task isn't copied again into a new card that took a renamed card's old name.
+@Test func renamedCardsOldNameDoesntDuplicateCarryOvers() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    store.addParsedTask(ParsedTask(title: "Send report", mode: .carryOver), categoryID: store.selectedWeek!.categories[0].id)
+    clock.now = clock.weeks(1, from: clock.now)
+    store.navigateToDate(clock.now)
+    let renamed = store.selectedWeek!.categories.first { $0.name == name }!
+    #expect(store.renameCategory(renamed.id, newName: "Job"))
+    store.addCategory(name: name, symbol: "star")
+    store.navigateToDate(clock.now)
+    let copies = store.selectedWeek!.categories.flatMap(\.tasks).filter { $0.title == "Send report" }
+    #expect(copies.count == 1)
+}
+
+/// A repeating list with checked items goes from a saved later week when it's deleted
+/// here: its checks came with it, they aren't the user's work on that copy.
+@Test func deletedRepeatingListLeavesLaterWeeks() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let id = store.addParsedTask(ParsedTask(title: "Groceries", type: .list, mode: .repeating, items: ["Milk", "Eggs"]),
+                                 categoryID: category().id)!
+    let milk = category().tasks.first { $0.id == id }!.subtasks[0]
+    store.toggleSubtask(categoryID: category().id, taskID: id, subtaskID: milk.id)
+    let thisWeek = clock.now
+    store.navigateToDate(clock.weeks(1, from: thisWeek))
+    store.addParsedTask(ParsedTask(title: "Next week's own"), categoryID: category().id)  // saves next week
+    #expect(category().tasks.contains { $0.title == "Groceries" })
+    store.navigateToDate(thisWeek)
+    store.deleteTask(categoryID: category().id, taskID: id)
+    store.navigateToDate(clock.weeks(1, from: thisWeek))
+    #expect(!category().tasks.contains { $0.title == "Groceries" })
+}
+
+/// Save Goal with nothing changed isn't an edit: next week's copy keeps following.
+@Test func unchangedGoalSaveIsNotAnEdit() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    store.addParsedTask(ParsedTask(title: "Swim", type: .goal, mode: .repeating, goalTarget: 3), categoryID: category().id)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let copy = try! #require(category().tasks.first { $0.title == "Swim" })
+    store.setGoalTarget(categoryID: category().id, taskID: copy.id, target: 3, kind: .quantity)
+    #expect(category().tasks.first { $0.title == "Swim" }?.isUserEdited == false)
+}
+
+/// Going to another week (which syncs it) doesn't end a delete's Undo.
+@Test func changingWeekKeepsUndo() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let gym = store.addParsedTask(ParsedTask(title: "Gym", mode: .repeating), categoryID: category().id)!
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.addParsedTask(ParsedTask(title: "Saves next week"), categoryID: category().id)
+    store.navigateToDate(clock.now)
+    store.deleteTask(categoryID: category().id, taskID: gym)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(store.lastDelete != nil, "Undo is still there")
+    store.undoLastDelete()
+    store.navigateToDate(clock.now)
+    #expect(category().tasks.contains { $0.title == "Gym" })
+}
+
+/// The week moving west across midnight stays the viewed week (picked weeks were kept at
+/// their first midnight, which a westward move put in the week before).
+@Test func pickedWeekSurvivesTimeZoneMovingWest() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let next = store.weekStartDay(containing: clock.weeks(1, from: clock.now))
+    store.navigateToDate(next.date(in: clock.calendar))  // midnight, as the calendar sheet passes it
+    clock.calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+    #expect(store.selectedWeek?.startDay == next)
+    clock.calendar.timeZone = TimeZone(identifier: "Pacific/Honolulu")!
+    #expect(store.selectedWeek?.startDay == next)
+}
+
+/// Settings that disagree with the saved weeks (a week-start change saved one file but
+/// not the other) give way to the weeks, so the current week isn't hidden.
+@Test func weekStartFollowsSavedWeeks() throws {
+    let directory = makeTempDirectory()
+    let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+    let clock = TestClock(2099, 3, 4)
+    let first = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    let week = first.selectedWeek!.startDay
+    first.addParsedTask(ParsedTask(title: "Kept"), categoryID: first.selectedWeek!.categories[0].id)
+    // settings.json says Sunday; the weeks are Monday weeks.
+    let url = directory.appending(path: "settings.json")
+    var settings = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+    settings["weekStartsOnSunday"] = true
+    try JSONSerialization.data(withJSONObject: settings).write(to: url)
+    let second = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+    #expect(!second.weekStartsOnSunday)
+    #expect(second.selectedWeek?.startDay == week)
+    #expect(second.selectedWeek?.categories.flatMap(\.tasks).contains { $0.title == "Kept" } == true)
+}
+
+/// A theme or color from a newer version reads as the default, not as unreadable settings.
+@Test func unknownThemeInSettingsReadsAsDefault() throws {
+    let directory = makeTempDirectory()
+    let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+    _ = makeIsolatedStore(directory: directory, defaults: defaults)
+    let url = directory.appending(path: "settings.json")
+    var settings = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+    settings["appearanceMode"] = "neon"
+    settings["retroColor"] = "teal"
+    try JSONSerialization.data(withJSONObject: settings).write(to: url)
+    let store = makeIsolatedStore(directory: directory, defaults: defaults)
+    #expect(store.persistenceError == nil)
+    #expect(store.appearanceMode == .system)
+    #expect(store.retroColor == .green)
+}
+
+/// Decimal steps reach their target exactly and come back to zero.
+@Test func decimalStepsMeetTheGoal() {
+    let store = makeIsolatedStore()
+    let category = store.selectedWeek!.categories[0]
+    let id = store.addParsedTask(ParsedTask(title: "Run", type: .goal, goalTarget: 1, goalKind: .custom, goalUnit: "km"),
+                                 categoryID: category.id)!
+    func task() -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == id }! }
+    for _ in 0..<10 { store.updateGoalProgress(categoryID: category.id, taskID: id, progress: (task().goalProgress ?? 0) + 0.1) }
+    #expect(task().isCompleted)
+    #expect(task().goalProgress == 1)
+    for _ in 0..<10 { store.updateGoalProgress(categoryID: category.id, taskID: id, progress: task().goalProgress! - 0.1) }
+    #expect(task().goalProgress == 0)
+}
+
+/// Time is whole minutes: hours switched over from a number ("1.17") don't make 70.2.
+@Test func timeAmountsAreWholeMinutes() {
+    var input = GoalAmountInput()
+    input.hours = "1.17"
+    #expect(input.value(for: .time) == 70)
+}
+
+/// Unchecking a parent after its items changed clears them, instead of restoring checks
+/// from before.
+@Test func uncheckingParentAfterItemChangesClears() {
+    let store = makeIsolatedStore()
+    let category = store.selectedWeek!.categories[0]
+    let id = store.addParsedTask(ParsedTask(title: "Packing", type: .list, items: ["A", "B"]), categoryID: category.id)!
+    func task() -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == id }! }
+    store.toggleSubtask(categoryID: category.id, taskID: id, subtaskID: task().subtasks[0].id)  // A checked
+    store.toggleTask(categoryID: category.id, taskID: id)                                         // all checked
+    store.toggleSubtask(categoryID: category.id, taskID: id, subtaskID: task().subtasks[1].id)  // B unchecked
+    store.toggleSubtask(categoryID: category.id, taskID: id, subtaskID: task().subtasks[1].id)  // B checked: done
+    store.toggleTask(categoryID: category.id, taskID: id)                                         // unchecked
+    #expect(task().subtasks.allSatisfy { !$0.isCompleted }, "cleared, not A back from before")
+}
+
+/// Smart Add's rules on phrases that used to go wrong.
+@Test(arguments: [
+    ("Call back in 2 hours", "Call back in 2 hours", TaskType.checkbox, TaskMode.oneTime, nil as Double?, nil as Double?, nil as Int?),
+    ("Leave in 10 min", "Leave in 10 min", .checkbox, .oneTime, nil, nil, nil),
+    ("Gym Mon, Wed, Fri 1 hour", "Gym", .goal, .repeating, 180, 60, 3),
+    ("Hike weekends 2 hours", "Hike", .goal, .repeating, 240, 120, 2),
+    ("Run Mon/Wed/Fri 5 km", "Run", .goal, .repeating, 15, 5, 3),
+    ("Sleep in on days off", "Sleep in on days off", .checkbox, .oneTime, nil, nil, nil),
+    ("Gym 3x weekly", "Gym", .goal, .repeating, 3, nil, nil),
+    ("Swim twice weekly", "Swim", .goal, .repeating, 2, nil, nil),
+    ("Sleep 8 hours a night", "Sleep", .goal, .repeating, 3360, 480, 7),
+    ("Read for 30 minutes at night", "Read at night", .goal, .oneTime, 30, nil, nil),
+] as [(String, String, TaskType, TaskMode, Double?, Double?, Int?)])
+func smartAddAuditPhrases(text: String, title: String, type: TaskType, mode: TaskMode, target: Double?, step: Double?, days: Int?) {
+    let task = smartAddRules(text)
+    #expect(task.title == title)
+    #expect(task.type == type)
+    #expect(task.mode == mode)
+    #expect(task.goalTarget == target)
+    #expect(task.goalStep == step)
+    #expect(task.goalDays == days)
+}
+
+/// "Every 3 days" is a reason for the model's repeating.
+@Test func everyFewDaysKeepsRepeating() {
+    let model = ParsedTask(title: "Water plants", mode: .repeating)
+    #expect(TaskTextHints.dropInvented(model, from: "water plants every 3 days").mode == .repeating)
+}

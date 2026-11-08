@@ -59,6 +59,14 @@ struct ContentView: View {
     /// Today (the store's clock), for the day strip and the calendar. Updated when the day
     /// changes while the app is open.
     @State private var today = Date()
+    /// The week today was in at the last check, kept as a day (not a moment, which reads
+    /// differently once the time zone changes), to tell whether the viewed week was the
+    /// current one when the day or time zone changes.
+    @State private var currentWeekStart: DayKey?
+    /// A week to go to without animation (Reduce Motion), set from a dispatched block and
+    /// gone to in `onChange`: store changes from async code inside an animation could be
+    /// drawn from the week as it was (see CLAUDE.md, "Store changes from async code").
+    @State private var pendingWeekDate: Date?
     /// The bottom bar's Edit side (the wider of Edit and Done), which the Settings side
     /// matches so the week selector stays centered.
     @State private var editSideWidth: CGFloat = 80
@@ -114,6 +122,10 @@ struct ContentView: View {
                     .confirmationDialog("Start Fresh?", isPresented: $showStartFreshConfirmation, titleVisibility: .visible) {
                         Button("Start Fresh", role: .destructive) {
                             store.setAsideUnreadableData()
+                            // Settings set aside start over on System: the icon follows,
+                            // or the Retro icon would stay on the home screen.
+                            AppIconSwitcher.update(for: store.appearanceMode,
+                                                   matchingTheme: UserDefaults.standard.object(forKey: AppIconSwitcher.matchesThemeKey) as? Bool ?? true)
                             if store.persistenceError == nil && store.shouldShowWelcome {
                                 showOnboarding = true
                             }
@@ -242,6 +254,7 @@ struct ContentView: View {
         }
         .onAppear {
             today = store.currentDate
+            currentWeekStart = store.weekStartDay(containing: today)
             if store.persistenceError == nil && store.shouldShowWelcome {
                 showOnboarding = true
             }
@@ -256,7 +269,7 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) {
             if scenePhase == .background {
-                backgroundedAt = Date()
+                backgroundedAt = store.currentDate
                 // Saves a title being typed: iOS may end the app while it's away.
                 dismissKeyboard()
             }
@@ -267,6 +280,7 @@ struct ContentView: View {
             if wasAway { refreshSortOrder() }
             today = store.currentDate
             returnToCurrentWeekIfAway()
+            currentWeekStart = store.weekStartDay(containing: today)
             // Calendars may have changed (or access revoked) while away. Not after Control
             // Center or the icon-change alert: reloading made an open events panel flash.
             // (Changes while the app is open arrive through EventKit's notification.)
@@ -277,6 +291,12 @@ struct ContentView: View {
             }
         }
         .onChange(of: isEditing) {
+            // Closing cards lets go of the keyboard first, saving what's typed (with a
+            // hardware keyboard the bar, and Edit, stay up while typing).
+            if isEditing && isKeyboardVisible {
+                store.keyboardDoneRequests += 1
+                dismissKeyboard()
+            }
             // Edit mode is for managing categories: collapse everything, and reopen the
             // same cards afterwards, each where it was (at the start of its row).
             withAnimation(cardAnimation) {
@@ -294,6 +314,12 @@ struct ContentView: View {
         }
         .onChange(of: store.selectedDate) {
             if isPastWeek { isEditing = false }
+        }
+        .onChange(of: pendingWeekDate) { _, date in
+            guard let date else { return }
+            pendingWeekDate = nil
+            withAnimation(.easeInOut(duration: 0.2)) { store.navigateToDate(date) }
+            isChangingWeek = false
         }
         .background { sortOrderWatcher }
         // Midnight (or a time zone change) while the app is open.
@@ -314,10 +340,11 @@ struct ContentView: View {
     /// and a new week has started, the new current week is shown (the old one is now
     /// read-only); otherwise the viewed week is brought up to date.
     private func handleDayChange() {
-        let previousToday = today
+        let previousWeek = currentWeekStart ?? store.weekStartDay(containing: today)
         today = store.currentDate
+        currentWeekStart = store.weekStartDay(containing: today)
         guard store.persistenceError == nil, let week = store.selectedWeek else { return }
-        let wasCurrentWeek = week.startDay == store.weekStartDay(containing: previousToday)
+        let wasCurrentWeek = week.startDay == previousWeek
         if wasCurrentWeek && store.isPastWeek(week) {
             dismissKeyboard()
             isEditing = false
@@ -338,8 +365,9 @@ struct ContentView: View {
     private func returnToCurrentWeekIfAway() {
         guard let backgroundedAt, store.persistenceError == nil else { return }
         self.backgroundedAt = nil
-        let newWeekStarted = store.startOfWeek(containing: backgroundedAt) != store.startOfWeek(containing: Date())
-        guard newWeekStarted || Date().timeIntervalSince(backgroundedAt) > 15 * 60 else { return }
+        let now = store.currentDate
+        let newWeekStarted = store.startOfWeek(containing: backgroundedAt) != store.startOfWeek(containing: now)
+        guard newWeekStarted || now.timeIntervalSince(backgroundedAt) > 15 * 60 else { return }
         isEditing = false
         store.navigateToDate(today)
     }
@@ -359,6 +387,12 @@ struct ContentView: View {
                     weekSwipeAxis = cardDrag == nil && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
                     // Track from here so the grid doesn't jump by the recognition distance.
                     weekDragOrigin = value.translation.width
+                    // The page is disabled for the swipe from now on, which took its field's
+                    // focus but left the keyboard up. What's typed is saved to this week.
+                    if weekSwipeAxis == .horizontal && isKeyboardVisible {
+                        store.keyboardDoneRequests += 1
+                        dismissKeyboard()
+                    }
                 }
                 guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else { return }
                 pager.offset = value.translation.width - weekDragOrigin
@@ -366,7 +400,8 @@ struct ContentView: View {
             .onEnded { value in
                 defer { weekSwipeAxis = nil }
                 guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else {
-                    if cardDrag == nil { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
+                    // (Not while a page slides in: that would pull it back.)
+                    if cardDrag == nil && !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
                     return
                 }
                 let distance = value.translation.width - weekDragOrigin
@@ -392,9 +427,11 @@ struct ContentView: View {
         return .interpolatingSpring(duration: 0.4, bounce: 0, initialVelocity: relative)
     }
 
-    private func changeWeek(by weeks: Int, velocity: CGFloat = 0) {
-        guard let date = store.calendar.date(byAdding: .weekOfYear, value: weeks, to: store.selectedDate) else { return }
-        changeWeek(to: date, velocity: velocity)
+    /// Returns whether the week is changing (not while the last change still slides).
+    @discardableResult
+    private func changeWeek(by weeks: Int, velocity: CGFloat = 0) -> Bool {
+        guard let date = store.calendar.date(byAdding: .weekOfYear, value: weeks, to: store.selectedDate) else { return false }
+        return changeWeek(to: date, velocity: velocity)
     }
 
     /// A week shown in a neighbor slot instead of the adjacent week, for jumps
@@ -424,25 +461,23 @@ struct ContentView: View {
 
     /// Pages to the week containing `date`: the neighbor slot slides in (with the
     /// current week sliding out) in one motion, then becomes the current week in place.
-    private func changeWeek(to date: Date, velocity: CGFloat = 0) {
-        guard !isChangingWeek, let current = store.selectedWeek else { return }
+    @discardableResult
+    private func changeWeek(to date: Date, velocity: CGFloat = 0) -> Bool {
+        guard !isChangingWeek, let current = store.selectedWeek else { return false }
         let target = store.startOfWeek(containing: date)
         guard !store.calendar.isDate(target, inSameDayAs: current.startDate) else {
             withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 }
-            return
+            return false
         }
         // A title being typed is saved to the week it belongs to, before the week changes.
-        let wasTyping = isKeyboardVisible
         dismissKeyboard()
         guard !reduceMotion else {
             pager.offset = 0
             isChangingWeek = true
-            // Gives the field's commit (on losing focus) a moment to run first.
-            DispatchQueue.main.asyncAfter(deadline: .now() + (wasTyping ? 0.1 : 0)) {
-                withAnimation(.easeInOut(duration: 0.2)) { store.navigateToDate(date) }
-                isChangingWeek = false
-            }
-            return
+            // Gives the field's commit (on losing focus) a moment to run first; always, as a
+            // hardware keyboard isn't counted as `isKeyboardVisible`. See `pendingWeekDate`.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { pendingWeekDate = date }
+            return true
         }
 
         let slot = target > current.startDate ? 1 : -1
@@ -470,6 +505,7 @@ struct ContentView: View {
             }
             isChangingWeek = false
         }
+        return true
     }
 
     // MARK: - Undo
@@ -745,6 +781,7 @@ struct ContentView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 10).onEnded { value in
                 if value.translation.height > 20 {
+                    store.keyboardDoneRequests += 1
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
             }
@@ -964,7 +1001,10 @@ struct ContentView: View {
                             // the Add task row is back (empty, as a checkbox and one-time) without
                             // tapping the checkmark first.
                             .onChange(of: entry.category.tasks.isEmpty) { _, isEmpty in
-                                guard isEmpty, editingCategoryKeys.contains(entry.id) else { return }
+                                // (Neighbor pages share the key: next week's copy emptying
+                                // mustn't end this week's card's edit mode.)
+                                guard isEmpty, week.startDay == store.selectedWeek?.startDay,
+                                      editingCategoryKeys.contains(entry.id) else { return }
                                 withAnimation(.snappy(duration: 0.25)) { _ = editingCategoryKeys.remove(entry.id) }
                             }
                             // The dragged card leaves a gap where it will land; a lifted copy
@@ -1028,7 +1068,7 @@ struct ContentView: View {
             .scrollDismissesKeyboard(.interactively)
             // Pull down past the top and let go to close every card (like pull to refresh).
             // Off while typing: dragging down to put the keyboard away mustn't also close cards.
-            .modifier(PullToCloseAll(isEnabled: !expandedCategoryKeys.isEmpty && !isEditing && !isKeyboardVisible,
+            .modifier(PullToCloseAll(isEnabled: viewedWeekHasOpenCard && !isEditing && !isKeyboardVisible,
                                      theme: theme, rc: rc, onClose: collapseAllCards))
             .scrollDisabled(cardDrag != nil)
             .sensoryFeedback(.impact(weight: .medium), trigger: cardDrag?.key) { _, new in new != nil }
@@ -1066,6 +1106,13 @@ struct ContentView: View {
             occurrences[category.name] = occurrence + 1
         }
         return keys
+    }
+
+    /// A card of the viewed week is open. (`expandedCategoryKeys` also holds cards open in
+    /// other weeks, so they reopen there; "every card is closed" means this week's.)
+    private var viewedWeekHasOpenCard: Bool {
+        guard let week = store.selectedWeek, !expandedCategoryKeys.isEmpty else { return false }
+        return categoryKeys(for: week.categories).values.contains(where: expandedCategoryKeys.contains)
     }
 
     /// Cards in display order: any reordering from expansion first, then the rest.
@@ -1110,8 +1157,8 @@ struct ContentView: View {
                 }
             }
             .onChange(of: store.categorySort) { withAnimation(cardAnimation) { refreshSortOrder() } }
-            .onChange(of: expandedCategoryKeys.isEmpty) { _, allClosed in
-                if allClosed { withAnimation(cardAnimation) { refreshSortOrder() } }
+            .onChange(of: viewedWeekHasOpenCard) { _, anyOpen in
+                if !anyOpen { withAnimation(cardAnimation) { refreshSortOrder() } }
             }
     }
 
@@ -1389,7 +1436,7 @@ struct ContentView: View {
         editingCategoryKeys.remove(key)
         expandedCategoryKeys.remove(key)
         lastToggledCategory = key
-        if expandedCategoryKeys.isEmpty { categoryDisplayOrder.removeAll() }
+        if !viewedWeekHasOpenCard { categoryDisplayOrder.removeAll() }
     }
 
     // MARK: - Calendar Events (bottom bar)

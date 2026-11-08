@@ -19,11 +19,15 @@ struct OnboardingSheet: View {
         case smartAdd, tidyUp, goalSteps
     }
 
-    /// The Smart Add page shows only where Smart Add can run (Apple Intelligence).
+    /// The Smart Add page shows only where Smart Add can run (Apple Intelligence), and the
+    /// calendar page only while calendar events are offered (`FeatureAccess`).
     private var pages: [Page] {
-        guard isReplay else { return [.welcome, .types, .modes, .categories, .calendar] }
+        let calendar = FeatureAccess.isCalendarUnlocked
+        guard isReplay else {
+            return [.welcome, .types, .modes, .categories, .calendar].filter { $0 != .calendar || calendar }
+        }
         let smartAdd = SmartAddParser.current.isAvailable
-        return Page.allCases.filter { $0 != .smartAdd || smartAdd }
+        return Page.allCases.filter { ($0 != .smartAdd || smartAdd) && ($0 != .calendar || calendar) }
     }
 
     private var pageIndex: Int { pages.firstIndex(of: page) ?? 0 }

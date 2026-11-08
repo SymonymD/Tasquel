@@ -156,7 +156,10 @@ final class ChecklistStore {
         seedStarterTemplates()
         load()
         guard weekLoadError == nil else { return }
-        inferWeekStartIfSettingsMissing()
+        inferWeekStartFromSavedWeeks()
+        // The current week, in the middle (see `midweek`); also after Retry or Start Fresh
+        // on another day than the app was opened on.
+        selectedDate = midweek(weekStartDay(containing: now()))
         saveThisWeekOnlyCategories()
         pruneEditTimes()
         let currentWeek = ensureWeekExists(for: now())
@@ -164,11 +167,13 @@ final class ChecklistStore {
         syncWithPreviousWeek(for: now())
     }
 
-    /// Without settings.json (Start Fresh after it couldn't be read, say), the week start
-    /// would default to Monday while saved weeks may start on Sunday, hiding them all and
-    /// building a new current week. The most recent saved week's weekday says which.
-    private func inferWeekStartIfSettingsMissing() {
-        guard !didFindSettingsFile, let latest = weeks.first else { return }
+    /// The saved weeks say which day weeks start on: they always move with the setting, so
+    /// when the two disagree the setting is the one that's wrong. That happens without
+    /// settings.json (Start Fresh after it couldn't be read), or when a week-start change
+    /// saved one file but not the other (a full device). Trusting the setting would hide
+    /// every saved week and build a new current week. The most recent week's weekday says.
+    private func inferWeekStartFromSavedWeeks() {
+        guard let latest = weeks.first else { return }
         var gregorian = Calendar(identifier: .gregorian)
         gregorian.timeZone = calendar.timeZone
         let sunday = gregorian.component(.weekday, from: latest.startDay.date(in: calendar)) == 1
@@ -292,11 +297,13 @@ final class ChecklistStore {
         }
     }
 
-    func save() {
+    /// `keepsUndo`: a save of sync's own results, which doesn't end a delete's Undo (going
+    /// to another week syncs it; the next sync makes again what undoing loses).
+    func save(keepsUndo: Bool = false) {
         guard persistenceError == nil else { return }
         // Any other change ends the chance to undo the last delete: putting the old
         // weeks back would undo that change too.
-        if !isSavingDelete { clearUndo() }
+        if !isSavingDelete && !keepsUndo { clearUndo() }
         unsavedPreviewID = nil
         do {
             let encoder = JSONEncoder()
@@ -404,6 +411,16 @@ final class ChecklistStore {
         DayKey(startOfWeek(containing: date), in: calendar)
     }
 
+    /// Noon in the middle of the week starting on `day`: the moment `selectedDate` holds.
+    /// The week's first midnight could fall into the week before when the time zone moves
+    /// west (Monday 00:00 in New York is Sunday 23:00 in Chicago); noon on its fourth day
+    /// stays in the week through any time-zone change.
+    private func midweek(_ day: DayKey) -> Date {
+        let calendar = calendar
+        let start = day.adding(days: 3).date(in: calendar)
+        return calendar.date(byAdding: .hour, value: 12, to: start) ?? start
+    }
+
     // MARK: - Week Status
 
     /// Today, in the current time zone.
@@ -460,13 +477,16 @@ final class ChecklistStore {
                                         calendar: calendar)
         let shift = Calendar.weekDates(in: calendar.timeZone)
             .dateComponents([.day], from: oldStart, to: newStart).day ?? (sunday ? -1 : 1)
-        let selectedStart = selectedWeek.map { $0.startDay.adding(days: shift).date(in: calendar) }
+        let selectedStart = selectedWeek.map { midweek($0.startDay.adding(days: shift)) }
         weeks = weeks.map { week in
             var moved = week
             moved.startDay = week.startDay.adding(days: shift)
             return moved
         }
         weekStartsOnSunday = sunday
+        // Previews were for the old days: one kept could hand its ID to a saved week's day.
+        previewCache.removeAll()
+        lastPreviews.removeAll()
         if let selectedStart { selectedDate = selectedStart }
         save()
         saveSettings()
@@ -619,11 +639,14 @@ final class ChecklistStore {
         let stored = storedWeekIndex(startingOn: monday).map { weeks[$0] }
         var week = stored ?? makeWeek(startingOn: monday)
         if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
+            if let dismissed = extendedDismissals(of: week, from: source) { week.dismissedCarryOvers = dismissed }
             let isFuture = isFutureWeek(week) && week.didFinalSync != true
             if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source, addsCategories: true) }
             _ = Self.syncCarryOverTasks(into: &week, from: source, followsSource: isFuture)
         }
-        if stored == nil, let last = lastPreviews[monday] { Self.reuseIDs(of: last, in: &week) }
+        if stored == nil, let last = lastPreviews[monday], !weeks.contains(where: { $0.id == last.id }) {
+            Self.reuseIDs(of: last, in: &week)
+        }
         previewCache[monday] = week
         lastPreviews[monday] = week
         return week
@@ -688,7 +711,7 @@ final class ChecklistStore {
             weeks.removeAll { $0.id == id }
             unsavedPreviewID = nil
         }
-        selectedDate = date
+        selectedDate = midweek(weekStartDay(containing: date))
         if let week = selectedWeek, isCurrentWeek(week) { ensureWeekExists(for: date) }
         syncWithPreviousWeek(for: date)
     }
@@ -704,6 +727,10 @@ final class ChecklistStore {
               !isPastWeek(weeks[wi]),
               let sourceWeek = mostRecentWeekBefore(monday) else { return }
         var changed = false
+        if let dismissed = extendedDismissals(of: weeks[wi], from: sourceWeek) {
+            weeks[wi].dismissedCarryOvers = dismissed
+            changed = true
+        }
         // A week that has had its final sync (it was current, then the week start day
         // changed and moved it into the future) is the user's own, like a current week.
         let isFuture = isFutureWeek(weeks[wi]) && weeks[wi].didFinalSync != true
@@ -720,7 +747,39 @@ final class ChecklistStore {
             weeks[wi].didFinalSync = true
             changed = true
         }
-        if changed { save() }
+        // Sync's own saves keep a delete's Undo (it would only lose what sync makes again).
+        if changed { save(keepsUndo: true) }
+    }
+
+    /// A task deleted from a week stays deleted there even as its source moves on: a week
+    /// later the source is a copy of the task that was deleted (linked to it, or to a copy
+    /// of it), and so on each week. Any task in `source` whose links lead back to a
+    /// dismissed task is dismissed too. Returns the week's dismissals with those added, or
+    /// nil when there's nothing to add. (Returned, not changed in place: it reads `weeks`.)
+    private func extendedDismissals(of week: Week, from source: Week) -> [UUID]? {
+        let dismissed = Set(week.dismissedCarryOvers ?? [])
+        guard !dismissed.isEmpty else { return nil }
+        var links: [UUID: [UUID]] = [:]
+        for task in weeks.lazy.flatMap(\.categories).flatMap(\.tasks) {
+            links[task.id] = [task.carriedFrom, task.repeatsFrom].compactMap { $0 }
+        }
+        func leadsToDismissed(_ id: UUID) -> Bool {
+            var seen: Set<UUID> = [], queue = [id]
+            while let next = queue.popLast() {
+                guard seen.insert(next).inserted else { continue }
+                if dismissed.contains(next) { return true }
+                queue += links[next] ?? []
+            }
+            return false
+        }
+        var added: [UUID] = []
+        for task in source.categories.flatMap(\.tasks) where !dismissed.contains(task.id) {
+            if [task.carriedFrom, task.repeatsFrom].compactMap({ $0 }).contains(where: leadsToDismissed) {
+                added.append(task.id)
+            }
+        }
+        guard !added.isEmpty else { return nil }
+        return (week.dismissedCarryOvers ?? []) + added
     }
 
     /// A saved future week the app was never opened in while it was current never got
@@ -735,12 +794,13 @@ final class ChecklistStore {
         guard !skipped.isEmpty else { return }
         for wi in skipped {
             if let source = mostRecentWeekBefore(weeks[wi].startDay) {
+                if let dismissed = extendedDismissals(of: weeks[wi], from: source) { weeks[wi].dismissedCarryOvers = dismissed }
                 _ = Self.syncRecurringTasks(into: &weeks[wi], from: source, addsCategories: false)
                 _ = Self.syncCarryOverTasks(into: &weeks[wi], from: source, followsSource: true)
             }
             weeks[wi].didFinalSync = true
         }
-        save()
+        save(keepsUndo: true)
     }
 
     /// Adds `source`'s unfinished carry-over tasks that `week` is missing, skipping ones
@@ -796,10 +856,13 @@ final class ChecklistStore {
                 && task.carriedFrom.map(dismissed.contains) != true {
                 // Also present when this week's copy links to what the source itself was
                 // carried from (it was made before the week in between existed).
-                let present = week.categories[ci].tasks.contains {
-                    $0.carriedFrom == task.id || $0.title == task.title
-                        || (task.carriedFrom != nil && $0.carriedFrom == task.carriedFrom)
+                // Its copy may be in another card too: this one was renamed and a new card
+                // took the old name. (Tasks never move between cards.)
+                let isCopy = { (copy: ChecklistTask) in
+                    copy.carriedFrom == task.id || (task.carriedFrom != nil && copy.carriedFrom == task.carriedFrom)
                 }
+                let present = week.categories[ci].tasks.contains { isCopy($0) || $0.title == task.title }
+                    || week.categories.contains { $0.tasks.contains(where: isCopy) }
                 guard !present else { continue }
                 week.categories[ci].tasks.append(carriedCopy(of: task))
                 changed = true
@@ -915,17 +978,21 @@ final class ChecklistStore {
                         week.categories[ci].tasks[ti] = followed
                         changed = true
                     }
-                } else if !copy.isCompleted && (copy.goalProgress ?? 0) == 0 && !copy.subtasks.contains(where: \.isCompleted) {
+                } else if copy.taskType == .list || (!copy.isCompleted && (copy.goalProgress ?? 0) == 0
+                                                       && !copy.subtasks.contains(where: \.isCompleted)) {
+                    // (A list's checks came with it: repeating lists keep them, so they
+                    // don't say the user started on this copy.)
                     week.categories[ci].tasks.remove(at: ti)
                     changed = true
                 }
             }
 
             for task in recurringTasks where !isDismissed(task) {
-                // A copy the user edited keeps its old link: it still counts as this task's copy.
-                guard !week.categories[ci].tasks.contains(where: {
+                // A copy the user edited keeps its old link: it still counts as this task's
+                // copy, in any card (this one may be a new card with a renamed one's old name).
+                guard !week.categories.contains(where: { $0.tasks.contains {
                     $0.repeatsFrom == task.id || (task.repeatsFrom != nil && $0.repeatsFrom == task.repeatsFrom)
-                }) else { continue }
+                } }) else { continue }
                 week.categories[ci].tasks.append(resetRecurringTask(task))
                 changed = true
             }
@@ -957,9 +1024,12 @@ final class ChecklistStore {
                 copy.isCompleted = copy.subtasks.allSatisfy(\.isCompleted)
             }
         }
-        // A changed target re-decides whether the goal is met.
-        if task.taskType == .goal, copy.goalTarget != original.goalTarget {
+        // A changed target re-decides whether the goal is met, and so does a new type (as
+        // `updateTaskType` decides it: a checkbox keeps its check).
+        if task.taskType == .goal, copy.goalTarget != original.goalTarget || copy.taskType != original.taskType {
             copy.isCompleted = copy.goalIsComplete
+        } else if task.taskType == .list, original.taskType != .list {
+            copy.isCompleted = !copy.subtasks.isEmpty && copy.subtasks.allSatisfy(\.isCompleted)
         }
         return copy
     }
@@ -1343,9 +1413,12 @@ final class ChecklistStore {
     /// custom unit; without a `kind`, a non-empty unit means a custom goal.
     func setGoalTarget(categoryID: UUID, taskID: UUID, target: Double, kind: GoalUnitKind? = nil, unit: String = "") {
         guard target.isFinite, target > 0 else { return }
-        let target = min(target, GoalUnitKind.maxValue)
+        let target = GoalUnitKind.cleaned(min(target, GoalUnitKind.maxValue))
         let unit = unit.trimmingCharacters(in: .whitespaces)
         let kind = kind ?? (unit.isEmpty ? .quantity : .custom)
+        // Nothing changed (Save Goal tapped as it was): not an edit, so a copy keeps following.
+        if let task = viewedTask(categoryID, taskID), task.goalTarget == target, task.goalKind == kind,
+           (task.goalUnit ?? "") == (kind == .custom ? unit : "") { return }
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -1354,8 +1427,7 @@ final class ChecklistStore {
         weeks[wi].categories[ci].tasks[ti].goalUnitKind = kind
         weeks[wi].categories[ci].tasks[ti].goalUnit = kind == .custom ? unit : nil
         // Auto-update completion
-        let progress = weeks[wi].categories[ci].tasks[ti].goalProgress ?? 0
-        weeks[wi].categories[ci].tasks[ti].isCompleted = progress >= target
+        weeks[wi].categories[ci].tasks[ti].isCompleted = weeks[wi].categories[ci].tasks[ti].goalIsComplete
         noteEdit(categoryID)
         save()
     }
@@ -1363,7 +1435,7 @@ final class ChecklistStore {
     /// Sets the step for a goal's + and − buttons; nil (or not above zero) means automatic.
     /// `days` keeps a per-day goal's link between step and target (`goalDays`); nil ends it.
     func setGoalStep(categoryID: UUID, taskID: UUID, step: Double?, days: Int? = nil) {
-        let step = step.flatMap { $0.isFinite && $0 > 0 ? min($0, GoalUnitKind.maxValue) : nil }
+        let step = step.flatMap { $0.isFinite && $0 > 0 ? GoalUnitKind.cleaned(min($0, GoalUnitKind.maxValue)) : nil }
         let days = step == nil ? nil : days.flatMap { (1...7).contains($0) ? $0 : nil }
         guard viewedTask(categoryID, taskID).map({ $0.goalStep != step || $0.goalDays != days }) == true,
               let wi = editableSelectedWeekIndex(),
@@ -1378,7 +1450,7 @@ final class ChecklistStore {
 
     func updateGoalProgress(categoryID: UUID, taskID: UUID, progress: Double) {
         guard progress.isFinite, progress >= 0 else { return }
-        let progress = min(progress, GoalUnitKind.maxValue)
+        let progress = GoalUnitKind.cleaned(min(progress, GoalUnitKind.maxValue))
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
@@ -1388,24 +1460,27 @@ final class ChecklistStore {
         if weeks[wi].categories[ci].tasks[ti].mode != .repeating {
             weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         }
-        let target = weeks[wi].categories[ci].tasks[ti].goalTarget ?? 0
-        weeks[wi].categories[ci].tasks[ti].isCompleted = target > 0 && progress >= target
+        weeks[wi].categories[ci].tasks[ti].isCompleted = weeks[wi].categories[ci].tasks[ti].goalIsComplete
         noteEdit(categoryID)
         save()
     }
 
     // MARK: - Sub-Task CRUD
 
-    func addSubtask(categoryID: UUID, taskID: UUID, title: String) {
+    /// Returns whether it was added (not when the task isn't in the viewed week any more).
+    @discardableResult
+    func addSubtask(categoryID: UUID, taskID: UUID, title: String) -> Bool {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
-              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return false }
         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
+        subtaskChecksBeforeCheck[taskID] = nil  // its items changed since the task was checked
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // A new unchecked item means the task isn't done yet.
         weeks[wi].categories[ci].tasks[ti].isCompleted = false
         noteEdit(categoryID)
         save()
+        return true
     }
 
     func toggleSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
@@ -1414,6 +1489,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].subtasks[si].isCompleted.toggle()
+        subtaskChecksBeforeCheck[taskID] = nil  // unchecking the task now clears, not restores
         // Auto-complete/uncomplete parent based on subtask state
         let task = weeks[wi].categories[ci].tasks[ti]
         if !task.subtasks.isEmpty {
@@ -1431,6 +1507,7 @@ final class ChecklistStore {
             rememberForUndo("“\(subtask.title)”")
         }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
+        subtaskChecksBeforeCheck[taskID] = nil
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         // Deleting the last unchecked item completes the task, as checking it would.
         let task = weeks[wi].categories[ci].tasks[ti]

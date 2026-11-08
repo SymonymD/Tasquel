@@ -288,6 +288,11 @@ struct TaskRowCard: View {
             addSubtask(keepTyping: false)
             isAddingSubtask = false
         }
+        // A field in a closed card never keeps the keyboard (its + may finish opening it
+        // after the card closed).
+        .onChange(of: isSubtaskFieldFocused) { _, focused in
+            if focused && !isCardOpen { isSubtaskFieldFocused = false }
+        }
         // A task dragged by its handle (edit mode) and dropped here takes this place.
         .dropDestination(for: TaskDragItem.self) { items, _ in
             // Only within this card, and only while it's being edited.
@@ -406,7 +411,8 @@ struct TaskRowCard: View {
         withAnimation(.easeOut(duration: 0.2)) {
             isAddingSubtask = true
         } completion: {
-            isSubtaskFieldFocused = true
+            // Not if the card closed meanwhile: a hidden field never takes the keyboard.
+            if isCardOpen { isSubtaskFieldFocused = true }
         }
     }
 
@@ -592,6 +598,13 @@ struct TaskRowCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
+        // Starts on the goal's own unit (Smart Add may know it's time or pages without an
+        // amount), unless something's typed already.
+        .onAppear {
+            guard goalTargetInput.isEmpty else { return }
+            goalKindSelection = task.goalKind
+            goalUnitText = task.goalUnit ?? ""
+        }
     }
 
     /// Why an amount can't be used, under its field (see `GoalAmountInput.problem`).
@@ -614,7 +627,10 @@ struct TaskRowCard: View {
         VStack(alignment: .leading, spacing: 8) {
             labeledGoalRow("Target") {
                 goalUnitMenu
-                goalAmountFields($goalTargetInput, kind: goalKindSelection, field: .target, placeholder: "Target")
+                // Typed by hand, the target is the user's and stops following Step × Days.
+                // (Only typing: a Unit switch converting it keeps Days.)
+                goalAmountFields(Binding(get: { goalTargetInput }, set: { goalTargetInput = $0; goalDaysInput = "" }),
+                                 kind: goalKindSelection, field: .target, placeholder: "Target")
                 if goalKindSelection == .custom { unitNameField }
             }
             goalHint(goalTargetInput.problem(for: goalKindSelection))
@@ -651,10 +667,6 @@ struct TaskRowCard: View {
             let digits = String(text.filter(\.isNumber).prefix(1))
             if digits != text { goalDaysInput = digits }
             followStepTimesDays()
-        }
-        .onChange(of: goalTargetInput) { _, _ in
-            // Typed by hand: the target is the user's, and stops following.
-            if focusedGoalField?.field == .target { goalDaysInput = "" }
         }
     }
 
@@ -849,19 +861,25 @@ struct TaskRowCard: View {
             if rest.isEmpty { isSubtaskFieldFocused = false }
             return
         }
-        addSubtask(line)
-        newSubtaskTitle = rest  // one change to the field's text
+        // One change to the field's text; the line stays if it couldn't be added.
+        newSubtaskTitle = addSubtask(line) ? rest : line + rest
     }
 
     /// `typed`: a line already taken out of the field (Return), instead of the field's text.
-    private func addSubtask(_ typed: String? = nil, keepTyping: Bool = true) {
+    /// Returns whether it was added. Refused (the week changed before the words landed:
+    /// another iPad window, say), the words stay in the field.
+    @discardableResult
+    private func addSubtask(_ typed: String? = nil, keepTyping: Bool = true) -> Bool {
         let title = (typed ?? newSubtaskTitle).trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty else { return }
+        guard !title.isEmpty else { return false }
+        var added = false
         withAnimation(.snappy(duration: 0.2)) {
-            store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
+            added = store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
         }
+        guard added else { return false }
         if typed == nil { newSubtaskTitle = "" }
         if keepTyping { isSubtaskFieldFocused = true }
+        return true
     }
 
     private func startEditingTitle() {
@@ -916,11 +934,14 @@ struct TaskRowCard: View {
     private func saveEditedGoal() {
         guard let target = goalTargetInput.positiveValue(for: goalKindSelection) else { return }
         let oldKind = task.goalKind
+        let wasMet = task.goalIsComplete
         store.setGoalTarget(categoryID: categoryID, taskID: task.id, target: target, kind: goalKindSelection, unit: goalUnitText)
         // A switch to or from Time carries the progress over like the target's amount
-        // (2 → 2h), so 2 of 3 doesn't become 2 minutes.
+        // (2 → 2h), so 2 of 3 doesn't become 2 minutes. A goal that was met stays met: the
+        // carried amounts are rounded (70 min is 1.17 hours, its step 0.17 × 7 days 1.19).
         if let progress = task.goalProgress, (oldKind == .time) != (goalKindSelection == .time),
-           let carried = GoalAmountInput(progress, kind: oldKind).converted(from: oldKind, to: goalKindSelection).value(for: goalKindSelection) {
+           var carried = GoalAmountInput(progress, kind: oldKind).converted(from: oldKind, to: goalKindSelection).value(for: goalKindSelection) {
+            if wasMet, let oldTarget = task.goalTarget, progress >= oldTarget - 1e-9 { carried = max(carried, target) }
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: carried)
         }
         store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection),
@@ -1253,7 +1274,7 @@ struct GoalAmountInput: Equatable {
     /// capped like any goal. Nil while the step isn't a valid amount.
     static func perDayTarget(step: GoalAmountInput, days: Int, kind: GoalUnitKind) -> GoalAmountInput? {
         guard let value = step.positiveValue(for: kind) else { return nil }
-        return GoalAmountInput(min(value * Double(days), GoalUnitKind.maxValue), kind: kind)
+        return GoalAmountInput(GoalUnitKind.cleaned(min(value * Double(days), GoalUnitKind.maxValue)), kind: kind)
     }
 
     init() {}
@@ -1279,7 +1300,8 @@ struct GoalAmountInput: Equatable {
                   let h = hours.isEmpty ? 0 : GoalNumber.parse(hours, locale: locale),
                   let m = minutes.isEmpty ? 0 : GoalNumber.parse(minutes, locale: locale),
                   h >= 0, m >= 0 else { return nil }
-            result = h * 60 + m
+            // Whole minutes: hours switched over from a number ("1.17") don't leave 70.2.
+            result = (h * 60 + m).rounded()
         } else {
             guard let n = GoalNumber.parse(number, locale: locale), n >= 0 else { return nil }
             result = n
@@ -1497,10 +1519,18 @@ struct AddTaskRowCard: View {
         let taskID: UUID
         let text: String
         let summary: String
+        /// The card was This week only before: a repeating or carry-over task turned that
+        /// off, and Undo turns it back on.
+        var wasThisWeekOnly = false
         /// Its time is up while the field has the keyboard: it's invisible but keeps its
         /// place, so the field being typed in doesn't move up (see `body`).
         var isFaded = false
         let token = UUID()
+    }
+
+    private struct SmartAddTimer: Hashable {
+        let token: UUID?
+        let isEditing: Bool
     }
 
     private struct SmartAddOutcome: Equatable {
@@ -1594,10 +1624,11 @@ struct AddTaskRowCard: View {
             isFocused = false
             isFieldOpen = false
         }
-        .task(id: smartAddResult?.token) {
+        .task(id: SmartAddTimer(token: smartAddResult?.token, isEditing: isEditing)) {
             // With VoiceOver it stays (until the next task is added), so Undo can be reached.
-            // So it does with demo data, for the App Store screenshot.
-            guard smartAddResult != nil, !voiceOverEnabled, !Self.keepsSmartAddMessage else { return }
+            // So it does with demo data, for the App Store screenshot. In the card's edit
+            // mode it's hidden: its time starts when editing ends.
+            guard smartAddResult != nil, !isEditing, !voiceOverEnabled, !Self.keepsSmartAddMessage else { return }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy(duration: 0.25)) {
@@ -1605,6 +1636,11 @@ struct AddTaskRowCard: View {
                 // typed: it fades and its place goes with the keyboard or the next add.
                 if isFocused { smartAddResult?.isFaded = true } else { smartAddResult = nil }
             }
+        }
+        // A field in a closed card never keeps the keyboard (the + opening it may finish
+        // after the card closed).
+        .onChange(of: isFocused) { _, focused in
+            if focused && !isCardOpen { isFocused = false }
         }
         .onChange(of: isFocused) { _, focused in
             guard !focused, smartAddResult?.isFaded == true else { return }
@@ -1620,7 +1656,7 @@ struct AddTaskRowCard: View {
     /// The field shows once + is tapped, and stays while there's something in it, Smart Add
     /// is working on it, or its options are open.
     private var showsField: Bool {
-        isFieldOpen || !newTitle.isEmpty || isParsing || showOptions || isOpeningOptions
+        isFieldOpen || !newTitle.trimmingCharacters(in: .whitespaces).isEmpty || isParsing || showOptions || isOpeningOptions
     }
 
     /// The +: larger and alone until it's tapped, then small beside the field it opened.
@@ -1655,7 +1691,8 @@ struct AddTaskRowCard: View {
         withAnimation(.easeOut(duration: 0.2)) {
             isFieldOpen = true
         } completion: {
-            isFocused = true
+            // Not if the card closed meanwhile: a hidden field never takes the keyboard.
+            if isCardOpen { isFocused = true }
         }
     }
 
@@ -1787,6 +1824,7 @@ struct AddTaskRowCard: View {
     private func undoSmartAdd(_ result: SmartAddResult) {
         withAnimation(.snappy(duration: 0.2)) {
             store.deleteTask(categoryID: categoryID, taskID: result.taskID, undoable: false)
+            if result.wasThisWeekOnly { store.setCategoryThisWeekOnly(categoryID, true) }
             smartAddResult = nil
         }
     }
@@ -1857,6 +1895,9 @@ struct AddTaskRowCard: View {
             parsed.goalTarget = nil
             parsed.goalStep = nil
             parsed.goalDays = nil
+            // The parse took its amount or items out of the title, for a type that wasn't
+            // picked: "Call 3 clients today" as a checkbox is "Call 3 clients".
+            parsed.title = TaskTextHints.cleanTitle(outcome.text, fallback: outcome.text)
         }
         // A goal without an amount takes the keyboard for its target; a list without
         // items, for its first item.
@@ -1866,13 +1907,15 @@ struct AddTaskRowCard: View {
         // row's highlight, so the Add task field moves down once. (The spinner going on its
         // own shrank the row for a frame first.)
         var added: UUID?
+        let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         withAnimation(.snappy(duration: 0.2)) {
             isParsing = false
             added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: outcome.weekStart)
             guard let added else { return }
             // A goal it couldn't find an amount for takes the keyboard for its target.
             if awaitsTarget { store.taskAwaitingFirstInput = added }
-            smartAddResult = SmartAddResult(taskID: added, text: outcome.text, summary: summary)
+            smartAddResult = SmartAddResult(taskID: added, text: outcome.text, summary: summary,
+                                            wasThisWeekOnly: wasThisWeekOnly)
             if isCardOpen && !reduceMotion { store.highlightedTaskID = added }
             // Anything typed meanwhile stays.
             if newTitle.trimmingCharacters(in: .whitespaces) == outcome.text { newTitle = "" }
@@ -1930,12 +1973,16 @@ struct AddTaskRowCard: View {
         guard !title.isEmpty, !isParsing else { return false }
         let task = ParsedTask(title: title, type: newType, mode: newMode)
         let awaitsInput = task.type != .checkbox
+        var added: UUID?
         withAnimation(.snappy(duration: 0.2)) {
-            let id = store.addParsedTask(task, categoryID: categoryID)
-            if keepTyping && awaitsInput { store.taskAwaitingFirstInput = id }
+            added = store.addParsedTask(task, categoryID: categoryID)
+            if keepTyping && awaitsInput { store.taskAwaitingFirstInput = added }
             // A Smart Add message would now sit under this task instead of its own.
-            if id != nil { smartAddResult = nil }
+            if added != nil { smartAddResult = nil }
         }
+        // Refused (the week changed before the words landed: another iPad window, say):
+        // the words stay in the field.
+        guard added != nil else { return false }
         if typed == nil { newTitle = "" }
         pickedType = false
         pickedMode = false

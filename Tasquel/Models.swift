@@ -82,6 +82,15 @@ enum CategorySortOrder: String, Codable, CaseIterable {
 }
 
 /// What a goal counts. Time goals store their target and progress in minutes.
+extension GoalUnitKind {
+    /// An amount without floating-point dust: ten steps of 0.1 make 1, not 0.9999999999999999
+    /// (shown as "1/1" but never met), and three back from 0.3 make 0, not 2.8e-17.
+    static func cleaned(_ value: Double) -> Double {
+        guard value.isFinite else { return value }
+        return (value * 1_000_000).rounded() / 1_000_000
+    }
+}
+
 enum GoalUnitKind: String, Codable, CaseIterable {
     case quantity
     case time
@@ -193,7 +202,7 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
 
     var goalIsComplete: Bool {
         guard let target = goalTarget, target > 0 else { return false }
-        return (goalProgress ?? 0) >= target
+        return (goalProgress ?? 0) >= target - 1e-9
     }
 
     /// What the goal's + and − add: its `goalStep` when set (the editor's Step), else 1
@@ -530,5 +539,20 @@ enum RetroColor: String, Codable, CaseIterable {
         case .red: "Red"
         case .purple: "Purple"
         }
+    }
+}
+
+/// Settings from a newer version may name a theme or retro color this one doesn't have:
+/// they read as the default instead of making the whole settings file unreadable (which
+/// would stop the app at "Planner Unavailable").
+extension AppearanceMode {
+    init(from decoder: Decoder) throws {
+        self = AppearanceMode(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .system
+    }
+}
+
+extension RetroColor {
+    init(from decoder: Decoder) throws {
+        self = RetroColor(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .green
     }
 }

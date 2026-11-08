@@ -17,7 +17,8 @@ struct CalendarSheet<Events: View>: View {
     let onSelectWeek: (Date) -> Void
     /// +1 for the next week, -1 for the previous, and the swipe's speed (points per second),
     /// so the cards behind slide on at it.
-    let onSwipeWeek: (Int, CGFloat) -> Void
+    /// Returns whether the week changed (not while the cards' last slide still runs).
+    let onSwipeWeek: (Int, CGFloat) -> Bool
     /// A week's events.
     @ViewBuilder let events: (DayKey) -> Events
 
@@ -48,7 +49,7 @@ struct CalendarSheet<Events: View>: View {
 
     init(selectedDate: Date, firstWeekday: Int, today: Date, theme: AppearanceMode, rc: RetroColor,
          showsEvents: Bool, eventsWeek: DayKey?, onSelectWeek: @escaping (Date) -> Void,
-         onSwipeWeek: @escaping (Int, CGFloat) -> Void, @ViewBuilder events: @escaping (DayKey) -> Events) {
+         onSwipeWeek: @escaping (Int, CGFloat) -> Bool, @ViewBuilder events: @escaping (DayKey) -> Events) {
         self.firstWeekday = firstWeekday
         self.today = today
         self.theme = theme
@@ -112,10 +113,6 @@ struct CalendarSheet<Events: View>: View {
                         .disabled(isSwiping && isDragging)
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
-                    .onChange(of: eventsWeek) { _, week in
-                        latestEventsWeek = week
-                        if !isPaging { shownWeek = week }
-                    }
                     .simultaneousGesture(weekSwipe)
                     // A drag iOS cancelled puts the events back; not one that went on to slide
                     // to another week (that slide ends in place by itself).
@@ -158,8 +155,11 @@ struct CalendarSheet<Events: View>: View {
             }
         }
         .tint(Theme.isRetro(theme) ? Theme.accent(theme, rc: rc) : nil)
-        // The week picker follows a week changed by swiping the events.
+        // The events and the week picker follow the viewed week, also while the other side
+        // shows (returning after a while, or midnight, can change it then).
         .onChange(of: eventsWeek) { _, week in
+            latestEventsWeek = week
+            if !isPaging { shownWeek = week }
             if let week { weekStart = week.date(in: .weekDates()) }
         }
     }
@@ -194,7 +194,11 @@ struct CalendarSheet<Events: View>: View {
     /// The events slide on to the next or previous week as the cards behind do (same
     /// spring, carrying on at the finger's speed); then that week takes the middle.
     private func page(by weeks: Int, velocity: CGFloat) {
-        onSwipeWeek(weeks, velocity)
+        // Refused (the cards' last slide still runs): the events go back, as the cards stay.
+        guard onSwipeWeek(weeks, velocity) else {
+            withAnimation(.snappy(duration: 0.25)) { swipeOffset = 0 }
+            return
+        }
         guard !reduceMotion, pageWidth > 0 else { return }  // `shownWeek` follows `eventsWeek`
         isPaging = true
         let target = weeks > 0 ? -pageWidth : pageWidth
@@ -223,7 +227,7 @@ struct CalendarSheet<Events: View>: View {
 
     /// Next or previous week without a swipe (VoiceOver).
     private func swipeWeek(by weeks: Int) {
-        DispatchQueue.main.async { onSwipeWeek(weeks, 0) }
+        DispatchQueue.main.async { _ = onSwipeWeek(weeks, 0) }
     }
 }
 

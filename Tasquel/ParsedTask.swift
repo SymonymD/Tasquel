@@ -87,7 +87,7 @@ enum TaskTextHints {
         var task = parsed
         let lower = text.lowercased()
         var matched = true
-        if let mode = scheduleMode(lower) {
+        if let mode = scheduleMode(lower) ?? scheduleMode(withoutAmount(lower)) {
             task.mode = mode
         } else {
             matched = false
@@ -125,7 +125,8 @@ enum TaskTextHints {
             task.goalTarget = amount.value
             task.goalKind = amount.kind
             task.goalUnit = amount.unit
-            task.title = title(task.title, without: NSRegularExpression.escapedPattern(for: amount.phrase), unit: amount.unit)
+            let phrase = (amount.kind == .time ? #"(\bfor\s+)?"# : "") + NSRegularExpression.escapedPattern(for: amount.phrase)
+            task.title = title(task.title, without: phrase, unit: amount.unit)
         }
         // "Groceries: milk, eggs, bread": a list, unless the parser already found its items.
         if task.type != .goal || task.goalTarget == nil, task.items.isEmpty, let list {
@@ -134,6 +135,13 @@ enum TaskTextHints {
             task.items = list.items
         }
         return task
+    }
+
+    /// The words without their amount, so a schedule just before it still reads as ending
+    /// the words ("gym mon, wed, fri 1 hour" → "gym mon, wed, fri").
+    private static func withoutAmount(_ text: String) -> String {
+        guard let amount = unitAmount(text), let at = text.range(of: amount.phrase) else { return text }
+        return text.replacingCharacters(in: at, with: " ")
     }
 
     /// The title without an amount (a pattern), and what's left cleaned up. "Do 50 pushups"
@@ -153,14 +161,16 @@ enum TaskTextHints {
     static func dailyAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, phrase: String, perDay: Double, days: Int)? {
         guard let amount = unitAmount(text), weeklyCount(text) == nil, dailyCount(text) == nil,
               let at = text.range(of: amount.phrase) else { return nil }
-        var phrase = NSRegularExpression.escapedPattern(for: amount.phrase)
-        var days = daysPerWeek(text)
-        // "10 min a day", "8 glasses of water a day": "a day" right after the amount (and
-        // what it's of), not "run 5 km in a day".
+        // "For 30 minutes" goes with its amount ("Read for 30 minutes daily" is "Read").
+        var phrase = (amount.kind == .time ? #"(\bfor\s+)?"# : "") + NSRegularExpression.escapedPattern(for: amount.phrase)
+        // The days around the amount: "Gym Mon, Wed, Fri 1 hour" too.
+        var days = daysPerWeek(text.replacingCharacters(in: at, with: " "))
+        // "10 min a day", "8 glasses of water a day", "8 hours a night": "a day" right after
+        // the amount (and what it's of), not "run 5 km in a day".
         let gap = amount.phrase.hasSuffix(" of") ? #"([a-z'’-]+\s+)?"# : ""
-        if text[at.upperBound...].range(of: #"^\s+"# + gap + #"(a|per)\s+day\b"#, options: .regularExpression) != nil {
+        if text[at.upperBound...].range(of: #"^\s+"# + gap + #"(a|per)\s+(day|night)\b"#, options: .regularExpression) != nil {
             days = days ?? 7
-            phrase += #"|\b(a|per)\s+day\b"#
+            phrase += #"|\b(a|per)\s+(day|night)\b"#
         }
         guard let days else { return nil }
         return (min(amount.value * Double(days), GoalUnitKind.maxValue), amount.kind, amount.unit, phrase, amount.value, days)
@@ -169,8 +179,11 @@ enum TaskTextHints {
     /// An amount with its unit: "90 pages" (a goal of 90 pages), "2 hours" or "45 min"
     /// (a time goal, in minutes). Not dates or times ("at 3 today", "in 2 days").
     static func unitAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, phrase: String)? {
-        if let match = text.firstMatch(of: #/\b(\d+(?:[.,]\d+)?)\s*(hours|hour|hrs|hr|h|minutes|minute|mins|min)\b/#),
-           let number = Double(match.1.replacingOccurrences(of: ",", with: ".")), number > 0 {
+        for match in text.matches(of: #/\b(\d+(?:[.,]\d+)?)\s*(hours|hour|hrs|hr|h|minutes|minute|mins|min)\b/#) {
+            // When, not how long: "call back in 2 hours", "leave in 10 min".
+            let before = text[..<match.range.lowerBound]
+            guard before.range(of: #"\b(in|at|by|before|after|until|till|from|within)\s*$"#, options: .regularExpression) == nil,
+                  let number = Double(match.1.replacingOccurrences(of: ",", with: ".")), number > 0 else { continue }
             let minutes = match.2.hasPrefix("h") ? number * 60 : number
             return (min(minutes, GoalUnitKind.maxValue), .time, "", String(match.0))
         }
@@ -229,6 +242,7 @@ enum TaskTextHints {
     private static func hasScheduleCue(_ text: String) -> Bool {
         scheduleMode(text) != nil || dailyAmount(text) != nil
             || text.contains(#/\b(again|regularly|routines?|habits?|ongoing|keep|keeps|keeping|monthly)\b/#)
+            || text.contains(#/\bevery\s+([2-6]|two|three|four|five|six|other)\s+days\b/#)
     }
 
     /// Digits, or an amount in words: "fifteen minutes", "a dozen", "half an hour", "a mile".
@@ -249,6 +263,8 @@ enum TaskTextHints {
     // MARK: Patterns
 
     private static let days = "day|morning|night|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun"
+    /// `days` without plain "day", for "on …s": "on Mondays", "on weekends", not "on days off".
+    private static let namedDays = "morning|night|evening|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun"
     private static let counts = #"(\d{1,3}\s*(x|times)|twice|once|(one|two|three|four|five|six|seven|eight|nine|ten)\s+times)"#
     private static let frequency = #"\s*(a|an|per|each|every|/)\s*(week|wk|day)\b"#
 
@@ -279,7 +295,7 @@ enum TaskTextHints {
         daysAWeek,
         // Not "every other Tuesday": that's every second week.
         "\\b(every|each)\\s+(\(days))s?\\b",
-        "\\bon\\s+(\(days))s\\b",
+        "\\bon\\s+(\(namedDays))s\\b",
         #"\b(daily|nightly|each day|every day|weekdays)\b"#,
         weekends,
     ] + weekdayListPatterns
@@ -380,11 +396,12 @@ enum TaskTextHints {
     private static func weeklyCount(_ text: String) -> (count: Int, hasFrequency: Bool)? {
         let words = ["once": 1, "twice": 2, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
                      "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10]
-        guard let match = text.firstMatch(of: #/\b(\d{1,3}|once|twice|one|two|three|four|five|six|seven|eight|nine|ten)\s*(x|times)?(\s*(a|an|per|each|every|/)\s*(week|wk)\b|\s*$)/#)
+        guard let match = text.firstMatch(of: #/\b(\d{1,3}|once|twice|one|two|three|four|five|six|seven|eight|nine|ten)\s*(x|times)?(\s*(a|an|per|each|every|/)\s*(week|wk)\b|\s+weekly\b|\s*$)/#)
         else { return nil }
         let word = String(match.1)
         let hasMultiplier = match.2 != nil   // "x" or "times"
-        let hasFrequency = match.4 != nil    // "a week", "per week", "/week"
+        // "a week", "per week", "/week", "weekly"
+        let hasFrequency = !match.3.trimmingCharacters(in: .whitespaces).isEmpty
         // Digits and number words need "x"/"times"; once and twice don't.
         guard hasMultiplier || word == "once" || word == "twice" else { return nil }
         // Without "a week", only "3x"/"3 times" ending the text counts ("run 3x"), not a
@@ -406,14 +423,14 @@ enum TaskTextHints {
         // removed at the end. So are days of this week and "sometime" ("Friday team lunch"
         // keeps its name).
         let removals = [
-            #"\b"# + counts + #"(\s*(a|an|per|each|every|/)\s*(week|wk|day)|\s+(daily|nightly))"#,
+            #"\b"# + counts + #"(\s*(a|an|per|each|every|/)\s*(week|wk|day)|\s+(daily|nightly|weekly))"#,
             daysAWeek,
             #"\b\d{1,3}\s*(x|times)\s*$"#,
             #"\b(every|each|per)\s+(week|wk)\b"#,
             #"\d\s*x?\s*/\s*(week|wk)\b"#,
         ] + weekdayListPatterns + [
             "\\b(every|each)\\s+(\(days))s?\\b",
-            "\\bon\\s+(\(days))s\\b",
+            "\\bon\\s+(\(namedDays))s\\b",
             #"\b(weekly|daily|nightly|each day|every day)\s*$"#,
             #"\b(on\s+)?weekdays\s*$"#,
             #"\bweekends\s*$"#,
