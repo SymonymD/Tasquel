@@ -59,6 +59,9 @@ struct ContentView: View {
     /// Today (the store's clock), for the day strip and the calendar. Updated when the day
     /// changes while the app is open.
     @State private var today = Date()
+    /// The bottom bar's Edit side (the wider of Edit and Done), which the Settings side
+    /// matches so the week selector stays centered.
+    @State private var editSideWidth: CGFloat = 80
     /// The week's title: 5% under .title2's 22pt, and growing with Dynamic Type like it.
     @ScaledMetric(relativeTo: .title2) private var weekTitleSize: CGFloat = 20.9
 
@@ -752,8 +755,7 @@ struct ContentView: View {
         // No spacing of its own: the spacers keep the selector clear, and on a 375pt-wide
         // phone it needs all the rest.
         HStack(spacing: 0) {
-            // Settings (in a group as wide as Edit's, so the week selector stays centered)
-            HStack(spacing: Self.barButtonGap) {
+            // Settings, in a side as wide as Edit's, so the week selector stays centered.
             Button { showSettings = true } label: {
                 Image(systemName: Theme.isRetro(theme) ? "terminal" : "gearshape.fill")
                     .font(.system(size: Self.barIconSize))
@@ -763,8 +765,7 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
-            }
-            .frame(width: Self.barSideWidth, alignment: .leading)
+            .frame(width: max(Self.barButtonSize, editSideWidth), alignment: .leading)
 
             Spacer(minLength: 4)
 
@@ -775,43 +776,53 @@ struct ContentView: View {
 
             Spacer(minLength: 4)
 
-            // Edit / Done
-            if !isPastWeek {
-                Button {
-                    withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
-                } label: {
-                    // Words, not an icon: "Edit" says what it does, and a pencil is each
-                    // card's own edit button.
-                    let color: Color = isEditing
-                        ? (Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
-                        : Theme.textSecondary(theme, rc: rc)
-                    Text(Theme.isRetro(theme) ? (isEditing ? "[DONE]" : "[EDIT]") : (isEditing ? "Done" : "Edit"))
-                        .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .headline)
-                        .foregroundStyle(color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .padding(.horizontal, Theme.isRetro(theme) ? 12 : 18)
-                        .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
-                        .background {
-                            if Theme.isRetro(theme) {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Theme.cardFill(theme))
-                                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(color, lineWidth: isEditing ? 1.5 : 1))
+            // Edit / Done. The side is as wide as the wider of the two words (both laid out,
+            // hidden), so the selector doesn't move when editing starts; the Settings side
+            // copies its width. (Sized for two buttons, the sides left the arrows ~30pt on
+            // an SE.)
+            ZStack(alignment: .trailing) {
+                editLabel(editing: false).hidden()
+                editLabel(editing: true).hidden()
+                if !isPastWeek {
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
+                    } label: {
+                        let color: Color = isEditing
+                            ? (Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
+                            : Theme.textSecondary(theme, rc: rc)
+                        editLabel(editing: isEditing)
+                            .foregroundStyle(color)
+                            .background {
+                                if Theme.isRetro(theme) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Theme.cardFill(theme))
+                                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(color, lineWidth: isEditing ? 1.5 : 1))
+                                }
                             }
-                        }
-                        .modifier(BarBackground(shape: Capsule(), theme: theme, rc: rc,
-                                                tint: isEditing ? .green.opacity(0.25) : nil, isRetroBoxed: false))
-                        .overlay { if isEditing && !Theme.isRetro(theme) { Capsule().stroke(.green, lineWidth: 1.5) } }
-                        .frame(height: Self.barButtonSize)
-                        .contentShape(Rectangle())
+                            .modifier(BarBackground(shape: Capsule(), theme: theme, rc: rc,
+                                                    tint: isEditing ? .green.opacity(0.25) : nil, isRetroBoxed: false))
+                            .overlay { if isEditing && !Theme.isRetro(theme) { Capsule().stroke(.green, lineWidth: 1.5) } }
+                            .frame(height: Self.barButtonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
-                .frame(width: Self.barSideWidth, alignment: .trailing)
-            } else {
-                Color.clear.frame(width: Self.barSideWidth, height: Self.barButtonSize)
             }
+            .frame(minWidth: Self.barButtonSize, minHeight: Self.barButtonSize, alignment: .trailing)
+            .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { editSideWidth = $0 }
         }
+    }
+
+    /// Edit or Done in words, not an icon: "Edit" says what it does, and a pencil is each
+    /// card's own edit button.
+    private func editLabel(editing: Bool) -> some View {
+        Text(Theme.isRetro(theme) ? (editing ? "[DONE]" : "[EDIT]") : (editing ? "Done" : "Edit"))
+            .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .headline)
+            .lineLimit(1)
+            .padding(.horizontal, Theme.isRetro(theme) ? 12 : 18)
+            .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
     }
 
     /// The viewed week, between the Tasquel mark (back to this week) and Open/Close All.
@@ -885,9 +896,7 @@ struct ContentView: View {
     private static let barIconSize: CGFloat = 24
     private static let barButtonSize: CGFloat = 52
     /// Between Settings and the calendar toggle, so their glass stays apart.
-    private static let barButtonGap: CGFloat = 8
     /// The groups either side of the week selector, the same width so it stays centered.
-    private static let barSideWidth: CGFloat = barButtonSize * 2 + barButtonGap
 
     private static func barButtonShape(_ theme: AppearanceMode) -> AnyShape {
         Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Circle())
@@ -1301,30 +1310,41 @@ struct ContentView: View {
     /// A card's open and editing state, place and sort rank follow it to its new key.
     private func moveCardKey(_ old: CategoryLayoutKey, to new: CategoryLayoutKey) {
         guard old != new else { return }
-        let move = { (key: CategoryLayoutKey) in key == old ? new : key }
-        if expandedCategoryKeys.remove(old) != nil { expandedCategoryKeys.insert(new) }
-        if editingCategoryKeys.remove(old) != nil { editingCategoryKeys.insert(new) }
-        if expandedBeforeEditing.remove(old) != nil { expandedBeforeEditing.insert(new) }
-        categoryDisplayOrder = categoryDisplayOrder.map(move)
-        lastToggledCategory = lastToggledCategory.map(move)
-        // The card isn't rebuilt by the rename, so its place for dragging moves with it.
-        for day in cardFrameStore.frames.keys {
-            if let frame = cardFrameStore.frames[day]?.removeValue(forKey: old) {
-                cardFrameStore.frames[day]?[new] = frame
-            }
-        }
-        // A renamed card keeps its place in a sorted order.
-        if old.name != new.name { sortedNames = sortedNames.map { $0 == old.name ? new.name : $0 } }
+        remapCardKeys([old: new])
     }
 
-    /// A deleted card is forgotten, so it can't reopen when Edit ends or come back open
-    /// when a category with its name is added again.
-    private func forgetCardKey(_ key: CategoryLayoutKey) {
-        expandedCategoryKeys.remove(key)
-        editingCategoryKeys.remove(key)
-        expandedBeforeEditing.remove(key)
-        categoryDisplayOrder.removeAll { $0 == key }
-        if lastToggledCategory == key { lastToggledCategory = nil }
+    /// Moves cards' state to new keys, and forgets deleted cards (a nil key), all at once
+    /// from the state as it was. (One at a time, in a dictionary's order, forgetting a
+    /// deleted "Work" could take the state just moved to its key by the second "Work",
+    /// closing it.) A forgotten card can't reopen when Edit ends or come back open when a
+    /// category with its name is added again. Keys not in `changes` stay as they are.
+    private func remapCardKeys(_ changes: [CategoryLayoutKey: CategoryLayoutKey?]) {
+        guard !changes.isEmpty else { return }
+        func remap(_ key: CategoryLayoutKey) -> CategoryLayoutKey? {
+            if let change = changes[key] { return change }
+            return key
+        }
+        expandedCategoryKeys = Set(expandedCategoryKeys.compactMap(remap))
+        editingCategoryKeys = Set(editingCategoryKeys.compactMap(remap))
+        expandedBeforeEditing = Set(expandedBeforeEditing.compactMap(remap))
+        categoryDisplayOrder = categoryDisplayOrder.compactMap(remap)
+        lastToggledCategory = lastToggledCategory.flatMap(remap)
+        // The card isn't rebuilt by a rename, so its place for dragging moves with it (a
+        // moved card's frame wins over a stale one left at its new key).
+        for day in Array(cardFrameStore.frames.keys) {
+            guard let frames = cardFrameStore.frames[day] else { continue }
+            var remapped = frames.filter { changes[$0.key] == nil }
+            for (key, frame) in frames {
+                if let change = changes[key], let new = change { remapped[new] = frame }
+            }
+            cardFrameStore.frames[day] = remapped
+        }
+        // A renamed card keeps its place in a sorted order.
+        var renamed: [String: String] = [:]
+        for (old, change) in changes {
+            if let new = change, new.name != old.name { renamed[old.name] = new.name }
+        }
+        if !renamed.isEmpty { sortedNames = sortedNames.map { renamed[$0] ?? $0 } }
     }
 
     /// The viewed week's categories by ID, to notice renames made outside the card (Saved
@@ -1355,9 +1375,11 @@ struct ContentView: View {
             return keys
         }
         let before = keys(old.categories), after = keys(new.categories)
-        for (id, key) in before {
-            if let moved = after[id] { moveCardKey(key, to: moved) } else { forgetCardKey(key) }
+        var changes: [CategoryLayoutKey: CategoryLayoutKey?] = [:]
+        for (id, key) in before where after[id] != key {
+            changes[key] = .some(after[id])  // nil: deleted
         }
+        remapCardKeys(changes)
     }
 
     private func collapseCategory(_ key: CategoryLayoutKey) {

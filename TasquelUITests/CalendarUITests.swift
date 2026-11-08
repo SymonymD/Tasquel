@@ -59,6 +59,56 @@ final class CalendarUITests: XCTestCase {
         XCTAssertFalse(plain.buttons["Events"].exists)
     }
 
+    /// On another week the calendar sheet has This Week (at its top left): on Events it
+    /// brings the cards and events back to this week and stays open; on Weeks it goes there
+    /// and closes. On this week it isn't there.
+    @MainActor
+    func testThisWeekButton() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData", "-fakeCalendar"]
+        app.launch()
+        let calendar = app.buttons["Calendar and events"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10))
+        let title = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch
+        let thisWeek = title.label
+        // In the sheet's bar (the Tasquel mark behind it is "This Week" to VoiceOver too).
+        let backToThisWeek = app.navigationBars.buttons["This Week"]
+
+        calendar.tap()
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForExistence(timeout: 3))
+        XCTAssertFalse(backToThisWeek.exists, "not while on this week")
+        app.buttons["Done"].firstMatch.tap()
+
+        // Events: back to this week, the sheet stays.
+        app.buttons["Next week"].tap()
+        XCTAssertTrue(waitForLabel(of: title, toDifferFrom: thisWeek))
+        calendar.tap()
+        XCTAssertTrue(backToThisWeek.waitForExistence(timeout: 3), "on another week")
+        backToThisWeek.tap()
+        XCTAssertTrue(app.staticTexts["This Week's Events"].waitForExistence(timeout: 3), "this week's events, still in the sheet")
+        XCTAssertTrue(backToThisWeek.waitForNonExistence(timeout: 3))
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertEqual(title.label, thisWeek, "the cards came back too")
+
+        // Weeks: back to this week, and the sheet closes.
+        app.buttons["Previous week"].tap()
+        XCTAssertTrue(waitForLabel(of: title, toDifferFrom: thisWeek))
+        calendar.tap()
+        app.buttons["Weeks"].tap()
+        XCTAssertTrue(app.buttons["Go"].waitForExistence(timeout: 3), "Go and Cancel are at the bottom")
+        XCTAssertTrue(app.buttons["Cancel"].exists)
+        backToThisWeek.tap()
+        XCTAssertTrue(app.buttons["Weeks"].waitForNonExistence(timeout: 3), "the sheet closed")
+        XCTAssertEqual(title.label, thisWeek)
+    }
+
+    @MainActor
+    private func waitForLabel(of element: XCUIElement, toDifferFrom label: String) -> Bool {
+        let changed = expectation(for: NSPredicate(format: "label != %@", label), evaluatedWith: element)
+        return XCTWaiter.wait(for: [changed], timeout: 3) == .completed
+    }
+
     /// Turning calendar events on in Settings turns the calendar button green with a person
     /// and gives its sheet the viewed week's events; turning them off again goes back.
     @MainActor

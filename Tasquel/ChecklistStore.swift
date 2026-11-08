@@ -833,6 +833,7 @@ final class ChecklistStore {
         newTask.goalUnit = task.goalUnit
         newTask.goalUnitKind = task.goalUnitKind
         newTask.goalStep = task.goalStep
+        newTask.goalDays = task.goalDays
         newTask.carriedFrom = task.id
         return newTask
     }
@@ -849,6 +850,7 @@ final class ChecklistStore {
         copy.goalUnit = task.goalUnit
         copy.goalUnitKind = task.goalUnitKind
         copy.goalStep = task.goalStep
+        copy.goalDays = task.goalDays
         let checked = Set(task.subtasks.filter(\.isCompleted).map(\.title))
         copy.subtasks.removeAll { checked.contains($0.title) }
         let present = Set(copy.subtasks.map(\.title))
@@ -944,6 +946,7 @@ final class ChecklistStore {
         copy.goalUnit = task.goalUnit
         copy.goalUnitKind = task.goalUnitKind
         copy.goalStep = task.goalStep
+        copy.goalDays = task.goalDays
         if task.taskType != .goal { copy.goalProgress = nil }
         if task.taskType == .list {
             let sourceTitles = Set(task.subtasks.map(\.title))
@@ -975,6 +978,7 @@ final class ChecklistStore {
         newTask.goalUnit = task.goalUnit
         newTask.goalUnitKind = task.goalUnitKind
         newTask.goalStep = task.goalStep
+        newTask.goalDays = task.goalDays
         newTask.repeatsFrom = task.id
         return newTask
     }
@@ -1321,6 +1325,7 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].goalUnit = nil
             weeks[wi].categories[ci].tasks[ti].goalUnitKind = nil
             weeks[wi].categories[ci].tasks[ti].goalStep = nil
+            weeks[wi].categories[ci].tasks[ti].goalDays = nil
         }
         // Done or not as its new type counts it: a goal when its target is met (a new one
         // has none yet), a list when it has items and all are checked. A checkbox keeps it.
@@ -1356,13 +1361,16 @@ final class ChecklistStore {
     }
 
     /// Sets the step for a goal's + and − buttons; nil (or not above zero) means automatic.
-    func setGoalStep(categoryID: UUID, taskID: UUID, step: Double?) {
+    /// `days` keeps a per-day goal's link between step and target (`goalDays`); nil ends it.
+    func setGoalStep(categoryID: UUID, taskID: UUID, step: Double?, days: Int? = nil) {
         let step = step.flatMap { $0.isFinite && $0 > 0 ? min($0, GoalUnitKind.maxValue) : nil }
-        guard viewedTask(categoryID, taskID).map({ $0.goalStep != step }) == true,
+        let days = step == nil ? nil : days.flatMap { (1...7).contains($0) ? $0 : nil }
+        guard viewedTask(categoryID, taskID).map({ $0.goalStep != step || $0.goalDays != days }) == true,
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalStep = step
+        weeks[wi].categories[ci].tasks[ti].goalDays = days
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
         noteEdit(categoryID)
         save()

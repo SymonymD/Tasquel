@@ -161,6 +161,10 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// How much the goal's + and − buttons add or take away (minutes for time goals).
     /// `nil` picks one from the target.
     var goalStep: Double? = nil
+    /// For a goal set up per day ("meditate 10 min daily"): the days a week it counts, so
+    /// its target is the step times this (70 min is 10 min × 7), and changing the step in
+    /// the editor changes the target with it. `nil` for other goals.
+    var goalDays: Int? = nil
     /// For a task carried over from the week before: the task it was copied from.
     var carriedFrom: UUID? = nil
     /// For a repeating task's copy in a later week: the task it repeats, so renames and
@@ -219,6 +223,7 @@ extension ChecklistTask {
         goalUnit = try container.decodeIfPresent(String.self, forKey: .goalUnit)
         goalUnitKind = try? container.decodeIfPresent(GoalUnitKind.self, forKey: .goalUnitKind)
         goalStep = try? container.decodeIfPresent(Double.self, forKey: .goalStep)
+        goalDays = (try? container.decodeIfPresent(Int.self, forKey: .goalDays)).flatMap { (1...7).contains($0) ? $0 : nil }
         carriedFrom = try container.decodeIfPresent(UUID.self, forKey: .carriedFrom)
         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false

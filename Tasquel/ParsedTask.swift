@@ -15,6 +15,10 @@ struct ParsedTask: Equatable {
     var goalKind: GoalUnitKind = .quantity
     /// A custom goal's unit ("pages").
     var goalUnit = ""
+    /// For an amount per day ("meditate 10 min daily"): the day's amount, as the goal's
+    /// step, and the days a week it counts (`ChecklistTask.goalDays`).
+    var goalStep: Double?
+    var goalDays: Int?
     /// A list's items.
     var items: [String] = []
 }
@@ -50,6 +54,12 @@ extension ChecklistStore {
             task.goalUnit = parsed.goalKind == .custom && !parsed.goalUnit.isEmpty ? parsed.goalUnit : nil
             if let target = parsed.goalTarget, target.isFinite, target > 0 {
                 task.goalTarget = min(target, GoalUnitKind.maxValue)
+                // A day's amount steps the goal a day at a time (10 min, not the 15 a
+                // 70-minute target would pick).
+                if let step = parsed.goalStep, step.isFinite, step > 0 {
+                    task.goalStep = min(step, GoalUnitKind.maxValue)
+                    task.goalDays = parsed.goalDays.flatMap { (1...7).contains($0) ? $0 : nil }
+                }
             }
         case .list:
             task.subtasks = parsed.items
@@ -91,6 +101,8 @@ enum TaskTextHints {
             task.goalTarget = daily.value
             task.goalKind = daily.kind
             task.goalUnit = daily.unit
+            task.goalStep = daily.perDay
+            task.goalDays = daily.days
             // "10 min a day" is a schedule too.
             if !matched { task.mode = .repeating }
             task.title = title(task.title, without: daily.phrase, unit: daily.unit)
@@ -138,7 +150,7 @@ enum TaskTextHints {
     /// 70 minutes, "read 20 pages on weekdays" 100 pages, "drink 8 glasses of water a day"
     /// 56 glasses. `phrase` is a pattern for the amount (and "a day") in the title. Not
     /// with a count ("take 2 pills twice a day" is left to the count).
-    static func dailyAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, phrase: String)? {
+    static func dailyAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, phrase: String, perDay: Double, days: Int)? {
         guard let amount = unitAmount(text), weeklyCount(text) == nil, dailyCount(text) == nil,
               let at = text.range(of: amount.phrase) else { return nil }
         var phrase = NSRegularExpression.escapedPattern(for: amount.phrase)
@@ -151,7 +163,7 @@ enum TaskTextHints {
             phrase += #"|\b(a|per)\s+day\b"#
         }
         guard let days else { return nil }
-        return (min(amount.value * Double(days), GoalUnitKind.maxValue), amount.kind, amount.unit, phrase)
+        return (min(amount.value * Double(days), GoalUnitKind.maxValue), amount.kind, amount.unit, phrase, amount.value, days)
     }
 
     /// An amount with its unit: "90 pages" (a goal of 90 pages), "2 hours" or "45 min"
@@ -193,6 +205,8 @@ enum TaskTextHints {
         let lower = text.lowercased()
         if task.type == .goal, !hasAmount(lower), goalCount(lower) == nil {
             task.goalTarget = nil
+            task.goalStep = nil
+            task.goalDays = nil
             task.type = .checkbox
         }
         // `refine` runs after, so a schedule it reads still wins.

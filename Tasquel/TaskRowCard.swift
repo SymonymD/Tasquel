@@ -92,6 +92,9 @@ struct TaskRowCard: View {
     @State private var goalUnitText = ""
     /// The goal editor's Step; empty means automatic.
     @State private var goalStepInput = GoalAmountInput()
+    /// While editing a per-day goal: its days (`goalDays`), so the target follows the step.
+    /// Nil once the target is typed by hand: it's the user's then.
+    @State private var goalDaysLink: Int?
     @State private var isEditingGoal = false
     /// When the first + tap brought − in (see `goalSteps`).
     @State private var minusAppearedAt = Date.distantPast
@@ -245,12 +248,18 @@ struct TaskRowCard: View {
                                     withAnimation(reduceMotion ? nil : .easeIn(duration: 0.2)) { isAddingSubtask = false }
                                 }
                         } else {
-                            // Holds the open row's height, so opening it moves nothing below.
+                            // Holds the open row's height, so opening it moves nothing below,
+                            // with the field's words where they'll be ("Add Item").
                             Text(" ")
                                 .font(.expandedCard(.caption1))
                                 .cardField(theme, rc: rc, outset: true)
                                 .frame(maxWidth: .infinity)
                                 .hidden()
+                                .overlay(alignment: .leading) {
+                                    PlusRowLabel(text: subtaskPlaceholder,
+                                                 font: .expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default),
+                                                 theme: theme, rc: rc, action: openSubtaskField)
+                                }
                         }
                     }
                     .padding(.leading, 24 * expandedCardScale)
@@ -614,6 +623,12 @@ struct TaskRowCard: View {
                 goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
             }
             goalHint(goalStepInput.problem(for: goalKindSelection))
+            // A per-day goal ("meditate 10 min daily"): the step is a day's amount.
+            if let days = goalDaysLink {
+                Text("Step × \(days) days = Target")
+                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                    .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            }
             ViewThatFits(in: .horizontal) {
                 editGoalButtons(stacked: false)
                 editGoalButtons(stacked: true)
@@ -622,6 +637,14 @@ struct TaskRowCard: View {
         .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
+        .onChange(of: goalStepInput) { _, step in
+            guard let days = goalDaysLink,
+                  let target = GoalAmountInput.perDayTarget(step: step, days: days, kind: goalKindSelection) else { return }
+            goalTargetInput = target
+        }
+        .onChange(of: goalTargetInput) { _, _ in
+            if focusedGoalField?.field == .target { goalDaysLink = nil }
+        }
     }
 
     /// Delete Task, Cancel and Save Goal: in a row, or one above another (Save on top)
@@ -782,9 +805,9 @@ struct TaskRowCard: View {
     private var subtaskPlaceholder: String {
         switch (task.taskType == .list, Theme.isRetro(theme)) {
         case (true, true): "add_item>"
-        case (true, false): "Add item"
+        case (true, false): "Add Item"
         case (false, true): "sub_task>"
-        case (false, false): "Add sub-task"
+        case (false, false): "Add Sub-task"
         }
     }
 
@@ -844,6 +867,7 @@ struct TaskRowCard: View {
         goalTargetInput = GoalAmountInput(target, kind: kind)
         goalUnitText = task.goalUnit ?? ""
         goalStepInput = task.goalStep.map { GoalAmountInput($0, kind: kind) } ?? GoalAmountInput()
+        goalDaysLink = task.goalStep == nil ? nil : task.goalDays
         isEditingGoal = true
     }
 
@@ -851,6 +875,7 @@ struct TaskRowCard: View {
         isEditingGoal = false
         goalTargetInput = GoalAmountInput()
         goalStepInput = GoalAmountInput()
+        goalDaysLink = nil
         goalUnitText = ""
         focusedGoalField = nil
     }
@@ -870,7 +895,8 @@ struct TaskRowCard: View {
            let carried = GoalAmountInput(progress, kind: oldKind).converted(from: oldKind, to: goalKindSelection).value(for: goalKindSelection) {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: carried)
         }
-        store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection))
+        store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection),
+                          days: goalDaysLink)
         closeGoalEditing()
     }
 
@@ -1021,6 +1047,28 @@ private struct PlusOpener<Icon: View>: View {
                     .accessibilityHint(hint)
                 }
             }
+    }
+}
+
+/// A closed + row's words ("Add Task", "Add Item"): light like the field's placeholder and
+/// where it will be, so the field opens around them. A tap on them opens it too; VoiceOver
+/// has the + button for that.
+private struct PlusRowLabel: View {
+    let text: String
+    let font: Font
+    let theme: AppearanceMode
+    let rc: RetroColor
+    let action: () -> Void
+
+    var body: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .hiddenFromVoiceOver()
     }
 }
 
@@ -1181,6 +1229,13 @@ struct GoalAmountInput: Equatable {
     var number = ""
     var hours = ""
     var minutes = ""
+
+    /// A per-day goal's target for a step: the step × its days (20 min × 7 is 2h 20m),
+    /// capped like any goal. Nil while the step isn't a valid amount.
+    static func perDayTarget(step: GoalAmountInput, days: Int, kind: GoalUnitKind) -> GoalAmountInput? {
+        guard let value = step.positiveValue(for: kind) else { return nil }
+        return GoalAmountInput(min(value * Double(days), GoalUnitKind.maxValue), kind: kind)
+    }
 
     init() {}
 
@@ -1381,6 +1436,10 @@ struct SubTaskRowCard: View {
 struct AddTaskRowCard: View {
     let categoryID: UUID
     let store: ChecklistStore
+    /// The card is in its own edit mode. The row shows nothing then (the This week only
+    /// switch takes its place) but stays, so a Smart Add still working adds its task when
+    /// it's done, and what's typed is added as editing starts. (Removed, it lost both.)
+    var isEditing = false
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -1460,7 +1519,7 @@ struct AddTaskRowCard: View {
         if Theme.isRetro(theme) {
             return "new_" + (mode.map { $0.replacingOccurrences(of: "-", with: "_") + "_" } ?? "") + kind + ">"
         }
-        return addPlaceholderSpoken
+        return addPlaceholderSpoken.capitalized  // "Add Task", "Add Repeating Goal"
     }
 
     /// The placeholder in words, for VoiceOver (also in Retro).
@@ -1480,26 +1539,41 @@ struct AddTaskRowCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Above the row, under the task it describes. (Below, it read as describing the
-            // empty field.)
-            if let result = smartAddResult {
-                smartAddMessage(result)
-                    // (Never faded with VoiceOver: see the timer.)
-                    .opacity(result.isFaded ? 0 : 1)
-                    .disabled(result.isFaded)
-                    .transition(.opacity)
+            if isEditing {
+                Color.clear.frame(height: 0)
+            } else {
+                // Above the row, under the task it describes. (Below, it read as describing
+                // the empty field.)
+                if let result = smartAddResult {
+                    smartAddMessage(result)
+                        // (Never faded with VoiceOver: see the timer.)
+                        .opacity(result.isFaded ? 0 : 1)
+                        .disabled(result.isFaded)
+                        .transition(.opacity)
+                }
+                addRow
+                    .id(rowID)
+                    // The keyboard's Done adds a typed task rather than leaving it in the field.
+                    .onChange(of: store.keyboardDoneRequests) {
+                        if isFocused { addTask(keepTyping: false) }
+                    }
+                    // Closing the options with nothing typed, and no keyboard, closes the field.
+                    .onChange(of: showOptions) { _, shown in
+                        if !shown { closeFieldIfIdle() }
+                    }
             }
-            addRow
-                .id(rowID)
-                // The keyboard's Done adds a typed task rather than leaving it in the field.
-                .onChange(of: store.keyboardDoneRequests) {
-                    if isFocused { addTask(keepTyping: false) }
-                }
-                // Closing the options with nothing typed, and no keyboard, closes the field.
-                .onChange(of: showOptions) { _, shown in
-                    if !shown { closeFieldIfIdle() }
-                }
-                .sensoryFeedback(.success, trigger: smartAddCount)
+        }
+        .sensoryFeedback(.success, trigger: smartAddCount)
+        // Editing starts: what's typed is added as it is (a sub-task's is too), as when the
+        // keyboard goes. A Smart Add still working adds its own task when it's done.
+        .onChange(of: isEditing) { _, editing in
+            guard editing else { return }
+            showOptions = false
+            if !isParsing, newTitle.trimmingCharacters(in: .whitespaces).count > 1 {
+                addTask(keepTyping: false)
+            }
+            isFocused = false
+            isFieldOpen = false
         }
         .task(id: smartAddResult?.token) {
             // With VoiceOver it stays (until the next task is added), so Undo can be reached.
@@ -1653,12 +1727,18 @@ struct AddTaskRowCard: View {
                 }
                 .transition(.opacity)
             } else {
-                // Holds the open row's height, so opening it moves nothing below.
+                // Holds the open row's height, so opening it moves nothing below, with the
+                // field's words where they'll be ("Add Task").
                 Text(" ")
                     .font(.expandedCard(.subheadline))
                     .cardField(theme, rc: rc, outset: true)
                     .frame(maxWidth: .infinity)
                     .hidden()
+                    .overlay(alignment: .leading) {
+                        PlusRowLabel(text: addPlaceholder,
+                                     font: .expandedCard(.subheadline, design: Theme.isRetro(theme) ? .monospaced : .default),
+                                     theme: theme, rc: rc, action: openField)
+                    }
             }
         }
     }
@@ -1756,6 +1836,8 @@ struct AddTaskRowCard: View {
             parsed.type = newType
             parsed.items = []
             parsed.goalTarget = nil
+            parsed.goalStep = nil
+            parsed.goalDays = nil
         }
         // A goal without an amount takes the keyboard for its target; a list without
         // items, for its first item.

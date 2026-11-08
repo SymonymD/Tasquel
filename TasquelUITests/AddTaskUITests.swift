@@ -38,4 +38,26 @@ final class AddTaskUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 1))
         XCTAssertEqual(field.value(forKey: "hasKeyboardFocus") as? Bool, true)
     }
+
+    /// The closed row says "Add Task" beside the + (light, where the field's placeholder
+    /// will be), and a tap on the words opens the field as the + does.
+    @MainActor
+    func testAddTaskLabelOpensField() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-isolatedData"]
+        app.launch()
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { app.buttons["Skip"].tap() }
+        let fitness = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Fitness,")).firstMatch
+        XCTAssertTrue(fitness.waitForExistence(timeout: 5))
+        fitness.tap()
+        let plus = app.buttons["Add task"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 3))
+        // The words start a little right of the +.
+        plus.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 70, dy: 0)).tap()
+        let field = app.textFields["Add task"]
+        XCTAssertTrue(field.waitForExistence(timeout: 1))
+        XCTAssertEqual(field.placeholderValue, "Add Task", "the words it showed")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 1))
+    }
 }

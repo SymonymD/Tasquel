@@ -170,7 +170,7 @@ final class CardStateUITests: XCTestCase {
         card("Fitness").tap()
         let field = app.addTaskField
         XCTAssertTrue(field.waitForExistence(timeout: 3))
-        XCTAssertEqual(field.placeholderValue, "Add task")
+        XCTAssertEqual(field.placeholderValue, "Add Task")
         field.tap()
         field.typeText("Run")
         app.buttons["New task options: Checkbox, One-Time"].tap()
@@ -181,7 +181,7 @@ final class CardStateUITests: XCTestCase {
         field.typeText("\n")
         XCTAssertTrue(app.buttons["Task options: Goal, One-Time"].waitForExistence(timeout: 3))
         // The new goal took the keyboard for its target, so the empty field folded to its +.
-        XCTAssertEqual(app.addTaskField.placeholderValue, "Add goal", "the next task will be a goal, and the field says so")
+        XCTAssertEqual(app.addTaskField.placeholderValue, "Add Goal", "the next task will be a goal, and the field says so")
     }
 
     /// Return adds each task and keeps the keyboard for the next; typing straight on after
@@ -199,7 +199,7 @@ final class CardStateUITests: XCTestCase {
         let titles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Complete ")).allElementsBoundByIndex.map(\.label)
         XCTAssertEqual(titles, ["Complete Alpha", "Complete Bravo", "Complete Charlie", "Complete Delta"])
         XCTAssertTrue(app.keyboards.firstMatch.exists, "the keyboard stayed up")
-        XCTAssertEqual(field.value as? String ?? "", "Add task", "the field is empty again (its placeholder shows)")
+        XCTAssertEqual(field.value as? String ?? "", "Add Task", "the field is empty again (its placeholder shows)")
     }
 
     private func card(_ name: String) -> XCUIElement {

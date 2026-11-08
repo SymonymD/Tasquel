@@ -246,4 +246,33 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Smart Add"].waitForExistence(timeout: 2))
         sleep(1)  // the row and keyboard have settled (an iPad may still be rotating back)
     }
+
+    /// The card's edit button while Smart Add works: the add row goes for edit mode, but the
+    /// task is still added when Smart Add is done.
+    @MainActor
+    func testEditingCardWhileWorking() throws {
+        typeInFitness("run 3x per week")
+        app.buttons["Smart Add"].tap()
+        app.buttons["Edit Fitness"].tap()
+        XCTAssertTrue(app.buttons["Done editing Fitness"].waitForExistence(timeout: 2))
+        sleep(4)  // Smart Add (2s here) finishes while the card is in edit mode
+        app.buttons["Done editing Fitness"].tap()
+        XCTAssertTrue(app.buttons["Task options: Goal, Repeating"].waitForExistence(timeout: 5), "the task was added")
+        XCTAssertEqual(taskCount, 1)
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3), "the add row is back")
+    }
+
+    /// Words typed but not added when the card's edit button is tapped are added as they
+    /// are, as a sub-task's are.
+    @MainActor
+    func testEditingCardAddsTypedTask() throws {
+        typeInFitness("Buy new shoes")
+        app.buttons["Edit Fitness"].tap()
+        XCTAssertTrue(app.buttons["Done editing Fitness"].waitForExistence(timeout: 2))
+        app.buttons["Done editing Fitness"].tap()
+        XCTAssertTrue(app.staticTexts["Buy new shoes"].waitForExistence(timeout: 3), "the typed task was added")
+        XCTAssertEqual(taskCount, 1)
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.textFields["Add task"].exists, "and isn't still in the field: it's back to the +")
+    }
 }

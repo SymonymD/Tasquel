@@ -79,4 +79,27 @@ final class BottomBarUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 3))
         sleep(1)
     }
+
+    /// The week selector's arrows are a full 44pt wide: each side of the bar is only as
+    /// wide as Edit (sized for two buttons, they left the arrows ~30pt on an SE, 39pt on
+    /// this phone). The selector stays centered, also while editing.
+    @MainActor
+    func testWeekArrowsAreFullSize() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-isolatedData"]
+        app.launch()
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { app.buttons["Skip"].tap() }
+        let previous = app.buttons["Previous week"], next = app.buttons["Next week"]
+        XCTAssertTrue(previous.waitForExistence(timeout: 5))
+        for arrow in [previous, next] {
+            XCTAssertGreaterThanOrEqual(arrow.frame.width, 44, arrow.label)
+        }
+        let middle = app.buttons["Go to week"].frame.midX
+        XCTAssertEqual(middle, app.windows.firstMatch.frame.midX, accuracy: 1, "centered")
+        app.buttons["Edit"].tap()
+        XCTAssertTrue(app.buttons["Done Editing"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.buttons["Go to week"].frame.midX, middle, accuracy: 0.5, "doesn't move for Done")
+        XCTAssertGreaterThanOrEqual(previous.frame.width, 44)
+    }
 }

@@ -66,11 +66,33 @@ struct CalendarSheet<Events: View>: View {
 
     private var isPickingWeek: Bool { side == .weeks || !showsEvents }
 
+    /// The week today is in.
+    private var thisWeekStart: Date { Week.startOfWeek(containing: today, firstWeekday: firstWeekday) }
+
+    /// This Week shows only on another week, as a visible way back (the Tasquel mark on the
+    /// main screen does the same, but doesn't say so).
+    private var isOnThisWeek: Bool {
+        eventsWeek.map { $0 == DayKey(thisWeekStart, in: .weekDates()) } ?? true
+    }
+
+    /// Back to this week: on Events the cards and events come back and the sheet stays; on
+    /// Weeks it goes there and closes, like Go.
+    private func goToThisWeek() {
+        guard !isPaging else { return }
+        onSelectWeek(thisWeekStart)
+        if isPickingWeek { dismiss() }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if isPickingWeek {
-                    WeekPickerCalendar(weekStart: $weekStart, firstWeekday: firstWeekday, today: today, theme: theme, rc: rc)
+                    WeekPickerCalendar(weekStart: $weekStart, firstWeekday: firstWeekday, today: today, theme: theme, rc: rc,
+                                       onCancel: { dismiss() },
+                                       onGo: {
+                                           onSelectWeek(weekStart)
+                                           dismiss()
+                                       })
                 } else {
                     ScrollView {
                         ZStack(alignment: .top) {
@@ -120,17 +142,15 @@ struct CalendarSheet<Events: View>: View {
                         .fixedSize()
                     }
                 }
-                if isPickingWeek {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+                // The top left is This Week's, so on Weeks, Cancel and Go sit at the bottom
+                // beside the picked week.
+                if !isOnThisWeek {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("This Week", action: goToThisWeek)
+                            .accessibilityHint("Goes back to the week you're in")
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Go") {
-                            onSelectWeek(weekStart)
-                            dismiss()
-                        }
-                    }
-                } else {
+                }
+                if !isPickingWeek {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
@@ -220,17 +240,22 @@ struct WeekPickerCalendar: View {
     let today: Date
     let theme: AppearanceMode
     let rc: RetroColor
+    let onCancel: () -> Void
+    let onGo: () -> Void
 
     /// The first day of each month shown. Set when the picker opens (and by Earlier), so
     /// picking a week in another month doesn't shift the list under the finger.
     @State private var months: [Date]
 
-    init(weekStart: Binding<Date>, firstWeekday: Int, today: Date, theme: AppearanceMode, rc: RetroColor) {
+    init(weekStart: Binding<Date>, firstWeekday: Int, today: Date, theme: AppearanceMode, rc: RetroColor,
+         onCancel: @escaping () -> Void, onGo: @escaping () -> Void) {
         _weekStart = weekStart
         self.firstWeekday = firstWeekday
         self.today = today
         self.theme = theme
         self.rc = rc
+        self.onCancel = onCancel
+        self.onGo = onGo
         let calendar = Self.calendar(firstWeekday)
         let month = calendar.dateInterval(of: .month, for: weekStart.wrappedValue)?.start
         _months = State(initialValue: month.map { month in
@@ -269,13 +294,22 @@ struct WeekPickerCalendar: View {
             .padding(.vertical, 12)
         }
         .safeAreaInset(edge: .bottom) {
-            Text("Week of \(weekStart.formatted(.dateTime.month(.abbreviated).day().year()))")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(.bar)
-                .accessibilityLabel("Picked: week of \(weekStart.formatted(.dateTime.month(.wide).day().year()))")
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer(minLength: 8)
+                Text("Week of \(weekStart.formatted(.dateTime.month(.abbreviated).day().year()))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityLabel("Picked: week of \(weekStart.formatted(.dateTime.month(.wide).day().year()))")
+                Spacer(minLength: 8)
+                Button("Go", action: onGo)
+                    .fontWeight(.semibold)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.bar)
         }
     }
 

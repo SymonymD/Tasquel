@@ -2391,6 +2391,77 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     #expect(category().tasks[0].goalStep == nil, "cleared back to automatic")
 }
 
+/// An amount per day steps the goal a day at a time: "meditate 10 min daily" is 70 min
+/// with a 10 min step (not the 15 a 70-minute target would pick), counting 7 days.
+@Test(arguments: [
+    ("meditate 10 min daily", 10.0, 7),
+    ("read 20 pages on weekdays", 20, 5),
+    ("Drink 8 glasses of water a day", 8, 7),
+    ("practice piano 30 min Mon, Wed, Fri", 30, 3),
+] as [(String, Double, Int)])
+func smartAddPerDayGoals(text: String, step: Double, days: Int) {
+    let task = smartAddRules(text)
+    #expect(task.goalStep == step)
+    #expect(task.goalDays == days)
+    #expect(task.goalTarget == step * Double(days))
+}
+
+/// Other goals have no day's amount: their step is left to pick itself.
+@Test func smartAddOtherGoalsHaveNoDays() {
+    for text in ["read 90 pages", "Run 3x per week", "Meditate daily", "Run 5 km in a day"] {
+        let task = smartAddRules(text)
+        #expect(task.goalStep == nil, "\(text)")
+        #expect(task.goalDays == nil, "\(text)")
+    }
+}
+
+/// A per-day goal keeps its step and days when added, in next week's copy, and in the
+/// store's step setter; clearing the step (automatic) ends the link.
+@Test func perDayGoalIsKept() {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    func task() -> ChecklistTask { category().tasks.first { $0.title == "Meditate" }! }
+    let parsed = ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 70, goalKind: .time,
+                            goalStep: 10, goalDays: 7)
+    let id = store.addParsedTask(parsed, categoryID: category().id)!
+    #expect(task().goalStep == 10)
+    #expect(task().goalDays == 7)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(task().goalDays == 7, "the repeating copy keeps its days")
+    store.navigateToDate(clock.now)
+    store.setGoalStep(categoryID: category().id, taskID: id, step: 20, days: 7)
+    #expect(task().goalStep == 20)
+    #expect(task().goalDays == 7)
+    store.setGoalStep(categoryID: category().id, taskID: id, step: 20, days: nil)
+    #expect(task().goalDays == nil, "a target typed by hand ends the link")
+    store.setGoalStep(categoryID: category().id, taskID: id, step: nil, days: 7)
+    #expect(task().goalStep == nil)
+    #expect(task().goalDays == nil, "no days without a step")
+}
+
+/// The editor's target for a per-day goal's step: step × days, capped like any goal.
+@Test func perDayTargetFollowsTheStep() {
+    #expect(GoalAmountInput.perDayTarget(step: GoalAmountInput(20, kind: .time), days: 7, kind: .time) == GoalAmountInput(140, kind: .time))
+    #expect(GoalAmountInput.perDayTarget(step: GoalAmountInput(8, kind: .custom), days: 5, kind: .custom) == GoalAmountInput(40, kind: .custom))
+    #expect(GoalAmountInput.perDayTarget(step: GoalAmountInput(), days: 7, kind: .time) == nil, "no step typed")
+    #expect(GoalAmountInput.perDayTarget(step: GoalAmountInput(500_000, kind: .quantity), days: 7, kind: .quantity)
+            == GoalAmountInput(GoalUnitKind.maxValue, kind: .quantity))
+}
+
+/// `goalDays` decodes leniently: missing or out of range is no days.
+@Test func goalDaysDecodesLeniently() throws {
+    func decode(_ days: String) throws -> Int? {
+        let json = #"{"title":"Meditate","taskType":"goal","goalTarget":70,"goalStep":10"# + days + "}"
+        return try JSONDecoder().decode(ChecklistTask.self, from: Data(json.utf8)).goalDays
+    }
+    #expect(try decode(#","goalDays":5"#) == 5)
+    #expect(try decode("") == nil)
+    #expect(try decode(#","goalDays":9"#) == nil)
+    #expect(try decode(#","goalDays":"x""#) == nil)
+}
+
 /// Smart Add's rules read an amount with its unit, for when the model can't run; dates,
 /// sizes and labels aren't amounts.
 @Test(arguments: [
@@ -2483,7 +2554,8 @@ func smartAddNewRules(text: String, model: TaskMode, title: String, type: TaskTy
 @Test func smartAddDailyAmountOverridesModel() {
     let model = ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 10, goalKind: .time)
     let task = TaskTextHints.refine(TaskTextHints.dropInvented(model, from: "meditate 10 min daily"), from: "meditate 10 min daily")
-    #expect(task == ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 70, goalKind: .time))
+    #expect(task == ParsedTask(title: "Meditate", type: .goal, mode: .repeating, goalTarget: 70, goalKind: .time,
+                               goalStep: 10, goalDays: 7))
 }
 
 /// A mode the model gave stays when the words give a reason for it, and goes when they don't.

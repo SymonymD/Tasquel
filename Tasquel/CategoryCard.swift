@@ -497,15 +497,18 @@ private struct ExpandedCategoryContent: View {
 
             // Adding is off while the card is in edit mode. The This week only switch takes
             // the add row's place then, so no row above it moves as editing starts (a tap
-            // meant for a task's delete button landed on the row below instead).
-            if !isPastWeek && !isEditing {
-                AddTaskRowCard(categoryID: category.id, store: store)
-                    // Clear of the sub-task or item rows above: the field's fill reaches past
-                    // its text (see cardField), which crowded the last row.
-                    .padding(.top, 8 * expandedCardScale)
-            } else if !isPastWeek {
-                ThisWeekOnlyToggle(category: category, store: store)
-                    .padding(.top, 8 * expandedCardScale)
+            // meant for a task's delete button landed on the row below instead). The add row
+            // stays, showing nothing, so a Smart Add still working isn't lost.
+            if !isPastWeek {
+                VStack(alignment: .leading, spacing: 0) {
+                    AddTaskRowCard(categoryID: category.id, store: store, isEditing: isEditing)
+                    if isEditing {
+                        ThisWeekOnlyToggle(category: category, store: store)
+                    }
+                }
+                // Clear of the sub-task or item rows above: the field's fill reaches past
+                // its text (see cardField), which crowded the last row.
+                .padding(.top, 8 * expandedCardScale)
             }
 
             HStack {
