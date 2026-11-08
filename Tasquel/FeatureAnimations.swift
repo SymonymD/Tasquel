@@ -475,7 +475,7 @@ struct CategoryCardsAnimation: View {
         static let gap: CGFloat = 8
     }
 
-    private func content(_ v: Values) -> some View {
+    func content(_ v: Values) -> some View {
         let e = v.expand
         let growth = Layout.openHeight - Layout.closedHeight
         // Keep the grid centered as it grows.
@@ -507,6 +507,8 @@ struct CategoryCardsAnimation: View {
         .accessibilityHidden(true)
     }
 
+    /// A card as in the app: its completion ring at the top right (filling as tasks are
+    /// checked), and the open or close arrows at the bottom right.
     private func card(symbol: String, name: String, expand: Double,
                       check1: Double = 0, check2: Double = 0) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -517,10 +519,7 @@ struct CategoryCardsAnimation: View {
                     .frame(width: 14)
                 Text(verbatim: name).font(.system(size: 9.5, weight: .bold))
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(-90 * (1 - expand)))
+                IllustrationCheck(check: 0, progress: (check1 + check2) / 3, faint: true, size: 10)
             }
             .frame(height: 16)
             Group {
@@ -533,6 +532,15 @@ struct CategoryCardsAnimation: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 12)
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) {
+            ZStack {
+                Image(systemName: "arrow.up.left.and.arrow.down.right").opacity(1 - expand)
+                Image(systemName: "arrow.down.right.and.arrow.up.left").opacity(expand)
+            }
+            .font(.system(size: 6.5, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .padding(6)
+        }
         .clipped()
         .background(Illustration.cardBackground())
     }
@@ -549,8 +557,10 @@ struct CategoryCardsAnimation: View {
 
 // MARK: - Calendar Events Animation
 //
-// The week's calendar events beside your tasks: the calendar button in the bottom bar
-// is tapped, the bar grows into the events panel, and the events drop in by day.
+// The week's events, a tap away: the calendar button between the week arrows at the
+// bottom is tapped, the calendar sheet rises with Events | Weeks at the top, and the
+// week's events drop in by day. Then a swipe on the events pages to next week, the cards
+// behind and the week at the top moving with it, and This Week appears to come back.
 
 struct CalendarEventsAnimation: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -569,13 +579,16 @@ struct CalendarEventsAnimation: View {
 
     struct Values {
         var opacity = 0.0
-        var tap = 0.0              // touch ripple, 0...1
-        var open = 0.0
+        var tap = 0.0              // touch ripple on the calendar button, 0...1
+        var open = 0.0             // the sheet rising
         var event1 = 0.0
         var event2 = 0.0
         var event3 = 0.0
+        var touch = 0.0            // the finger on the events while it swipes
+        var swipe = 0.0            // this week → next week
 
-        static let finished = Values(opacity: 1, tap: 0, open: 1, event1: 1, event2: 1, event3: 1)
+        static let finished = Values(opacity: 1, tap: 0, open: 1, event1: 1, event2: 1, event3: 1,
+                                     touch: 0, swipe: 1)
     }
 
     // One loop is 6 seconds. Every track sums to the same length so they stay aligned.
@@ -613,46 +626,119 @@ struct CalendarEventsAnimation: View {
             SpringKeyframe(1, duration: 0.4)
             LinearKeyframe(1, duration: 3.65)
         }
+        // The finger lands, drags the events to the left, and lifts.
+        KeyframeTrack(\.touch) {
+            LinearKeyframe(0, duration: 2.8)
+            LinearKeyframe(1, duration: 0.15)
+            LinearKeyframe(1, duration: 0.65)
+            LinearKeyframe(0, duration: 0.2)
+            LinearKeyframe(0, duration: 2.2)
+        }
+        KeyframeTrack(\.swipe) {
+            LinearKeyframe(0, duration: 3.0)
+            CubicKeyframe(1, duration: 0.6)
+            LinearKeyframe(1, duration: 2.4)
+        }
     }
 
     private enum Layout {
         static let screenWidth: CGFloat = 200
         static let screenHeight: CGFloat = 156
-        static let barHeight: CGFloat = 30
-        static let panelHeight: CGFloat = 102
+        static let headerHeight: CGFloat = 34
+        static let sheetHeight: CGFloat = 98
     }
 
-    private func content(_ v: Values) -> some View {
-        ZStack(alignment: .bottom) {
-            // The app behind the bar: a few closed category cards.
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    miniCard(symbol: "cart", name: "Errands")
-                    miniCard(symbol: "briefcase", name: "Work")
-                }
-                HStack(spacing: 8) {
-                    miniCard(symbol: "figure.run", name: "Fitness")
-                    miniCard(symbol: "book", name: "Study")
-                }
+    func content(_ v: Values) -> some View {
+        let w = Layout.screenWidth
+        return ZStack(alignment: .top) {
+            // The week's cards, sliding to next week's with the swipe.
+            ZStack(alignment: .top) {
+                cards.offset(x: -w * v.swipe)
+                cards.offset(x: w * (1 - v.swipe))
             }
-            .padding(10)
-            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.top, Layout.headerHeight + 6)
 
-            VStack(spacing: 0) {
-                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 0.5)
-                panel(v)
-                    .frame(height: Layout.panelHeight * max(0, v.open), alignment: .top)
-                    .clipped()
-                bottomBar(v)
-            }
-            .background(Color(.tertiarySystemBackground))
+            header(v)
+
+            bottomButtons(v)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+            // The sheet dims what's behind it.
+            Color.black.opacity(0.2 * v.open)
+
+            sheet(v)
+                .offset(y: Layout.sheetHeight * (1 - v.open))
+                .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(width: Layout.screenWidth, height: Layout.screenHeight)
+        .frame(width: w, height: Layout.screenHeight)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .background(Illustration.cardBackground())
         .frame(width: 240, height: 160)
         .opacity(v.opacity)
         .accessibilityHidden(true)
+    }
+
+    // MARK: The screen behind
+
+    /// The frosted header: the Tasquel mark, the week, Open/Close All, and the week's days.
+    private func header(_ v: Values) -> some View {
+        VStack(spacing: 5) {
+            HStack {
+                Image("TasquelMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 10)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 6.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .overlay {
+                ZStack {
+                    Illustration.label("THIS WEEK").opacity(1 - v.swipe)
+                    Illustration.label("NEXT WEEK").opacity(v.swipe)
+                }
+            }
+            HStack(spacing: 3) {
+                ForEach(0..<7, id: \.self) { dayPill($0, v) }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 7)
+        .frame(height: Layout.headerHeight, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .background(Color(.tertiarySystemBackground).opacity(0.92))
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 0.5) }
+    }
+
+    /// This week: Monday and Tuesday done (green), today Wednesday (outlined, with room for
+    /// its date), the rest to come. Next week: every day to come.
+    private func dayPill(_ day: Int, _ v: Values) -> some View {
+        let past = day < 2, today = day == 2
+        let thisWeek = 1 - v.swipe
+        return ZStack {
+            Capsule().fill(Illustration.doneColor.opacity(0.2)).opacity(past ? thisWeek : 0)
+            Capsule().stroke(Illustration.doneColor, lineWidth: 0.75).opacity(past ? thisWeek : 0)
+            Capsule().stroke(Color.accentColor, lineWidth: 1).opacity(today ? thisWeek : 0)
+            Capsule().stroke(Color.secondary.opacity(0.5), lineWidth: 0.75).opacity(past || today ? v.swipe : 1)
+        }
+        .frame(width: today ? 7 + 5 * thisWeek : 7, height: 4.5)
+    }
+
+    private var cards: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                miniCard(symbol: "cart", name: "Errands")
+                miniCard(symbol: "briefcase", name: "Work")
+            }
+            HStack(spacing: 8) {
+                miniCard(symbol: "figure.run", name: "Fitness")
+                miniCard(symbol: "book", name: "Study")
+            }
+        }
+        .padding(.horizontal, 10)
     }
 
     private func miniCard(symbol: String, name: String) -> some View {
@@ -669,49 +755,131 @@ struct CalendarEventsAnimation: View {
         .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func bottomBar(_ v: Values) -> some View {
+    /// Settings, the week selector (‹ calendar ›, green with events on) and Edit, each
+    /// floating on its own glass.
+    private func bottomButtons(_ v: Values) -> some View {
         HStack(spacing: 0) {
-            Illustration.icon("gearshape").foregroundStyle(.secondary)
+            Illustration.icon("gearshape")
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .background(glass(Circle()))
             Spacer(minLength: 0)
-            HStack(spacing: 8) {
-                ZStack {
-                    Image(systemName: "calendar").foregroundStyle(.secondary).opacity(1 - v.open)
-                    Image(systemName: "calendar.circle.fill").foregroundStyle(.blue).opacity(v.open)
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .overlay { Illustration.ripple(v.tap) }
-                Illustration.bar(width: 52)
+            HStack(spacing: 11) {
+                Illustration.icon("chevron.left").foregroundStyle(.secondary)
+                Image(systemName: "calendar.and.person")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .overlay { Illustration.ripple(v.tap) }
+                Illustration.icon("chevron.right").foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 10)
+            .frame(height: 20)
+            .background(glass(Capsule()))
             Spacer(minLength: 0)
-            Illustration.icon("square.grid.2x2").foregroundStyle(.secondary)
+            Text(verbatim: "Edit")
+                .font(.system(size: 7, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 20)
+                .background(glass(Capsule()))
         }
-        .padding(.horizontal, 14)
-        .frame(height: Layout.barHeight)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 9)
     }
 
-    private func panel(_ v: Values) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func glass<S: Shape>(_ shape: S) -> some View {
+        shape.fill(Color(.tertiarySystemBackground))
+            .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+    }
+
+    // MARK: The calendar sheet
+
+    private func sheet(_ v: Values) -> some View {
+        let w = Layout.screenWidth
+        return VStack(alignment: .leading, spacing: 4) {
             Capsule()
                 .fill(Color.secondary.opacity(0.5))
-                .frame(width: 24, height: 3)
+                .frame(width: 22, height: 3)
                 .frame(maxWidth: .infinity)
-            Illustration.label("THIS WEEK'S EVENTS")
-            dayLabel("MON")
-            eventRow(color: .blue, titleWidth: 74).arriving(v.event1)
-            dayLabel("WED")
-            eventRow(color: .orange, titleWidth: 58).arriving(v.event2)
-            eventRow(color: .purple, titleWidth: 86).arriving(v.event3)
+            // This Week (only on another week), Events | Weeks, Done.
+            ZStack {
+                HStack {
+                    Text(verbatim: "This Week").foregroundStyle(Color.accentColor).opacity(v.swipe)
+                    Spacer(minLength: 0)
+                    Text(verbatim: "Done").foregroundStyle(Color.accentColor)
+                }
+                segments
+            }
+            .font(.system(size: 6.5, weight: .semibold))
+            .frame(height: 14)
+            ZStack(alignment: .topLeading) {
+                eventsPage(v, next: false).offset(x: -w * v.swipe)
+                eventsPage(v, next: true).offset(x: w * (1 - v.swipe))
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .overlay {
+                // The finger dragging the events along.
+                Circle()
+                    .fill(Color.primary.opacity(0.15))
+                    .frame(width: 18, height: 18)
+                    .offset(x: 45 - 90 * v.swipe, y: 6)
+                    .opacity(v.touch)
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-        .opacity(min(1, max(0, v.open * 1.5)))
+        .padding(.horizontal, 12)
+        .padding(.top, 5)
+        .frame(width: w, height: Layout.sheetHeight, alignment: .top)
+        .background(
+            UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14, style: .continuous)
+                // Like a sheet: white in light, a raised gray in dark.
+                .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? .tertiarySystemBackground : .systemBackground }))
+                .shadow(color: .black.opacity(0.15), radius: 6, y: -1)
+        )
     }
 
-    private func dayLabel(_ text: String) -> some View {
+    /// The sheet's Events | Weeks control, on Events.
+    private var segments: some View {
+        HStack(spacing: 0) {
+            Text(verbatim: "Events")
+                .padding(.horizontal, 8)
+                .frame(height: 11)
+                .background(
+                    Capsule().fill(Color(UIColor { $0.userInterfaceStyle == .dark ? .systemGray3 : .systemBackground }))
+                        .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
+                )
+            Text(verbatim: "Weeks")
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+        }
+        .padding(1.5)
+        .background(Capsule().fill(Color.primary.opacity(0.08)))
+    }
+
+    @ViewBuilder
+    private func eventsPage(_ v: Values, next: Bool) -> some View {
+        // No title of its own: the week at the top says which week it is.
+        VStack(alignment: .leading, spacing: 3) {
+            if next {
+                dayLabel("TUE")
+                eventRow(color: .orange, titleWidth: 66)
+                dayLabel("THU")
+                eventRow(color: .blue, titleWidth: 52)
+                eventRow(color: .purple, titleWidth: 80)
+            } else {
+                dayLabel("MON")
+                eventRow(color: .blue, titleWidth: 74).arriving(v.event1)
+                dayLabel("WED", isToday: true)
+                eventRow(color: .orange, titleWidth: 58).arriving(v.event2)
+                eventRow(color: .purple, titleWidth: 86).arriving(v.event3)
+            }
+        }
+    }
+
+    private func dayLabel(_ text: String, isToday: Bool = false) -> some View {
         Text(verbatim: text)
             .font(.system(size: 7, weight: .bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(isToday ? Color.accentColor : .secondary)
             .frame(height: 8)
     }
 

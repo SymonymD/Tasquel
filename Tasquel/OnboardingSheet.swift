@@ -129,20 +129,20 @@ struct OnboardingSheet: View {
                             "When the week ends, one-time tasks stay behind, carry-over tasks move on if they're unfinished, and repeating tasks come back unchecked. New tasks start as one-time; tap the icons at the end of a task to choose.")
             case .categories:
                 featureText("Organized by Category",
-                            "Your tasks live in category cards. Tap a card to open it, and hold and drag a closed card to move it. Tap Edit at the bottom to add or delete categories. Deleted something by mistake? Tap Undo.")
+                            "Your tasks live in category cards. Tap a card to open it, and Add Task to add one. Hold and drag a closed card to move it. Tap Edit at the bottom to add or delete categories. Deleted something by mistake? Tap Undo.")
             case .calendar:
                 featureText("Your Calendar, Alongside",
-                            "See the week's events next to your tasks: tap the calendar button at the bottom. You can turn this on now, or later in Settings.")
+                            "Tap the calendar button between the week arrows to see the week's events. Swipe them to change week, and your cards come along; This Week brings you back. You can turn this on now, or later in Settings.")
                 calendarButton
             case .smartAdd:
                 featureText("Smart Add",
-                            "Type a task in your own words, like “Gym 3x per week”, and tap the sparkles: it becomes a repeating goal of 3. If it guessed wrong, tap Undo in the note that appears.")
+                            "Type a task in your own words, like “Gym 3x per week”, and tap the sparkles: it becomes a repeating goal of 3. “Meditate 10 min daily” becomes 70 minutes for the week, 10 a tap. If it guessed wrong, tap Undo in the note under the new task.")
             case .tidyUp:
                 featureText("Tidy Up",
                             "Deleting doesn't ask first: tap Undo in the message to bring it back. Pull the cards down from the top and let go to close them all.")
             case .goalSteps:
                 featureText("Goals, Step by Step",
-                            "Tap + to count progress and − to take it back. Each tap adds a step that suits the goal; set your own with the sliders beside the bar, like 20 for 500 push-ups.")
+                            "Tap + to count progress and − to take it back. Each tap adds a step that suits the goal; set your own with the sliders beside the bar, like 20 for 100 push-ups. + keeps counting past the target.")
             }
         }
         .padding(.vertical, 24)

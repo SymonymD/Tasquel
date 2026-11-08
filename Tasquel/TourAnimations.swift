@@ -106,9 +106,14 @@ struct SmartAddAnimation: View {
             HStack(spacing: 6) {
                 Image(systemName: "plus.circle").font(.system(size: 9)).foregroundStyle(.secondary)
                 HStack(spacing: 1) {
-                    Text(verbatim: shown.isEmpty ? " " : shown).font(.system(size: 8.5))
-                    RoundedRectangle(cornerRadius: 0.5).fill(Color.accentColor).frame(width: 1, height: 9)
-                        .opacity(v.typed > 0 && v.typed < 1 ? 1 : 0.4)
+                    // Empty, the field shows its placeholder, as in the app.
+                    if shown.isEmpty {
+                        Text(verbatim: "Add Task").font(.system(size: 8.5)).foregroundStyle(.tertiary)
+                    } else {
+                        Text(verbatim: shown).font(.system(size: 8.5))
+                        RoundedRectangle(cornerRadius: 0.5).fill(Color.accentColor).frame(width: 1, height: 9)
+                            .opacity(v.typed < 1 ? 1 : 0.4)
+                    }
                 }
                 .padding(.horizontal, 5)
                 .frame(maxWidth: .infinity, minHeight: 15, alignment: .leading)
