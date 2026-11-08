@@ -195,6 +195,29 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
         guard let target = goalTarget, target > 0 else { return false }
         return (goalProgress ?? 0) >= target
     }
+
+    /// What the goal's + and − add: its `goalStep` when set (the editor's Step), else 1
+    /// for counts and, for time, an automatic step (`automaticTimeStep`).
+    var goalStepOrAutomatic: Double {
+        if let step = goalStep, step > 0 { return step }
+        guard goalKind == .time else { return 1 }
+        return Self.automaticTimeStep(forTarget: goalTarget ?? 0, repeating: mode == .repeating)
+    }
+
+    /// A time goal's step when none is set. Repeating (a week's worth, done day by day): a
+    /// day's share of the target, target ÷ 7 to the nearest 5 minutes, at least 5 (70 min
+    /// steps by 10, 5 hours by 45). One-time and carry-over: by the target's size (up to
+    /// 20 min: 5, an hour: 10, 3 hours: 15, else 30).
+    static func automaticTimeStep(forTarget target: Double, repeating: Bool) -> Double {
+        guard target.isFinite, target > 0 else { return 5 }
+        if repeating { return max(5, ((target / 7) / 5).rounded() * 5) }
+        switch target {
+        case ...20: return 5
+        case ...60: return 10
+        case ...180: return 15
+        default: return 30
+        }
+    }
 }
 
 extension SubTask {

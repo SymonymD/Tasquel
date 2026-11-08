@@ -92,9 +92,9 @@ struct TaskRowCard: View {
     @State private var goalUnitText = ""
     /// The goal editor's Step; empty means automatic.
     @State private var goalStepInput = GoalAmountInput()
-    /// While editing a per-day goal: its days (`goalDays`), so the target follows the step.
-    /// Nil once the target is typed by hand: it's the user's then.
-    @State private var goalDaysLink: Int?
+    /// The goal editor's Days (`goalDays`, 1–7; blank for none). With a Step too, the target
+    /// follows Step × Days; typing the target by hand clears it.
+    @State private var goalDaysInput = ""
     @State private var isEditingGoal = false
     /// When the first + tap brought − in (see `goalSteps`).
     @State private var minusAppearedAt = Date.distantPast
@@ -112,7 +112,7 @@ struct TaskRowCard: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The goal text fields, for moving the keyboard between them.
-    nonisolated private enum GoalField: Hashable { case target, step, unitName }
+    nonisolated private enum GoalField: Hashable { case target, step, days, unitName }
     nonisolated private enum GoalFieldPart: Hashable { case number, hours, minutes }
     nonisolated private struct GoalFocus: Hashable {
         let field: GoalField
@@ -623,9 +623,17 @@ struct TaskRowCard: View {
                 goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
             }
             goalHint(goalStepInput.problem(for: goalKindSelection))
-            // A per-day goal ("meditate 10 min daily"): the step is a day's amount.
-            if let days = goalDaysLink {
-                Text("Step × \(days) days = Target")
+            // A goal counted per day ("meditate 10 min daily"): the step is a day's amount,
+            // and the target follows it.
+            labeledGoalRow("Days") {
+                goalNumberField("–", text: $goalDaysInput, focus: GoalFocus(field: .days, part: .number),
+                                keyboard: .numberPad, width: 44)
+                    .accessibilityLabel("Days")
+                    .accessibilityHint("1 to 7. With a step, the target is the step times the days.")
+            }
+            goalHint(goalDaysProblem)
+            if let days = goalDays, goalStepInput.positiveValue(for: goalKindSelection) != nil {
+                Text("Step × \(days) \(days == 1 ? "day" : "days") = Target")
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                     .foregroundStyle(Theme.textTertiary(theme, rc: rc))
             }
@@ -637,14 +645,33 @@ struct TaskRowCard: View {
         .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
-        .onChange(of: goalStepInput) { _, step in
-            guard let days = goalDaysLink,
-                  let target = GoalAmountInput.perDayTarget(step: step, days: days, kind: goalKindSelection) else { return }
-            goalTargetInput = target
+        .onChange(of: goalStepInput) { followStepTimesDays() }
+        .onChange(of: goalDaysInput) { _, text in
+            // One digit at most (the number pad has no other keys).
+            let digits = String(text.filter(\.isNumber).prefix(1))
+            if digits != text { goalDaysInput = digits }
+            followStepTimesDays()
         }
         .onChange(of: goalTargetInput) { _, _ in
-            if focusedGoalField?.field == .target { goalDaysLink = nil }
+            // Typed by hand: the target is the user's, and stops following.
+            if focusedGoalField?.field == .target { goalDaysInput = "" }
         }
+    }
+
+    /// The editor's Days when it's 1–7; nil when blank or out of range.
+    private var goalDays: Int? {
+        Int(goalDaysInput).flatMap { (1...7).contains($0) ? $0 : nil }
+    }
+
+    private var goalDaysProblem: String? {
+        !goalDaysInput.isEmpty && goalDays == nil ? "Days can be 1 to 7" : nil
+    }
+
+    /// With a Step and Days, the target is Step × Days.
+    private func followStepTimesDays() {
+        guard let days = goalDays,
+              let target = GoalAmountInput.perDayTarget(step: goalStepInput, days: days, kind: goalKindSelection) else { return }
+        goalTargetInput = target
     }
 
     /// Delete Task, Cancel and Save Goal: in a row, or one above another (Save on top)
@@ -867,7 +894,7 @@ struct TaskRowCard: View {
         goalTargetInput = GoalAmountInput(target, kind: kind)
         goalUnitText = task.goalUnit ?? ""
         goalStepInput = task.goalStep.map { GoalAmountInput($0, kind: kind) } ?? GoalAmountInput()
-        goalDaysLink = task.goalStep == nil ? nil : task.goalDays
+        goalDaysInput = task.goalDays.map(String.init) ?? ""
         isEditingGoal = true
     }
 
@@ -875,7 +902,7 @@ struct TaskRowCard: View {
         isEditingGoal = false
         goalTargetInput = GoalAmountInput()
         goalStepInput = GoalAmountInput()
-        goalDaysLink = nil
+        goalDaysInput = ""
         goalUnitText = ""
         focusedGoalField = nil
     }
@@ -883,6 +910,7 @@ struct TaskRowCard: View {
     private var canSaveEditedGoal: Bool {
         goalTargetInput.positiveValue(for: goalKindSelection) != nil
             && (goalStepInput.isEmpty || goalStepInput.positiveValue(for: goalKindSelection) != nil)
+            && goalDaysProblem == nil
     }
 
     private func saveEditedGoal() {
@@ -896,7 +924,7 @@ struct TaskRowCard: View {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: carried)
         }
         store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection),
-                          days: goalDaysLink)
+                          days: goalDays)
         closeGoalEditing()
     }
 
@@ -983,16 +1011,7 @@ struct TaskRowCard: View {
 
     /// One tap's worth of progress: 1 for counts; for time, a step that suits the target
     /// (+5m toward 10 minutes, +30m toward 4 hours).
-    private var quickStep: Double {
-        if let step = task.goalStep, step > 0 { return step }  // set in the goal editor
-        guard task.goalKind == .time else { return 1 }
-        switch task.goalTarget ?? 0 {
-        case ...20: return 5
-        case ...60: return 10
-        case ...180: return 15
-        default: return 30
-        }
-    }
+    private var quickStep: Double { task.goalStepOrAutomatic }
 
     /// The keyboard's Done saves a goal amount or sub-task typed in this row but not yet
     /// set or added; number pads have no Return key, so otherwise it would be lost.
@@ -1009,7 +1028,7 @@ struct TaskRowCard: View {
     /// keyboard's Done button, or Return.
     private func submitGoalField(_ field: GoalField) {
         switch field {
-        case .target, .unitName, .step:
+        case .target, .unitName, .step, .days:
             if isEditingGoal { saveEditedGoal() } else { setGoal() }
         }
     }

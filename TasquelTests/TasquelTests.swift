@@ -2391,6 +2391,27 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     #expect(category().tasks[0].goalStep == nil, "cleared back to automatic")
 }
 
+/// With no step set, a repeating time goal steps by a day's share of its target (target ÷ 7)
+/// to the nearest 5 minutes, at least 5: "meditate 70 minutes" counts 10 a tap, not 15.
+/// One-time and carry-over goals step by the target's size, as before.
+@Test(arguments: [(70.0, 10.0, 15.0), (140, 20, 15), (35, 5, 10), (10, 5, 5), (20, 5, 5), (60, 10, 10),
+                  (90, 15, 15), (120, 15, 15), (300, 45, 30)] as [(Double, Double, Double)])
+func automaticTimeStep(target: Double, repeating: Double, other: Double) {
+    #expect(ChecklistTask.automaticTimeStep(forTarget: target, repeating: true) == repeating)
+    #expect(ChecklistTask.automaticTimeStep(forTarget: target, repeating: false) == other)
+}
+
+@Test func goalStepOrAutomatic() {
+    var meditate = ChecklistTask(title: "Meditate", mode: .repeating, taskType: .goal, goalTarget: 70, goalUnitKind: .time)
+    #expect(meditate.goalStepOrAutomatic == 10)
+    meditate.mode = .oneTime
+    #expect(meditate.goalStepOrAutomatic == 15, "not a week's worth: by the target's size")
+    meditate.goalStep = 20
+    #expect(meditate.goalStepOrAutomatic == 20, "a step set in the editor wins")
+    let pushups = ChecklistTask(title: "Push-ups", mode: .repeating, taskType: .goal, goalTarget: 70, goalUnitKind: .quantity)
+    #expect(pushups.goalStepOrAutomatic == 1, "counts go one at a time")
+}
+
 /// An amount per day steps the goal a day at a time: "meditate 10 min daily" is 70 min
 /// with a 10 min step (not the 15 a 70-minute target would pick), counting 7 days.
 @Test(arguments: [

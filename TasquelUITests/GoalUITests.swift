@@ -509,10 +509,11 @@ final class GoalUITests: XCTestCase {
         let target = app.textFields["Target"].firstMatch
         target.typeText("3")
         XCTAssertEqual(target.value as? String, "3")
-        // A tap just below the box still focuses it.
-        let step = app.textFields["Auto"].firstMatch
-        step.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
-        XCTAssertEqual(step.value(forKey: "hasKeyboardFocus") as? Bool, true)
+        // A tap just below the box still focuses it. (On Days, the last field: just below
+        // Step is the Days box now.)
+        let days = app.textFields["Days"]
+        days.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
+        XCTAssertEqual(days.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
         // Delete sits left of Save Goal; it can be undone instead of asking first.
         let delete = app.buttons["Delete task"]
@@ -521,6 +522,44 @@ final class GoalUITests: XCTestCase {
         delete.tap()
         XCTAssertTrue(app.buttons["Undo delete"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Read more"].waitForExistence(timeout: 1), "the goal is deleted")
+    }
+
+    /// The goal editor's Days: with a Step, the target follows Step × Days and says so;
+    /// typing the target by hand clears Days. Saved, + steps by the Step.
+    @MainActor
+    func testGoalDaysFollowStep() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData", "-demoFirstCard", "Fitness"]
+        app.launch()
+        let fitness = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Fitness,")).firstMatch
+        XCTAssertTrue(fitness.waitForExistence(timeout: 10))
+        fitness.tap()
+        // Yoga's sliders: the Edit goal button nearest below its name.
+        let yoga = app.staticTexts["Yoga"]
+        XCTAssertTrue(yoga.waitForExistence(timeout: 3))
+        let edit = app.buttons.matching(identifier: "Edit goal").allElementsBoundByIndex
+            .filter { $0.frame.minY > yoga.frame.minY }.min { $0.frame.minY < $1.frame.minY }
+        try XCTUnwrap(edit).tap()
+
+        let days = app.textFields["Days"]
+        XCTAssertTrue(days.waitForExistence(timeout: 3))
+        XCTAssertEqual(days.value as? String ?? "", "–", "blank to start (its placeholder shows)")
+        app.textFields["Auto minutes"].clearAndType("20")
+        days.clearAndType("7")
+        XCTAssertEqual(app.textFields["Target hours"].value as? String, "2")
+        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "20", "20 min × 7 days")
+        XCTAssertTrue(app.staticTexts["Step × 7 days = Target"].exists)
+        days.clearAndType("1")
+        XCTAssertTrue(app.staticTexts["Step × 1 day = Target"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "20")
+
+        // A target typed by hand is the user's: Days clears.
+        app.textFields["Target hours"].clearAndType("3")
+        XCTAssertEqual(days.value as? String ?? "", "–")
+        XCTAssertFalse(app.staticTexts["Step × 1 day = Target"].exists)
+        app.buttons["Save Goal"].tap()
+        XCTAssertTrue(app.buttons["Add 20 minutes"].waitForExistence(timeout: 3), "+ steps by the Step")
     }
 }
 
