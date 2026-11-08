@@ -140,7 +140,8 @@ final class ChecklistStore {
         guard arguments.contains("-isolatedData") || reusableID != nil || demo else { return ChecklistStore() }
         let directory = FileManager.default.temporaryDirectory.appending(path: "isolated-\(reusableID ?? UUID().uuidString)")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let store = ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: directory.lastPathComponent) ?? .standard)
+        let store = ChecklistStore(directory: directory, defaults: UserDefaults(suiteName: directory.lastPathComponent) ?? .standard,
+                                   now: demo ? demoClock() : { Date() })
         // App Store screenshots: sample tasks, no onboarding (DemoData.swift).
         if demo { store.fillWithDemoData() }
         return store
@@ -407,6 +408,10 @@ final class ChecklistStore {
 
     /// Today, in the current time zone.
     private var today: DayKey { DayKey(now(), in: calendar) }
+
+    /// The store's current moment: `Date()`, or what tests (and `-demoToday`) set.
+    /// Views use it for today so the day strip and the events list agree with the store.
+    var currentDate: Date { now() }
 
     /// Whether today falls within the week (any week start day).
     func isCurrentWeek(_ week: Week) -> Bool {

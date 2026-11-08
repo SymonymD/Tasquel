@@ -134,7 +134,7 @@ Key behaviors:
 
 ## App Store Screenshots
 
-`scripts/app-store-screenshots.sh [iphone|ipad]` boots an iPhone 17 Pro Max and an iPad Pro 13" (M5) simulator (iOS 26.3), sets a 9:41 status bar, and runs `ScreenshotTests` (skipped in normal test runs), which steps through the screens with `-demoData` and has the script take each picture with `xcrun simctl io … screenshot`. On iPad it first sets Settings ▸ Multitasking & Gestures ▸ Full Screen Apps (windowed apps show a resize handle). Output: `screenshots/iphone/` (1320×2868) and `screenshots/ipad/` (2064×2752); the script checks the sizes.
+`scripts/app-store-screenshots.sh [iphone|ipad]` boots an iPhone 17 Pro Max and an iPad Pro 13" (M5) simulator (iOS 26.3), sets a 9:41 status bar (dated, for iPad's date), makes the demo's today the Wednesday of this week (`-demoToday`; `DEMO_TODAY` overrides), so the day strip shows past days, today and days to come, and runs `ScreenshotTests` (skipped in normal test runs), which steps through the screens with `-demoData` and has the script take each picture with `xcrun simctl io … screenshot`. On iPad it first sets Settings ▸ Multitasking & Gestures ▸ Full Screen Apps (windowed apps show a resize handle). Output: `screenshots/iphone/` (1320×2868) and `screenshots/ipad/` (2064×2752); the script checks the sizes.
 
 ## Test Targets
 

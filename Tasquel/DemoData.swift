@@ -12,6 +12,19 @@ extension ChecklistStore {
         ProcessInfo.processInfo.arguments.contains("-demoData")
     }
 
+    /// `-demoToday yyyy-MM-dd`: that day is today (at the real time of day), so screenshots
+    /// taken on any day can show a midweek day strip. Without it, the real date.
+    static func demoClock() -> () -> Date {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-demoToday"), arguments.indices.contains(index + 1) else { return { Date() } }
+        let parts = arguments[index + 1].split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return { Date() } }
+        let calendar = Calendar.current
+        let day = DayKey(year: parts[0], month: parts[1], day: parts[2])
+        let offset = day.date(in: calendar).timeIntervalSince(DayKey(Date(), in: calendar).date(in: calendar))
+        return { Date().addingTimeInterval(offset) }
+    }
+
     func fillWithDemoData() {
         dismissWelcome()
         let arguments = ProcessInfo.processInfo.arguments

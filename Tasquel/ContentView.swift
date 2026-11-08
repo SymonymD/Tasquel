@@ -56,7 +56,8 @@ struct ContentView: View {
     /// When the app last went to the background, to decide whether reopening it
     /// should jump back to the current week.
     @State private var backgroundedAt: Date?
-    /// Today, for the bottom bar's date. Updated when the day changes while the app is open.
+    /// Today (the store's clock), for the day strip and the calendar. Updated when the day
+    /// changes while the app is open.
     @State private var today = Date()
     /// The week's title: 5% under .title2's 22pt, and growing with Dynamic Type like it.
     @ScaledMetric(relativeTo: .title2) private var weekTitleSize: CGFloat = 20.9
@@ -237,6 +238,7 @@ struct ContentView: View {
                 .interactiveDismissDisabled()
         }
         .onAppear {
+            today = store.currentDate
             if store.persistenceError == nil && store.shouldShowWelcome {
                 showOnboarding = true
             }
@@ -260,7 +262,7 @@ struct ContentView: View {
             // mustn't re-sort cards that are in use.
             let wasAway = backgroundedAt != nil
             if wasAway { refreshSortOrder() }
-            today = Date()
+            today = store.currentDate
             returnToCurrentWeekIfAway()
             // Calendars may have changed (or access revoked) while away. Not after Control
             // Center or the icon-change alert: reloading made an open events panel flash.
@@ -310,7 +312,7 @@ struct ContentView: View {
     /// read-only); otherwise the viewed week is brought up to date.
     private func handleDayChange() {
         let previousToday = today
-        today = Date()
+        today = store.currentDate
         guard store.persistenceError == nil, let week = store.selectedWeek else { return }
         let wasCurrentWeek = week.startDay == store.weekStartDay(containing: previousToday)
         if wasCurrentWeek && store.isPastWeek(week) {

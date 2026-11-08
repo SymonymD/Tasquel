@@ -54,7 +54,7 @@ struct CalendarEventsList: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dayTitle(day.date))
                         .font(.system(.caption, design: design).weight(.semibold))
-                        .foregroundStyle(Calendar.current.isDateInToday(day.date) ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                        .foregroundStyle(Calendar.current.isDate(day.date, inSameDayAs: store.currentDate) ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     ForEach(day.events) { dayEvent in
                         Button {
                             onOpen(dayEvent.event)

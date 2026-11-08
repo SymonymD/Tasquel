@@ -26,7 +26,7 @@ SHOTS = [
     ("02-smart-add", "Write it like\nyou’d say it", "Smart Add, with Apple Intelligence,\nsets the goal and schedule."),
     ("03-card-open", "Lists, sub-tasks\nand goals", "Tick off items, steps and progress,\nall in one card."),
     ("04-type-and-mode", "Unfinished?\nIt carries over.", "Choose what happens to each\ntask when the week ends."),
-    ("05-calendar-events", "Your calendar,\nalongside", "See the week’s events right\nnext to your tasks."),
+    ("05-calendar-events", "Your calendar,\nalongside", "See the week’s events without\nleaving your tasks."),
     ("06-retro", "Go retro", "A terminal theme in six phosphor\ncolors, with a matching icon."),
     ("07-dark", "Easy on the eyes", "Light, Dark, or\nfollow your device."),
 ]

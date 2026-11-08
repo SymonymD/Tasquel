@@ -107,7 +107,9 @@ final class ScreenshotTests: XCTestCase {
     @MainActor
     private func launch(appearance: String = "light", extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", appearance] + extra
+        // DEMO_TODAY (from the script): the day the demo week treats as today.
+        let today = ProcessInfo.processInfo.environment["DEMO_TODAY"].map { ["-demoToday", $0] } ?? []
+        app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", appearance] + today + extra
         app.launch()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
             .waitForExistence(timeout: 10))
