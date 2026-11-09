@@ -864,6 +864,9 @@ struct ContentView: View {
     private func editLabel(editing: Bool) -> some View {
         Text(Theme.isRetro(theme) ? (editing ? "[DONE]" : "[EDIT]") : (editing ? "Done" : "Edit"))
             .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced).bold() : .headline)
+            // Capped: at accessibility sizes the word widened both sides (`editSideWidth`)
+            // and squeezed the week arrows between them.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .lineLimit(1)
             .padding(.horizontal, Theme.isRetro(theme) ? 12 : 18)
             .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
@@ -891,6 +894,11 @@ struct ContentView: View {
             weekTitleRow
             WeekDayStrip(weekStart: (arrivingWeek ?? week).startDay, today: DayKey(today, in: store.calendar),
                          todayDate: today, theme: theme, rc: rc)
+                // Capped: at the largest accessibility sizes the seven pills came to ~675pt
+                // and stretched the whole screen past both edges, the bar's Settings and
+                // Edit off it. (Here, not inside: its @ScaledMetric sizes read this
+                // environment. VoiceOver reads the day aloud.)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .padding(.horizontal, 16)
             if isPastWeek {
                 // Past weeks can't be changed; say so before a tap does nothing.

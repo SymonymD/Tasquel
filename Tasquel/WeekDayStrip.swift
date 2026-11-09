@@ -5,7 +5,8 @@ import SwiftUI
 /// The viewed week's seven days, as pills under its title, so it's clear where today
 /// falls: days gone by are green (like Save Goal), today shows its date ("7th"), days to
 /// come are empty. In a past week every day is green; in a future week none is. Only to
-/// look at, not to tap.
+/// look at, not to tap. Its text size is capped where it's placed (`.dynamicTypeSize`,
+/// outside, so the `@ScaledMetric` pill sizes see the cap too).
 struct WeekDayStrip: View {
     let weekStart: DayKey
     let today: DayKey

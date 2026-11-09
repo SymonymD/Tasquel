@@ -85,9 +85,22 @@ final class BottomBarUITests: XCTestCase {
     /// this phone). The selector stays centered, also while editing.
     @MainActor
     func testWeekArrowsAreFullSize() throws {
+        try checkWeekArrows(launchArguments: ["-isolatedData"])
+    }
+
+    /// At the largest text size too: Edit/Done stops growing at xxxLarge (wider, it squeezed
+    /// the arrows between the two sides, which copy its width).
+    @MainActor
+    func testWeekArrowsAreFullSizeAtLargestText() throws {
+        try checkWeekArrows(launchArguments: ["-isolatedData", "-UIPreferredContentSizeCategoryName",
+                                              "UICTContentSizeCategoryAccessibilityXXXL"])
+    }
+
+    @MainActor
+    private func checkWeekArrows(launchArguments: [String]) throws {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
-        app.launchArguments = ["-isolatedData"]
+        app.launchArguments = launchArguments
         app.launch()
         if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { app.buttons["Skip"].tap() }
         let previous = app.buttons["Previous week"], next = app.buttons["Next week"]
@@ -96,7 +109,11 @@ final class BottomBarUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(arrow.frame.width, 44, arrow.label)
         }
         let middle = app.buttons["Go to week"].frame.midX
-        XCTAssertEqual(middle, app.windows.firstMatch.frame.midX, accuracy: 1, "centered")
+        let window = app.windows.firstMatch.frame
+        XCTAssertEqual(middle, window.midX, accuracy: 1, "centered")
+        XCTAssertGreaterThanOrEqual(app.buttons["Settings"].frame.minX, window.minX, "on the screen")
+        XCTAssertLessThanOrEqual(app.buttons["Edit"].frame.maxX, window.maxX, "on the screen")
+        XCTAssertLessThanOrEqual(app.otherElements["Week days"].frame.width, window.width - 32, "the day strip fits")
         app.buttons["Edit"].tap()
         XCTAssertTrue(app.buttons["Done Editing"].waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["Go to week"].frame.midX, middle, accuracy: 0.5, "doesn't move for Done")
