@@ -92,12 +92,11 @@ struct TaskRowCard: View {
     @State private var goalUnitText = ""
     /// The goal editor's Step; empty means automatic.
     @State private var goalStepInput = GoalAmountInput()
-    /// The goal editor's Days (`goalDays`, 1–7; blank for none). With a Step too, the target
-    /// follows Step × Days; typing the target by hand clears it.
-    @State private var goalDaysInput = ""
+    /// The goal editor's Days, a 5 | 7 toggle (`goalDays`, nil saved as 7): the days a week
+    /// the goal is spread over. With Step on Auto, + adds the target ÷ the days; a typed Step
+    /// makes the target Step × Days.
+    @State private var goalDaysSelection = 7
     @State private var isEditingGoal = false
-    /// When the first + tap brought − in (see `goalSteps`).
-    @State private var minusAppearedAt = Date.distantPast
     @FocusState private var focusedGoalField: GoalFocus?
     @State private var showOptions = false
     /// Another task is being dragged over this one (reordering in edit mode).
@@ -112,7 +111,7 @@ struct TaskRowCard: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The goal text fields, for moving the keyboard between them.
-    nonisolated private enum GoalField: Hashable { case target, step, days, unitName }
+    nonisolated private enum GoalField: Hashable { case target, step, unitName }
     nonisolated private enum GoalFieldPart: Hashable { case number, hours, minutes }
     nonisolated private struct GoalFocus: Hashable {
         let field: GoalField
@@ -627,31 +626,42 @@ struct TaskRowCard: View {
         VStack(alignment: .leading, spacing: 8) {
             labeledGoalRow("Target") {
                 goalUnitMenu
-                // Typed by hand, the target is the user's and stops following Step × Days.
-                // (Only typing: a Unit switch converting it keeps Days.)
-                goalAmountFields(Binding(get: { goalTargetInput }, set: { goalTargetInput = $0; goalDaysInput = "" }),
+                // Typed by hand, the target leads: a typed Step goes back to Auto, a day's
+                // share of it. (Only typing: a Unit switch converting it keeps the Step.)
+                goalAmountFields(Binding(get: { goalTargetInput }, set: {
+                                     goalTargetInput = $0
+                                     if !goalStepInput.isEmpty { goalStepInput = GoalAmountInput() }
+                                 }),
                                  kind: goalKindSelection, field: .target, placeholder: "Target")
                 if goalKindSelection == .custom { unitNameField }
             }
             goalHint(goalTargetInput.problem(for: goalKindSelection))
-            // What + and − add or take away; empty picks one from the target.
+            // What + and − add or take away; empty (Auto) is the target ÷ the days.
             labeledGoalRow("Step") {
                 goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
             }
             goalHint(goalStepInput.problem(for: goalKindSelection))
-            // A goal counted per day ("meditate 10 min daily"): the step is a day's amount,
-            // and the target follows it.
             labeledGoalRow("Days") {
-                goalNumberField("–", text: $goalDaysInput, focus: GoalFocus(field: .days, part: .number),
-                                keyboard: .numberPad, width: 44)
-                    .accessibilityLabel("Days")
-                    .accessibilityHint("1 to 7. With a step, the target is the step times the days.")
+                Picker("Days", selection: $goalDaysSelection) {
+                    ForEach(goalDayOptions, id: \.self) { days in
+                        Text(verbatim: "\(days)").accessibilityLabel("\(days) days").tag(days)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .labelsHidden()
+                .accessibilityHint("With a step, the target is the step times the days; without one, each step is the target divided by the days.")
             }
-            goalHint(goalDaysProblem)
-            if let days = goalDays, goalStepInput.positiveValue(for: goalKindSelection) != nil {
-                Text("Step × \(days) \(days == 1 ? "day" : "days") = Target")
-                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
-                    .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+            // Kept clear of Step's box: the toggle took a tap just below it (meant for the
+            // field, whose tap area reaches 6pt past the box).
+            .padding(.top, 6)
+            let days = goalDaysSelection, dayWord = goalDaysSelection == 1 ? "day" : "days"
+            if goalStepInput.positiveValue(for: goalKindSelection) != nil {
+                goalLinkHint("Step × \(days) \(dayWord) = Target")
+            } else if goalStepInput.isEmpty, let target = goalTargetInput.positiveValue(for: goalKindSelection) {
+                // What Auto means: a day's share of the target.
+                let step = ChecklistTask.automaticStep(forTarget: target, days: days)
+                goalLinkHint("Target ÷ \(days) \(dayWord) = \(goalKindSelection.format(step)) a step")
             }
             ViewThatFits(in: .horizontal) {
                 editGoalButtons(stacked: false)
@@ -662,27 +672,26 @@ struct TaskRowCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 24 * expandedCardScale)
         .onChange(of: goalStepInput) { followStepTimesDays() }
-        .onChange(of: goalDaysInput) { _, text in
-            // One digit at most (the number pad has no other keys).
-            let digits = String(text.filter(\.isNumber).prefix(1))
-            if digits != text { goalDaysInput = digits }
-            followStepTimesDays()
-        }
+        .onChange(of: goalDaysSelection) { followStepTimesDays() }
     }
 
-    /// The editor's Days when it's 1–7; nil when blank or out of range.
-    private var goalDays: Int? {
-        Int(goalDaysInput).flatMap { (1...7).contains($0) ? $0 : nil }
+    /// How Target, Step and Days go together, under the fields.
+    private func goalLinkHint(_ text: String) -> some View {
+        Text(text)
+            .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+            .foregroundStyle(Theme.textTertiary(theme, rc: rc))
     }
 
-    private var goalDaysProblem: String? {
-        !goalDaysInput.isEmpty && goalDays == nil ? "Days can be 1 to 7" : nil
+    /// 5 and 7, plus the goal's own days when Smart Add gave it others ("yoga 30 min on
+    /// Mon, Wed, Fri" is 3), so opening the editor doesn't turn them into 7.
+    private var goalDayOptions: [Int] {
+        Set([5, 7] + [task.goalDays].compactMap { $0 }).sorted()
     }
 
-    /// With a Step and Days, the target is Step × Days.
+    /// With a Step, the target is Step × Days.
     private func followStepTimesDays() {
-        guard let days = goalDays,
-              let target = GoalAmountInput.perDayTarget(step: goalStepInput, days: days, kind: goalKindSelection) else { return }
+        guard let target = GoalAmountInput.perDayTarget(step: goalStepInput, days: goalDaysSelection,
+                                                        kind: goalKindSelection) else { return }
         goalTargetInput = target
     }
 
@@ -912,7 +921,7 @@ struct TaskRowCard: View {
         goalTargetInput = GoalAmountInput(target, kind: kind)
         goalUnitText = task.goalUnit ?? ""
         goalStepInput = task.goalStep.map { GoalAmountInput($0, kind: kind) } ?? GoalAmountInput()
-        goalDaysInput = task.goalDays.map(String.init) ?? ""
+        goalDaysSelection = task.goalDays ?? 7
         isEditingGoal = true
     }
 
@@ -920,7 +929,7 @@ struct TaskRowCard: View {
         isEditingGoal = false
         goalTargetInput = GoalAmountInput()
         goalStepInput = GoalAmountInput()
-        goalDaysInput = ""
+        goalDaysSelection = 7
         goalUnitText = ""
         focusedGoalField = nil
     }
@@ -928,7 +937,6 @@ struct TaskRowCard: View {
     private var canSaveEditedGoal: Bool {
         goalTargetInput.positiveValue(for: goalKindSelection) != nil
             && (goalStepInput.isEmpty || goalStepInput.positiveValue(for: goalKindSelection) != nil)
-            && goalDaysProblem == nil
     }
 
     private func saveEditedGoal() {
@@ -945,14 +953,13 @@ struct TaskRowCard: View {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: carried)
         }
         store.setGoalStep(categoryID: categoryID, taskID: task.id, step: goalStepInput.positiveValue(for: goalKindSelection),
-                          days: goalDays)
+                          days: goalDaysSelection)
         closeGoalEditing()
     }
 
     /// One step forward (+) or back (−); never below zero.
     private func addQuickProgress(sign: Double) {
         let wasComplete = task.goalIsComplete
-        if sign > 0 && (task.goalProgress ?? 0) == 0 { minusAppearedAt = Date() }
         let progress = max(0, (task.goalProgress ?? 0) + sign * quickStep)
         withAnimation(.snappy(duration: 0.2)) {
             store.updateGoalProgress(categoryID: categoryID, taskID: task.id, progress: progress)
@@ -963,45 +970,41 @@ struct TaskRowCard: View {
         }
     }
 
-    /// The most common update, in one tap, and its undo. With no progress yet, + is alone,
-    /// centered; the first tap nudges it over to make room for −, which takes a step back
-    /// (also after the goal is reached, to take back the last tap). + stays after the
-    /// target too, so a goal can be beaten. − is only as wide as it needs, so + moves less
-    /// than half its width and a quick second tap where it was still lands on it; − also
-    /// ignores taps for a moment after it appears, so that tap can't undo the first.
+    /// The most common update, in one tap, and its undo: − takes a step back (also after
+    /// the goal is reached, to take back the last tap), dimmed until there's progress; +
+    /// stays after the target too, so a goal can be beaten. Both are always there, so
+    /// neither moves under a finger: − used to come in with the first tap and push + over,
+    /// and at −'s size now (56pt, so a tap meant for it doesn't land on +) a second tap where
+    /// + had been would have taken the first back.
     private var goalSteps: some View {
         let hasProgress = (task.goalProgress ?? 0) > 0
         let canAdd = (task.goalProgress ?? 0) < GoalUnitKind.maxValue
-        return GoalStepsLayout(spacing: Self.goalStepSpacing) {
-            if hasProgress {
-                Button {
-                    guard Date().timeIntervalSince(minusAppearedAt) > 0.4 else { return }
-                    addQuickProgress(sign: -1)
-                } label: {
-                    stepTapArea(stepPill("−", filled: false).frame(minWidth: 28), toward: [.leading])
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .trailing)))
-                .accessibilityLabel(task.goalKind == .time ? "Remove \(Int(quickStep)) minutes" : "Remove \(task.goalKind.format(quickStep))")
-            }
-            Button { addQuickProgress(sign: 1) } label: {
-                stepTapArea(stepPill("+" + task.goalKind.format(quickStep), filled: true),
-                            toward: hasProgress ? [.trailing] : [.leading, .trailing])
+        return HStack(spacing: Self.goalStepSpacing) {
+            Button { addQuickProgress(sign: -1) } label: {
+                stepTapArea(stepPill("−", filled: false), toward: [.leading])
             }
             .buttonStyle(.plain)
+            .opacity(hasProgress ? 1 : 0.35)
+            .disabled(!hasProgress)
+            .accessibilityLabel(task.goalKind == .time ? "Remove \(Int(quickStep)) minutes" : "Remove \(task.goalKind.format(quickStep))")
+            Button { addQuickProgress(sign: 1) } label: {
+                stepTapArea(stepPill("+" + task.goalKind.format(quickStep), filled: true), toward: [.trailing])
+            }
+            .buttonStyle(.plain)
+            // Hidden at the maximum but keeping its place.
             .opacity(canAdd ? 1 : 0)
             .disabled(!canAdd)
             .accessibilityHidden(!canAdd)
             .accessibilityLabel(task.goalKind == .time ? "Add \(Int(quickStep)) minutes" : "Add \(task.goalKind.format(quickStep))")
-            // The + itself, as − comes and goes: it slides rather than being replaced.
-            .layoutValue(key: IsPlusStep.self, value: true)
         }
     }
 
-    private static let goalStepSpacing: CGFloat = 6
+    /// The gap between − and +, and each one's least width: − twice its old 28pt, + as wide
+    /// or wider for its label ("+999,999").
+    private static let goalStepSpacing: CGFloat = 12
+    private static let goalStepMinWidth: CGFloat = 56
 
-    /// − outlined, + filled, as wide as `GoalStepsLayout` makes them (− as wide as it needs).
-    /// 
+    /// − outlined, + filled, at least `goalStepMinWidth` wide.
     private func stepPill(_ title: String, filled: Bool) -> some View {
         let accent = Theme.accent(theme, rc: rc)
         return Text(title)
@@ -1010,7 +1013,7 @@ struct TaskRowCard: View {
             .lineLimit(1)
             .fixedSize()
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .frame(maxWidth: .infinity)
+            .frame(minWidth: Self.goalStepMinWidth)
             // Retro's accent is a bright phosphor color: dark text stays readable on it.
             .foregroundStyle(filled ? (Theme.isRetro(theme) ? Color.black : Color.white) : accent)
             .background(filled ? accent : Color.clear, in: Capsule())
@@ -1030,8 +1033,8 @@ struct TaskRowCard: View {
             .padding(.vertical, -vertical).padding(.leading, -leading).padding(.trailing, -trailing)
     }
 
-    /// One tap's worth of progress: 1 for counts; for time, a step that suits the target
-    /// (+5m toward 10 minutes, +30m toward 4 hours).
+    /// One tap's worth of progress: the Step, or a day's share of the target (+10m toward
+    /// 70 minutes, +14 toward 100 pages).
     private var quickStep: Double { task.goalStepOrAutomatic }
 
     /// The keyboard's Done saves a goal amount or sub-task typed in this row but not yet
@@ -1049,7 +1052,7 @@ struct TaskRowCard: View {
     /// keyboard's Done button, or Return.
     private func submitGoalField(_ field: GoalField) {
         switch field {
-        case .target, .unitName, .step, .days:
+        case .target, .unitName, .step:
             if isEditingGoal { saveEditedGoal() } else { setGoal() }
         }
     }
@@ -1171,41 +1174,6 @@ private struct GoalBarStyle: ProgressViewStyle {
                 }
             }
             .frame(height: 8)
-    }
-}
-
-/// Marks the + among the steps.
-nonisolated private struct IsPlusStep: LayoutValueKey {
-    static let defaultValue = false
-}
-
-/// A goal's − and + steps. + takes half of about a third of the width offered (the bar's),
-/// or what its label needs ("+15m"), alone or with −; − takes only what it needs. The
-/// parent centers them, so + is centered alone and moves over when − comes in.
-private struct GoalStepsLayout: Layout {
-    let spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sizes = itemSizes(proposal, subviews)
-        let width = sizes.map(\.width).reduce(0, +) + spacing * CGFloat(max(subviews.count - 1, 0))
-        return CGSize(width: width, height: sizes.map(\.height).max() ?? 0)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        for (subview, size) in zip(subviews, itemSizes(proposal, subviews)) {
-            subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(size))
-            x += size.width + spacing
-        }
-    }
-
-    private func itemSizes(_ proposal: ProposedViewSize, _ subviews: Subviews) -> [CGSize] {
-        let offered = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? 0
-        let share = (offered / 3 - spacing) / 2
-        return subviews.map { subview in
-            let natural = subview.sizeThatFits(.unspecified)
-            return CGSize(width: subview[IsPlusStep.self] ? max(natural.width, share) : natural.width, height: natural.height)
-        }
     }
 }
 
@@ -1651,6 +1619,16 @@ struct AddTaskRowCard: View {
             smartAddOutcome = nil
             finishSmartAdd(outcome)
         }
+        .onChange(of: smartAddTaskIsGone) { _, gone in
+            if gone { withAnimation(.snappy(duration: 0.25)) { smartAddResult = nil } }
+        }
+    }
+
+    /// The task Smart Add's note is about was deleted (in the card's edit mode, say, where
+    /// the note waits to show again): the note goes with it.
+    private var smartAddTaskIsGone: Bool {
+        guard let id = smartAddResult?.taskID else { return false }
+        return store.viewedTask(categoryID, id) == nil
     }
 
     /// The field shows once + is tapped, and stays while there's something in it, Smart Add

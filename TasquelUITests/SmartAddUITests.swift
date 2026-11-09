@@ -275,6 +275,24 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3), "the add row is back")
     }
 
+    /// Deleting the task Smart Add just added (in the card's edit mode, where its note waits
+    /// to show again) takes the note away too: its Undo has nothing left to take back.
+    @MainActor
+    func testDeletingAddedTaskTakesTheMessageAway() throws {
+        typeInFitness("run 3x per week")
+        app.buttons["Smart Add"].tap()
+        let undo = app.buttons["Undo Smart Add"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        app.buttons["Edit Fitness"].tap()
+        XCTAssertTrue(undo.waitForNonExistence(timeout: 2), "hidden in edit mode")
+        app.buttons["Delete Run"].tap()
+        XCTAssertTrue(app.buttons["Undo delete"].firstMatch.waitForExistence(timeout: 2), "the delete's own Undo")
+        // Its last task gone, the card leaves edit mode itself.
+        if app.buttons["Done editing Fitness"].exists { app.buttons["Done editing Fitness"].tap() }
+        XCTAssertTrue(app.addTaskRow.waitForExistence(timeout: 3))
+        XCTAssertFalse(undo.waitForExistence(timeout: 2), "the note didn't come back for a deleted task")
+    }
+
     /// Words typed but not added when the card's edit button is tapped are added as they
     /// are, as a sub-task's are.
     @MainActor

@@ -297,7 +297,7 @@ struct TidyUpAnimation: View {
 
 // MARK: - Goal Steps Animation
 //
-// A goal of 100 push-ups with a step of 20: + is tapped (40 → 60 → 80), − takes one
+// A goal of 100 push-ups with a step of 20 (over 5 days): + is tapped (40 → 60 → 80), − takes one
 // back, then + twice reaches 100 and the goal checks itself off.
 
 struct GoalStepsAnimation: View {

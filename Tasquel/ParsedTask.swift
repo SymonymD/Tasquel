@@ -54,8 +54,9 @@ extension ChecklistStore {
             task.goalUnit = parsed.goalKind == .custom && !parsed.goalUnit.isEmpty ? parsed.goalUnit : nil
             if let target = parsed.goalTarget, target.isFinite, target > 0 {
                 task.goalTarget = min(target, GoalUnitKind.maxValue)
-                // A day's amount steps the goal a day at a time (10 min, not the 15 a
-                // 70-minute target would pick).
+                // A day's amount steps the goal a day at a time ("8 glasses a day" is
+                // 56 by 8, which the automatic ÷ 7 would also get; "on weekdays", by 5 days,
+                // wouldn't).
                 if let step = parsed.goalStep, step.isFinite, step > 0 {
                     task.goalStep = min(step, GoalUnitKind.maxValue)
                     task.goalDays = parsed.goalDays.flatMap { (1...7).contains($0) ? $0 : nil }

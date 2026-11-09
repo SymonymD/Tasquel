@@ -2391,29 +2391,34 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     #expect(category().tasks[0].goalStep == nil, "cleared back to automatic")
 }
 
-/// With no step set, a repeating time goal steps by a day's share of its target (target ÷ 7)
-/// to the nearest 5 minutes, at least 5: "meditate 70 minutes" counts 10 a tap, not 15.
-/// One-time and carry-over goals step by the target's size, as before.
-@Test(arguments: [(70.0, 10.0, 15.0), (140, 20, 15), (35, 5, 10), (10, 5, 5), (20, 5, 5), (60, 10, 10),
-                  (90, 15, 15), (120, 15, 15), (300, 45, 30)] as [(Double, Double, Double)])
-func automaticTimeStep(target: Double, repeating: Double, other: Double) {
-    #expect(ChecklistTask.automaticTimeStep(forTarget: target, repeating: true) == repeating)
-    #expect(ChecklistTask.automaticTimeStep(forTarget: target, repeating: false) == other)
+/// With no step set, any goal steps by a day's share of its target, whatever its mode: the
+/// target ÷ its Days (7 when blank), rounded up to a whole minute or number, so that many
+/// taps reach it. "Meditate 70 minutes" counts 10 a tap (not the 15 an old table by size
+/// gave); 67 minutes over 5 days, 14 (5 taps; rounded to 5 minutes, 67 over 6 days was 7 taps).
+@Test(arguments: [(70.0, nil, 10.0), (67, nil, 10), (67, 5, 14), (67, 6, 12), (67, 1, 67), (140, nil, 20),
+                  (120, nil, 18), (10, nil, 2), (100, nil, 15), (3, nil, 1), (56, nil, 8), (8, nil, 2),
+                  (0.5, nil, 1), (0, nil, 1), (70, 9, 10)] as [(Double, Int?, Double)])
+func automaticStep(target: Double, days: Int?, step: Double) {
+    #expect(ChecklistTask.automaticStep(forTarget: target, days: days) == step)
+    if target > 0, (1...7).contains(days ?? 7) {
+        #expect((target / step).rounded(.up) <= Double(days ?? 7), "a tap a day reaches the target within the days")
+    }
 }
 
-@Test func goalStepOrAutomatic() {
-    var meditate = ChecklistTask(title: "Meditate", mode: .repeating, taskType: .goal, goalTarget: 70, goalUnitKind: .time)
-    #expect(meditate.goalStepOrAutomatic == 10)
-    meditate.mode = .oneTime
-    #expect(meditate.goalStepOrAutomatic == 15, "not a week's worth: by the target's size")
+@Test(arguments: TaskMode.allCases)
+func goalStepOrAutomatic(mode: TaskMode) {
+    var meditate = ChecklistTask(title: "Meditate", mode: mode, taskType: .goal, goalTarget: 70, goalUnitKind: .time)
+    #expect(meditate.goalStepOrAutomatic == 10, "a day's share in every mode")
+    meditate.goalDays = 5
+    #expect(meditate.goalStepOrAutomatic == 14, "over its Days")
     meditate.goalStep = 20
     #expect(meditate.goalStepOrAutomatic == 20, "a step set in the editor wins")
-    let pushups = ChecklistTask(title: "Push-ups", mode: .repeating, taskType: .goal, goalTarget: 70, goalUnitKind: .quantity)
-    #expect(pushups.goalStepOrAutomatic == 1, "counts go one at a time")
+    let pushups = ChecklistTask(title: "Push-ups", mode: mode, taskType: .goal, goalTarget: 70, goalUnitKind: .quantity)
+    #expect(pushups.goalStepOrAutomatic == 10)
 }
 
 /// An amount per day steps the goal a day at a time: "meditate 10 min daily" is 70 min
-/// with a 10 min step (not the 15 a 70-minute target would pick), counting 7 days.
+/// with a 10 min step, counting 7 days.
 @Test(arguments: [
     ("meditate 10 min daily", 10.0, 7),
     ("read 20 pages on weekdays", 20, 5),
@@ -2437,7 +2442,7 @@ func smartAddPerDayGoals(text: String, step: Double, days: Int) {
 }
 
 /// A per-day goal keeps its step and days when added, in next week's copy, and in the
-/// store's step setter; clearing the step (automatic) ends the link.
+/// store's step setter; without a step the days stay, for the automatic step to divide by.
 @Test func perDayGoalIsKept() {
     let clock = TestClock(2099, 3, 4)
     let store = makeIsolatedStore(clock: clock)
@@ -2456,10 +2461,15 @@ func smartAddPerDayGoals(text: String, step: Double, days: Int) {
     #expect(task().goalStep == 20)
     #expect(task().goalDays == 7)
     store.setGoalStep(categoryID: category().id, taskID: id, step: 20, days: nil)
-    #expect(task().goalDays == nil, "a target typed by hand ends the link")
-    store.setGoalStep(categoryID: category().id, taskID: id, step: nil, days: 7)
+    #expect(task().goalDays == 7, "no days is 7 days: nothing changed")
+    store.setGoalStep(categoryID: category().id, taskID: id, step: 20, days: 5)
+    #expect(task().goalDays == 5)
+    store.setGoalStep(categoryID: category().id, taskID: id, step: nil, days: 5)
     #expect(task().goalStep == nil)
-    #expect(task().goalDays == nil, "no days without a step")
+    #expect(task().goalDays == 5, "days without a step: + steps by the target ÷ days")
+    #expect(task().goalStepOrAutomatic == 14, "70 minutes over 5 days")
+    store.setGoalStep(categoryID: category().id, taskID: id, step: nil, days: 9)
+    #expect(task().goalDays == nil, "out of range is blank")
 }
 
 /// The editor's target for a per-day goal's step: step × days, capped like any goal.

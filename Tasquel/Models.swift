@@ -205,27 +205,22 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
         return (goalProgress ?? 0) >= target - 1e-9
     }
 
-    /// What the goal's + and − add: its `goalStep` when set (the editor's Step), else 1
-    /// for counts and, for time, an automatic step (`automaticTimeStep`).
+    /// What the goal's + and − add: its `goalStep` when set (the editor's Step), else a
+    /// day's share of the target (`automaticStep`, over its Days).
     var goalStepOrAutomatic: Double {
         if let step = goalStep, step > 0 { return step }
-        guard goalKind == .time else { return 1 }
-        return Self.automaticTimeStep(forTarget: goalTarget ?? 0, repeating: mode == .repeating)
+        return Self.automaticStep(forTarget: goalTarget ?? 0, days: goalDays)
     }
 
-    /// A time goal's step when none is set. Repeating (a week's worth, done day by day): a
-    /// day's share of the target, target ÷ 7 to the nearest 5 minutes, at least 5 (70 min
-    /// steps by 10, 5 hours by 45). One-time and carry-over: by the target's size (up to
-    /// 20 min: 5, an hour: 10, 3 hours: 15, else 30).
-    static func automaticTimeStep(forTarget target: Double, repeating: Bool) -> Double {
-        guard target.isFinite, target > 0 else { return 5 }
-        if repeating { return max(5, ((target / 7) / 5).rounded() * 5) }
-        switch target {
-        case ...20: return 5
-        case ...60: return 10
-        case ...180: return 15
-        default: return 30
-        }
+    /// A goal's step when none is set: a day's share of the target, the target ÷ its Days
+    /// (7 when blank), rounded up to a whole minute or a whole number, so that many taps
+    /// reach it: 70 minutes steps by 10; 67 by 10, or with Days 5 by 14 (5 taps). (Rounded
+    /// to 5 minutes, most Days gave another number of taps: 67 ÷ 6 was +10, 7 taps.)
+    static func automaticStep(forTarget target: Double, days: Int? = nil) -> Double {
+        guard target.isFinite, target > 0 else { return 1 }
+        let days = Double(days.flatMap { (1...7).contains($0) ? $0 : nil } ?? 7)
+        // (Less a hair, so an exact share like 70 ÷ 7 isn't rounded up past 10.)
+        return max(1, (target / days - 1e-9).rounded(.up))
     }
 }
 

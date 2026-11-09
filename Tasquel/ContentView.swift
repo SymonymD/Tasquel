@@ -194,16 +194,16 @@ struct ContentView: View {
                 }
             }
 
-            // "Deleted … · Undo", just above the bottom bar (or the keyboard).
-            if store.persistenceError == nil, let deletion = store.lastDelete {
+            // "Deleted … · Undo", just above the bottom bar. Hidden while the keyboard is up:
+            // above it, it sat over the field being typed in. (Not ended: a keyboard notice
+            // as a goal editor's Delete Task took its field away ended it at once.)
+            if store.persistenceError == nil, let deletion = store.lastDelete, !isKeyboardVisible {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     undoDeleteMessage(deletion)
                         .frame(maxWidth: 560)  // not the width of an iPad
                         .padding(.horizontal, 16)
-                        .padding(.bottom, isKeyboardVisible
-                                 ? Self.keyboardDoneClearance + 8
-                                 : max(8, bottomBarHeight - homeIndicatorInset + 8))
+                        .padding(.bottom, max(8, bottomBarHeight - homeIndicatorInset + 8))
                 }
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
             }
@@ -550,16 +550,20 @@ struct ContentView: View {
     }
 
     /// Shown for five seconds after a delete; deleting no longer asks first, so this is
-    /// how a mistaken delete is taken back.
+    /// how a mistaken delete is taken back. Only as wide as its words (screen-wide, it
+    /// covered rows below it), and only Undo takes taps: a tap on the rest reaches what's
+    /// under it, like a card's Add Task.
     private func undoDeleteMessage(_ deletion: ChecklistStore.UndoableDelete) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "trash")
-                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                .hiddenFromVoiceOver()
-            Text(Theme.isRetro(theme) ? "deleted \(deletion.description)" : "Deleted \(deletion.description)")
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 8)
+            Group {
+                Image(systemName: "trash")
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .hiddenFromVoiceOver()
+                Text(Theme.isRetro(theme) ? "deleted \(deletion.description)" : "Deleted \(deletion.description)")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .allowsHitTesting(false)
             Button(Theme.isRetro(theme) ? "[UNDO]" : "Undo") {
                 undoDelete()
             }
@@ -573,13 +577,16 @@ struct ContentView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background {
-            if Theme.isRetro(theme) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.navCapsule(theme))
-                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
-            } else {
-                Capsule().fill(.clear).glassEffect(.regular, in: Capsule())
+            Group {
+                if Theme.isRetro(theme) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Theme.navCapsule(theme))
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+                } else {
+                    Capsule().fill(.clear).glassEffect(.regular, in: Capsule())
+                }
             }
+            .allowsHitTesting(false)
         }
         .task(id: deletion.token) {
             // With VoiceOver it stays until the next change: five seconds isn't enough to

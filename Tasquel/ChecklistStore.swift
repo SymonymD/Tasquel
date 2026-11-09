@@ -1350,7 +1350,7 @@ final class ChecklistStore {
     }
 
     /// A task in the viewed week, read without saving a preview week.
-    private func viewedTask(_ categoryID: UUID, _ taskID: UUID) -> ChecklistTask? {
+    func viewedTask(_ categoryID: UUID, _ taskID: UUID) -> ChecklistTask? {
         selectedWeek?.categories.first { $0.id == categoryID }?.tasks.first { $0.id == taskID }
     }
 
@@ -1433,11 +1433,13 @@ final class ChecklistStore {
     }
 
     /// Sets the step for a goal's + and − buttons; nil (or not above zero) means automatic.
-    /// `days` keeps a per-day goal's link between step and target (`goalDays`); nil ends it.
+    /// `days` is the goal's days a week (`goalDays`): with a step, the target follows step ×
+    /// days in the editor; without one, + steps by the target ÷ days. nil is 7 days.
     func setGoalStep(categoryID: UUID, taskID: UUID, step: Double?, days: Int? = nil) {
         let step = step.flatMap { $0.isFinite && $0 > 0 ? GoalUnitKind.cleaned(min($0, GoalUnitKind.maxValue)) : nil }
-        let days = step == nil ? nil : days.flatMap { (1...7).contains($0) ? $0 : nil }
-        guard viewedTask(categoryID, taskID).map({ $0.goalStep != step || $0.goalDays != days }) == true,
+        let days = days.flatMap { (1...7).contains($0) ? $0 : nil }
+        // (No days and 7 are the same: the editor's toggle saves 7.)
+        guard viewedTask(categoryID, taskID).map({ $0.goalStep != step || ($0.goalDays ?? 7) != (days ?? 7) }) == true,
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }

@@ -119,6 +119,39 @@ final class CardStateUITests: XCTestCase {
         XCTAssertTrue(app.addTaskRow.exists, "and can be added to")
     }
 
+    /// The "Deleted … · Undo" message is only as wide as its words (screen-wide, it covered
+    /// the rows under it), and hides while a task is typed, coming back after.
+    @MainActor
+    func testUndoMessageIsCompactAndHidesWhileTyping() throws {
+        card("Work").tap()
+        let field = app.addTaskField
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("Report\n")
+        field.typeText("Email\n")  // (the card's last task gone would end its edit mode)
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Edit Work"].tap()
+        app.buttons["Delete Report"].tap()
+        app.buttons["Done editing Work"].tap()
+
+        let undo = app.buttons["Undo delete"].firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Deleted")).firstMatch
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(message.frame.minX, screen.minX + 50, "not stretched to the screen's edge")
+        XCTAssertLessThan(undo.frame.maxX, screen.maxX - 50, "not stretched to the screen's edge")
+        XCTAssertEqual((message.frame.minX + undo.frame.maxX) / 2, screen.midX, accuracy: 20, "centered")
+
+        let addField = app.addTaskField
+        XCTAssertTrue(addField.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(undo.waitForNonExistence(timeout: 2), "hidden while typing")
+        app.buttons["Done"].firstMatch.tap()  // nothing typed: nothing changed
+        XCTAssertTrue(undo.waitForExistence(timeout: 2), "back with the keyboard gone")
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["Report"].waitForExistence(timeout: 2), "and still undoes")
+    }
+
     /// Undo from another week goes back to the week of the delete, where the task returns.
     @MainActor
     func testUndoFromAnotherWeekGoesBack() throws {

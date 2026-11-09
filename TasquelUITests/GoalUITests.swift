@@ -75,15 +75,16 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["0m / 2h"].waitForExistence(timeout: 3), "Done set the goal")
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2), "bottom bar returns")
 
-        // + adds a step (15 minutes toward a 2-hour goal), − takes one back.
-        let plus = app.buttons["Add 15 minutes"]
+        // + adds a step (a day's share of a 2-hour goal, 120 ÷ 7 rounded up: 18 minutes),
+        // − takes one back.
+        let plus = app.buttons["Add 18 minutes"]
         XCTAssertTrue(plus.waitForExistence(timeout: 2))
         for _ in 0..<3 { plus.tap() }
-        XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 2))
-        app.buttons["Remove 15 minutes"].tap()
-        XCTAssertTrue(app.staticTexts["30m / 2h"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["54m / 2h"].waitForExistence(timeout: 2))
+        app.buttons["Remove 18 minutes"].tap()
+        XCTAssertTrue(app.staticTexts["36m / 2h"].waitForExistence(timeout: 2))
         plus.tap()
-        XCTAssertTrue(app.staticTexts["45m / 2h"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["54m / 2h"].waitForExistence(timeout: 2))
 
         // Swiping down into the keyboard also closes it (here in the goal's editor).
         app.buttons["Edit goal"].tap()
@@ -92,7 +93,7 @@ final class GoalUITests: XCTestCase {
         editHours.tap()
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 3))
-        let grid = app.staticTexts["45m / 2h"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let grid = app.staticTexts["54m / 2h"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         grid.press(forDuration: 0.05, thenDragTo: keyboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2), "swipe down closes the keyboard")
         app.buttons["Cancel editing goal"].tap()
@@ -338,10 +339,10 @@ final class GoalUITests: XCTestCase {
         XCTAssertEqual(nameField.value(forKey: "hasKeyboardFocus") as? Bool, true)
     }
 
-    /// A new goal's + is alone, centered under the bar. The first tap nudges it over to make
-    /// room for −, and a quick second tap where + was still adds instead of undoing.
+    /// − and + are always there, centered under the bar, − dimmed until there's progress,
+    /// so neither moves under a finger: a second tap where + was still adds.
     @MainActor
-    func testFirstStepMakesRoomForMinus() throws {
+    func testStepsKeepTheirPlace() throws {
         let app = launchFresh()
         let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
@@ -357,26 +358,28 @@ final class GoalUITests: XCTestCase {
         let targetField = app.textFields["Target"]
         XCTAssertTrue(targetField.waitForExistence(timeout: 3))
         targetField.tap()
-        targetField.typeText("10")
+        targetField.typeText("7")  // (a day's share: 1)
         app.buttons["Set"].tap()
         if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
 
         let plus = app.buttons["Add 1"]
+        let minus = app.buttons["Remove 1"]
         XCTAssertTrue(plus.waitForExistence(timeout: 3))
         sleep(1)
-        XCTAssertFalse(app.buttons["Remove 1"].exists, "no − before there's progress")
+        XCTAssertTrue(minus.exists, "− is there from the start")
+        XCTAssertFalse(minus.isEnabled, "dimmed before there's progress")
         let bar = app.progressIndicators.firstMatch.frame
-        XCTAssertEqual(plus.frame.midX, bar.midX, accuracy: 1, "+ alone, centered under the bar")
+        XCTAssertEqual(minus.frame.union(plus.frame).midX, bar.midX, accuracy: 1, "centered under the bar")
         let before = plus.frame
         // Where + was, on the screen (a coordinate from the element would follow it).
         let spot = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: before.midX, dy: before.midY))
         spot.tap()
-        XCTAssertTrue(app.staticTexts["1/10"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Remove 1"].waitForExistence(timeout: 2), "− came in")
+        XCTAssertTrue(app.staticTexts["1/7"].waitForExistence(timeout: 3))
+        XCTAssertTrue(minus.isEnabled, "− works once there's progress")
         sleep(1)
-        XCTAssertGreaterThan(plus.frame.minX, before.minX, "+ moved over for it")
+        XCTAssertEqual(plus.frame.minX, before.minX, accuracy: 0.5, "+ didn't move")
         spot.tap()
-        XCTAssertTrue(app.staticTexts["2/10"].waitForExistence(timeout: 3), "a second tap where + was still adds")
+        XCTAssertTrue(app.staticTexts["2/7"].waitForExistence(timeout: 3), "a second tap where + was still adds")
     }
 
     /// The goal's sliders button sits left of the bar (8pt, twice the system one), and the − and + steps
@@ -401,7 +404,7 @@ final class GoalUITests: XCTestCase {
         let targetField = app.textFields["Target"]
         XCTAssertTrue(targetField.waitForExistence(timeout: 3))
         targetField.tap()
-        targetField.typeText("10")
+        targetField.typeText("7")  // (a day's share: 1)
         app.buttons["Set"].tap()
         if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
 
@@ -419,8 +422,10 @@ final class GoalUITests: XCTestCase {
         XCTAssertGreaterThan(minus.frame.midY, bar.maxY, "the steps are under the bar")
         let steps = minus.frame.union(plus.frame)
         XCTAssertEqual(steps.midX, bar.midX, accuracy: 1, "centered under the bar")
-        // The frames include the tap areas, 16pt out on each side.
-        XCTAssertEqual((steps.width - 32) / bar.width, 1.0 / 3, accuracy: 0.06, "about a third of the bar")
+        // The frames include the tap areas: 16pt outward, and half the 12pt gap inward.
+        XCTAssertEqual(minus.frame.width - 22, 56, accuracy: 1, "− is 56pt wide (twice its old 28)")
+        XCTAssertGreaterThanOrEqual(plus.frame.width - 22, 56 - 0.5, "+ at least as wide")
+        XCTAssertEqual(steps.width - 32 - (minus.frame.width - 22) - (plus.frame.width - 22), 12, accuracy: 1, "12pt between them")
         XCTAssertLessThanOrEqual(minus.frame.maxX, plus.frame.minX + 0.5, "the tap areas don't overlap")
         XCTAssertFalse(app.buttons["Add progress"].exists)
 
@@ -443,7 +448,9 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(bigPlus.waitForExistence(timeout: 3))
         XCTAssertEqual(bigPlus.frame.height, smallPlus.height, accuracy: 1, "still one line")
         XCTAssertGreaterThan(bigPlus.frame.width, smallPlus.width + 20, "the pill grew to fit")
-        XCTAssertEqual(app.buttons["Remove 999,999"].frame.union(bigPlus.frame).midX, bar.midX, accuracy: 1, "still centered")
+        // (The step × 7 days made the target 999,999 too: its wider amount moved the bar.)
+        let newBar = app.progressIndicators.firstMatch.frame
+        XCTAssertEqual(app.buttons["Remove 999,999"].frame.union(bigPlus.frame).midX, newBar.midX, accuracy: 1, "still centered")
 
         editGoal.tap()
         app.textFields["Auto"].firstMatch.clearAndType("")
@@ -460,10 +467,10 @@ final class GoalUITests: XCTestCase {
         app.textFields["Target hours"].clearAndType("1")
         app.buttons["Save Goal"].tap()
         XCTAssertTrue(app.staticTexts["1h / 1h"].waitForExistence(timeout: 3))
-        let pastTarget = app.buttons["Add 10 minutes"]
+        let pastTarget = app.buttons["Add 9 minutes"]  // (60 ÷ 7, rounded up)
         XCTAssertTrue(pastTarget.waitForExistence(timeout: 2), "+ stays at the target")
         pastTarget.tap()
-        XCTAssertTrue(app.staticTexts["1h 10m / 1h"].waitForExistence(timeout: 3), "and counts past it")
+        XCTAssertTrue(app.staticTexts["1h 9m / 1h"].waitForExistence(timeout: 3), "and counts past it")
     }
 
     /// One tap on any field in the goal editor opens the keyboard on it.
@@ -509,11 +516,11 @@ final class GoalUITests: XCTestCase {
         let target = app.textFields["Target"].firstMatch
         target.typeText("3")
         XCTAssertEqual(target.value as? String, "3")
-        // A tap just below the box still focuses it. (On Days, the last field: just below
-        // Step is the Days box now.)
-        let days = app.textFields["Days"]
-        days.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
-        XCTAssertEqual(days.value(forKey: "hasKeyboardFocus") as? Bool, true)
+        // A tap just below the box still focuses it, and doesn't flip the Days toggle under it.
+        let step = app.textFields["Auto"].firstMatch
+        step.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.1)).tap()
+        XCTAssertTrue(app.buttons["7 days"].isSelected, "Days unchanged")
+        XCTAssertEqual(step.value(forKey: "hasKeyboardFocus") as? Bool, true)
 
         // Delete sits left of Save Goal; it can be undone instead of asking first.
         let delete = app.buttons["Delete task"]
@@ -524,10 +531,59 @@ final class GoalUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Read more"].waitForExistence(timeout: 1), "the goal is deleted")
     }
 
-    /// The goal editor's Days: with a Step, the target follows Step × Days and says so;
-    /// typing the target by hand clears Days. Saved, + steps by the Step.
+    /// The goal editor's Days, a 5 | 7 toggle, with Step left on Auto: + steps by the target
+    /// ÷ the days, and the editor says so. A target typed then keeps the days.
+    @MainActor
+    func testGoalDaysWithAutoStep() throws {
+        let app = launchDemoFitness()
+        XCTAssertTrue(app.buttons["Add 13 minutes"].exists, "Yoga's 1h 30m ÷ 7, rounded up")
+        try openYogaEditor(app)
+
+        XCTAssertTrue(app.staticTexts["Target ÷ 7 days = 13m a step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["7 days"].isSelected, "7 to start")
+        XCTAssertFalse(app.textFields["Days"].exists, "a toggle, not a field")
+        app.buttons["5 days"].tap()
+        XCTAssertTrue(app.staticTexts["Target ÷ 5 days = 18m a step"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.textFields["Target hours"].value as? String, "1", "the target stays")
+
+        app.textFields["Target hours"].clearAndType("2")
+        XCTAssertTrue(app.buttons["5 days"].isSelected, "typing the target keeps the days")
+        XCTAssertTrue(app.staticTexts["Target ÷ 5 days = 30m a step"].waitForExistence(timeout: 2), "2h 30m ÷ 5")
+        app.buttons["Save Goal"].tap()
+        XCTAssertTrue(app.buttons["Add 30 minutes"].waitForExistence(timeout: 3), "+ steps by a day's share of 5 days")
+    }
+
+    /// With a Step typed, the target is Step × Days and follows the toggle; typing the target
+    /// then puts the Step back to Auto. Saved, + steps by the Step.
     @MainActor
     func testGoalDaysFollowStep() throws {
+        let app = launchDemoFitness()
+        try openYogaEditor(app)
+
+        app.textFields["Auto minutes"].clearAndType("20")
+        XCTAssertEqual(app.textFields["Target hours"].value as? String, "2")
+        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "20", "20 min × 7 days")
+        XCTAssertTrue(app.staticTexts["Step × 7 days = Target"].exists)
+        app.buttons["5 days"].tap()
+        XCTAssertTrue(app.staticTexts["Step × 5 days = Target"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.textFields["Target hours"].value as? String, "1")
+        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "40", "20 min × 5 days")
+
+        // A target typed by hand leads: the Step goes back to Auto, a day's share of it.
+        app.textFields["Target hours"].clearAndType("3")
+        XCTAssertTrue(app.staticTexts["Target ÷ 5 days = 44m a step"].waitForExistence(timeout: 2), "3h 40m ÷ 5")
+        XCTAssertFalse(app.staticTexts["Step × 5 days = Target"].exists)
+
+        app.textFields["Auto minutes"].clearAndType("30")
+        XCTAssertEqual(app.textFields["Target hours"].value as? String, "2")
+        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "30", "30 min × 5 days")
+        app.buttons["Save Goal"].tap()
+        XCTAssertTrue(app.buttons["Add 30 minutes"].waitForExistence(timeout: 3), "+ steps by the Step")
+    }
+
+    /// The demo's week with Fitness open first (Yoga: 1h 30m, no step).
+    @MainActor
+    private func launchDemoFitness() -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-demoData", "-demoFirstCard", "Fitness"]
@@ -535,31 +591,18 @@ final class GoalUITests: XCTestCase {
         let fitness = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Fitness,")).firstMatch
         XCTAssertTrue(fitness.waitForExistence(timeout: 10))
         fitness.tap()
-        // Yoga's sliders: the Edit goal button nearest below its name.
+        XCTAssertTrue(app.staticTexts["Yoga"].waitForExistence(timeout: 3))
+        return app
+    }
+
+    /// Yoga's sliders: the Edit goal button nearest below its name.
+    @MainActor
+    private func openYogaEditor(_ app: XCUIApplication) throws {
         let yoga = app.staticTexts["Yoga"]
-        XCTAssertTrue(yoga.waitForExistence(timeout: 3))
         let edit = app.buttons.matching(identifier: "Edit goal").allElementsBoundByIndex
             .filter { $0.frame.minY > yoga.frame.minY }.min { $0.frame.minY < $1.frame.minY }
         try XCTUnwrap(edit).tap()
-
-        let days = app.textFields["Days"]
-        XCTAssertTrue(days.waitForExistence(timeout: 3))
-        XCTAssertEqual(days.value as? String ?? "", "–", "blank to start (its placeholder shows)")
-        app.textFields["Auto minutes"].clearAndType("20")
-        days.clearAndType("7")
-        XCTAssertEqual(app.textFields["Target hours"].value as? String, "2")
-        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "20", "20 min × 7 days")
-        XCTAssertTrue(app.staticTexts["Step × 7 days = Target"].exists)
-        days.clearAndType("1")
-        XCTAssertTrue(app.staticTexts["Step × 1 day = Target"].waitForExistence(timeout: 2))
-        XCTAssertEqual(app.textFields["Target minutes"].value as? String, "20")
-
-        // A target typed by hand is the user's: Days clears.
-        app.textFields["Target hours"].clearAndType("3")
-        XCTAssertEqual(days.value as? String ?? "", "–")
-        XCTAssertFalse(app.staticTexts["Step × 1 day = Target"].exists)
-        app.buttons["Save Goal"].tap()
-        XCTAssertTrue(app.buttons["Add 20 minutes"].waitForExistence(timeout: 3), "+ steps by the Step")
+        XCTAssertTrue(app.buttons["Save Goal"].waitForExistence(timeout: 3))
     }
 }
 

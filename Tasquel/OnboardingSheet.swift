@@ -146,7 +146,7 @@ struct OnboardingSheet: View {
                             "Deleting doesn't ask first: tap Undo in the message to bring it back. Pull the cards down from the top and let go to close them all.")
             case .goalSteps:
                 featureText("Goals, Step by Step",
-                            "Tap + to count progress and − to take it back. Each tap adds a step that suits the goal; set your own with the sliders beside the bar, like 20 for 100 push-ups. + keeps counting past the target.")
+                            "Tap + to count progress and − to take it back. Each tap adds a day's share of the target (70 minutes goes by 10); set your own with the sliders beside the bar, like 20 for 100 push-ups over 5 days. + keeps counting past the target.")
             }
         }
         .padding(.vertical, 24)
