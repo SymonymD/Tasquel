@@ -108,6 +108,19 @@ enum TaskTextHints {
             if !matched { task.mode = .repeating }
             task.title = title(task.title, without: daily.phrase, unit: daily.unit)
             matched = true
+        } else if list == nil, task.type != .list, let sessions = sessionAmount(lower) {
+            // "Gym 3 times 45 min": 135 minutes, 45 at a time, over 3 days. Repeating only if
+            // the words say how often ("3 times a week"), which the schedule rules read.
+            task.type = .goal
+            task.goalTarget = sessions.value
+            task.goalKind = sessions.kind
+            task.goalUnit = sessions.unit
+            task.goalStep = sessions.perSession
+            task.goalDays = sessions.count
+            // The amount first: "three 45-minute sessions" is a count once it's gone.
+            task.title = title(title(task.title, without: sessions.amountPhrase, unit: sessions.unit),
+                               without: sessions.countPhrase, unit: sessions.unit)
+            matched = true
         }
         // "3x per week": a goal of 3, "daily" one of 7, unless the parser already found an amount.
         if list == nil, let count = goalCount(lower), task.type != .list,
@@ -177,10 +190,39 @@ enum TaskTextHints {
         return (min(amount.value * Double(days), GoalUnitKind.maxValue), amount.kind, amount.unit, phrase, amount.value, days)
     }
 
-    /// An amount with its unit: "90 pages" (a goal of 90 pages), "2 hours" or "45 min"
-    /// (a time goal, in minutes). Not dates or times ("at 3 today", "in 2 days").
+    /// An amount for each of a few sessions, as the week's total: "gym 3 times 45 min" is
+    /// 135 minutes, 45 a session, over 3 days (like "gym Mon, Wed, Fri 45 min"). Also "3x a
+    /// week for 45 minutes", "45 min twice a week", "3 sessions of 45 min", "three 45-minute
+    /// workouts", "run 3 times 5 km". Two to seven sessions, one a day; not a count per day
+    /// ("take 2 pills twice a day" is left to the count). `amountPhrase` and `countPhrase`
+    /// are patterns for the amount and the count in the title.
+    static func sessionAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, amountPhrase: String,
+                                                  countPhrase: String, perSession: Double, count: Int)? {
+        guard let amount = unitAmount(text), dailyCount(text) == nil else { return nil }
+        let amountPhrase = (amount.kind == .time ? #"(\b(for|of)\s+)?"# : "") + NSRegularExpression.escapedPattern(for: amount.phrase)
+        guard let at = text.range(of: amountPhrase, options: .regularExpression) else { return nil }
+        // Counted without the amount, so "3 45-minute sessions" reads as 3 sessions.
+        let rest = text.replacingCharacters(in: at, with: " ")
+        let words = ["two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7]
+        let count: Int
+        if let match = rest.firstMatch(of: #/\b([2-7]|two|three|four|five|six|seven)\s*(?:x|times|sessions?|workouts?|classes)(?![a-z])/#) {
+            guard let number = Int(match.1) ?? words[String(match.1)] else { return nil }
+            count = number
+        } else if rest.contains(#/\btwice\b/#) {
+            count = 2
+        } else {
+            return nil
+        }
+        let often = #"(\s*(a|an|per|each|every|/)\s*(week|wk)\b|\s+weekly\b)?"#
+        let counted = #"\b([2-7]|two|three|four|five|six|seven)\s*(x|times|sessions?|workouts?|classes)(?![a-z])"# + often + #"(\s+of\b)?|\btwice\b"# + often
+        let value = min(amount.value * Double(count), GoalUnitKind.maxValue)
+        return (value, amount.kind, amount.unit, amountPhrase, counted, amount.value, count)
+    }
+
+    /// An amount with its unit: "90 pages" (a goal of 90 pages), "2 hours", "45 min" or
+    /// "45-minute" (a time goal, in minutes). Not dates or times ("at 3 today", "in 2 days").
     static func unitAmount(_ text: String) -> (value: Double, kind: GoalUnitKind, unit: String, phrase: String)? {
-        for match in text.matches(of: #/\b(\d+(?:[.,]\d+)?)\s*(hours|hour|hrs|hr|h|minutes|minute|mins|min)\b/#) {
+        for match in text.matches(of: #/\b(\d+(?:[.,]\d+)?)\s*-?\s*(hours|hour|hrs|hr|h|minutes|minute|mins|min)\b/#) {
             // When, not how long: "call back in 2 hours", "leave in 10 min".
             let before = text[..<match.range.lowerBound]
             guard before.range(of: #"\b(in|at|by|before|after|until|till|from|within)\s*$"#, options: .regularExpression) == nil,
@@ -212,8 +254,9 @@ enum TaskTextHints {
     /// Takes out what a model made up: a goal amount when the words hold no number at all,
     /// in digits or words, and no frequency ("Rhythm" isn't a 10-minute goal; it's a plain
     /// task), a mode when nothing in the words gives one (gibberish came back repeating),
-    /// and list items that aren't in the words. A list stays a list even with no items left
-    /// ("Groceries" is a list to fill in).
+    /// and list items that aren't in the words besides the title ("Bugs" came back as a
+    /// list with the item "Bugs"). A list stays a list even with no items left ("Groceries"
+    /// is a list to fill in).
     static func dropInvented(_ parsed: ParsedTask, from text: String) -> ParsedTask {
         var task = parsed
         let lower = text.lowercased()
@@ -227,9 +270,13 @@ enum TaskTextHints {
         if task.mode != .oneTime, !hasScheduleCue(lower) {
             task.mode = .oneTime
         }
-        let words = loose(lower)
+        // The words the items can come from: all but the title.
+        var words = loose(lower)
+        let title = loose(task.title.lowercased()).trimmingCharacters(in: .whitespaces)
+        if !title.isEmpty, let at = words.range(of: title) { words.replaceSubrange(at, with: " ") }
         task.items = task.items.filter { item in
             let wanted = loose(item.lowercased()).trimmingCharacters(in: .whitespaces)
+            guard wanted != title else { return false }
             // "eggs" for "egg" and the other way round.
             let singular = wanted.replacingOccurrences(of: #"(es|s)$"#, with: "", options: .regularExpression)
             return !wanted.isEmpty && (words.contains(wanted) || (singular.count > 2 && words.contains(singular)))

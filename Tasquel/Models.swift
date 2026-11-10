@@ -182,6 +182,20 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// Set when the user adds or changes the task in its own week. Syncing with the week
     /// before then leaves it as it is: it isn't updated, removed, or adopted as a copy.
     var isUserEdited = false
+    /// In a "This week only" card: the mode the task had before it was made one-time there,
+    /// put back when This week only is turned off. Nil for other tasks.
+    var modeBeforeThisWeekOnly: SavedMode? = nil
+
+    /// A task's mode as it was, and whether the user had changed the task, so turning This
+    /// week only off leaves it exactly as before.
+    struct SavedMode: Codable, Equatable {
+        var mode: TaskMode
+        var wasUserEdited: Bool
+    }
+
+    /// The mode syncing goes by: a copy made one-time in a This week only card still
+    /// follows (or leaves with) its source by the mode it had, and stays deleted like one.
+    var syncMode: TaskMode { modeBeforeThisWeekOnly?.mode ?? mode }
 
     /// The goal's unit kind. Older goals count a quantity, or a custom unit if one was typed.
     var goalKind: GoalUnitKind {
@@ -254,6 +268,7 @@ extension ChecklistTask {
         carriedFrom = try container.decodeIfPresent(UUID.self, forKey: .carriedFrom)
         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
     }
 }
 

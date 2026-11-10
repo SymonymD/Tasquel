@@ -383,8 +383,10 @@ struct ContentView: View {
             .onChanged { value in
                 if weekSwipeAxis == nil {
                     // A lifted card owns the touch: treating it as a week swipe would disable
-                    // the page (below), cancelling the card's drag.
-                    weekSwipeAxis = cardDrag == nil && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                    // the page (below), cancelling the card's drag. So does a task moved by
+                    // its handle, which a sideways wobble turned into a week swipe.
+                    weekSwipeAxis = cardDrag == nil && !store.isReorderingTask
+                        && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
                     // Track from here so the grid doesn't jump by the recognition distance.
                     weekDragOrigin = value.translation.width
                     // The page is disabled for the swipe from now on, which took its field's
@@ -1091,6 +1093,7 @@ struct ContentView: View {
             // Keeps the field being edited (and its options) clear of the Done button.
             .safeAreaPadding(.bottom, isKeyboardVisible ? Self.keyboardDoneClearance : 0)
             .environment(\.cardGridScroll, scroll)
+            .environment(\.cardGridBottomBar, isKeyboardVisible ? 0 : bottomBarHeight)
         }
     }
 

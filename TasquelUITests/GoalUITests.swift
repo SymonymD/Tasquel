@@ -225,8 +225,50 @@ final class GoalUITests: XCTestCase {
         let delete = app.buttons["Delete Alpha"]
         XCTAssertTrue(delete.exists, "edit mode shows delete and the drag handle")
         let handle = delete.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 12, dy: 0))
-        handle.press(forDuration: 1.0, thenDragTo: charlie.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        // The task follows the handle and takes a task's place once it reaches its middle:
+        // dragged a little past Charlie's.
+        handle.press(forDuration: 1.0, thenDragTo: charlie.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: 0, dy: 10)))
         let moved = NSPredicate { _, _ in alpha.frame.minY > charlie.frame.minY }
+        wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
+
+        // A sideways drag on a handle moves nothing and doesn't swipe the week (it used to).
+        let week = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label
+        let bravoHandle = app.buttons["Delete Bravo"].coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: 12, dy: 0))
+        bravoHandle.press(forDuration: 0.1, thenDragTo: bravoHandle.withOffset(CGVector(dx: -220, dy: 4)))
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label, week)
+        XCTAssertTrue(app.buttons["Delete Bravo"].exists, "still this week, still in edit mode")
+    }
+
+    /// Held near the bottom of the screen, a task moved by its handle scrolls a card longer
+    /// than the screen, so it can be taken to the end.
+    @MainActor
+    func testReorderAutoScrollsLongCard() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        // One at a time, like the other tests: typed all at once, keys were lost.
+        for number in 1...16 {
+            addTask.typeText("Task \(number)\n")
+            usleep(400_000)
+        }
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Edit Errands"].tap()
+
+        let first = app.buttons["Complete Task 1"]
+        let last = app.buttons["Complete Task 16"]
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertFalse(last.isHittable, "the card is longer than the screen")
+        let handle = app.buttons["Delete Task 1"].coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: 12, dy: 0))
+        let nearBottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.86))
+        handle.press(forDuration: 0.3, thenDragTo: nearBottom, withVelocity: .default, thenHoldForDuration: 4)
+        let moved = NSPredicate { _, _ in first.frame.minY > last.frame.minY }
         wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 5)
     }
 

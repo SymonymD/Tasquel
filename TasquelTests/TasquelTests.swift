@@ -2955,3 +2955,231 @@ func smartAddAuditPhrases(text: String, title: String, type: TaskType, mode: Tas
     let model = ParsedTask(title: "Water plants", mode: .repeating)
     #expect(TaskTextHints.dropInvented(model, from: "water plants every 3 days").mode == .repeating)
 }
+
+// MARK: - 1.0.3
+
+extension ThisWeekOnlyTests {
+    private func makeStoreWithTripTasks(_ modes: [(String, TaskMode)]) -> ChecklistStore {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        for (title, mode) in modes { store.addTask(categoryID: trip(store)!.id, title: title, mode: mode) }
+        return store
+    }
+
+    @Test("Turning it off puts back each task's mode")
+    func turningOffRestoresModes() {
+        let store = makeStoreWithTripTasks([("Pack", .carryOver), ("Stretch", .repeating), ("Note", .oneTime)])
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        #expect(trip(store)!.tasks.map(\.mode) == [.oneTime, .oneTime, .oneTime])
+        store.setCategoryThisWeekOnly(trip(store)!.id, false)
+        #expect(trip(store)!.tasks.map(\.mode) == [.carryOver, .repeating, .oneTime])
+        #expect(trip(store)!.tasks.allSatisfy { $0.modeBeforeThisWeekOnly == nil })
+        store.navigateToDate(nextWeek)
+        #expect(trip(store)?.tasks.map(\.title) == ["Pack", "Stretch"], "they carry on into next week again")
+    }
+
+    @Test("The modes are remembered across a relaunch")
+    func modesRememberedAcrossRelaunch() {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        store.addTask(categoryID: trip(store)!.id, title: "Stretch", mode: .repeating)
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        relaunched.setCategoryThisWeekOnly(trip(relaunched)!.id, false)
+        #expect(trip(relaunched)!.tasks.map(\.mode) == [.repeating])
+    }
+
+    @Test("A copy turned on and off again in a later week still follows its task")
+    func copyFollowsAfterOnAndOff() {
+        let store = makeStoreWithTripTasks([("Stretch", .repeating)])
+        store.navigateToDate(nextWeek)
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.setCategoryThisWeekOnly(trip(store)!.id, false)
+        #expect(trip(store)!.tasks.first?.isUserEdited == false, "untouched, as before")
+
+        store.navigateToDate(clock.now)
+        store.renameTask(categoryID: trip(store)!.id, taskID: trip(store)!.tasks[0].id, newTitle: "Yoga")
+        store.navigateToDate(nextWeek)
+        #expect(trip(store)?.tasks.map(\.title) == ["Yoga"])
+    }
+
+    @Test("Adding a repeating task turns it off and puts the other tasks' modes back")
+    func addingLastingTaskRestoresModes() {
+        let store = makeStoreWithTripTasks([("Pack", .carryOver)])
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.addTask(categoryID: trip(store)!.id, title: "Stretch", mode: .repeating)
+        #expect(trip(store)!.isThisWeekOnly == false)
+        #expect(trip(store)!.tasks.map(\.mode) == [.carryOver, .repeating])
+    }
+
+    @Test("A mode the user picks isn't replaced by the one from before")
+    func pickedModeStays() {
+        let store = makeStoreWithTripTasks([("Pack", .carryOver), ("Stretch", .repeating)])
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.updateTaskMode(categoryID: trip(store)!.id, taskID: trip(store)!.tasks[1].id, mode: .carryOver)
+        #expect(trip(store)!.isThisWeekOnly == false)
+        #expect(trip(store)!.tasks.map(\.mode) == [.carryOver, .carryOver])
+    }
+
+    @Test("A task synced into a later week's This week only card is one-time there until it's off")
+    func syncedCopyIsOneTime() throws {
+        let store = makeStoreWithTripTasks([("Note", .oneTime)])
+        store.navigateToDate(nextWeek)
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.navigateToDate(clock.now)
+        store.addTask(categoryID: trip(store)!.id, title: "Stretch", mode: .repeating)
+        store.addTask(categoryID: trip(store)!.id, title: "Taxes", mode: .carryOver)
+
+        store.navigateToDate(nextWeek)
+        let modes = Dictionary(uniqueKeysWithValues: (trip(store)?.tasks ?? []).map { ($0.title, $0.mode) })
+        #expect(modes == ["Stretch": .oneTime, "Taxes": .oneTime])
+        store.setCategoryThisWeekOnly(trip(store)!.id, false)
+        #expect(trip(store)?.tasks.map(\.mode) == [.repeating, .carryOver])
+    }
+
+    @Test("A synced one-time copy still leaves with its task, and stays deleted")
+    func syncedCopyFollowsItsTask() throws {
+        let store = makeStoreWithTripTasks([("Note", .oneTime)])
+        store.navigateToDate(nextWeek)
+        store.setCategoryThisWeekOnly(trip(store)!.id, true)
+        store.navigateToDate(clock.now)
+        let taxes = store.addTask(categoryID: trip(store)!.id, title: "Taxes", mode: .carryOver)!
+        store.addTask(categoryID: trip(store)!.id, title: "Stretch", mode: .repeating)
+
+        store.navigateToDate(nextWeek)
+        let stretch = try #require(trip(store)?.tasks.first { $0.title == "Stretch" })
+        store.deleteTask(categoryID: trip(store)!.id, taskID: stretch.id)
+        store.navigateToDate(clock.now)
+        store.toggleTask(categoryID: trip(store)!.id, taskID: taxes)  // done: its copy goes
+        store.navigateToDate(nextWeek)
+        #expect(trip(store)?.tasks.map(\.title) == [], "Taxes left with its task; Stretch stayed deleted")
+    }
+}
+
+/// Smart Add reads an amount for each of a few sessions as the week's total.
+@Test(arguments: [
+    ("Gym 3 times 45 min", "Gym", TaskMode.oneTime, 135.0, 45.0, 3, GoalUnitKind.time, ""),
+    ("gym 3x 45 min", "Gym", .oneTime, 135, 45, 3, .time, ""),
+    ("Gym 3x a week 45 min", "Gym", .repeating, 135, 45, 3, .time, ""),
+    ("gym 45 min 3 times a week", "Gym", .repeating, 135, 45, 3, .time, ""),
+    ("Gym 3 times a week for 45 minutes", "Gym", .repeating, 135, 45, 3, .time, ""),
+    ("gym 3 times for 45 minutes", "Gym", .oneTime, 135, 45, 3, .time, ""),
+    ("swim twice a week 30 min", "Swim", .repeating, 60, 30, 2, .time, ""),
+    ("Gym 3 sessions of 45 min", "Gym", .oneTime, 135, 45, 3, .time, ""),
+    ("Yoga three 45-minute sessions", "Yoga", .oneTime, 135, 45, 3, .time, ""),
+    ("Run 3 times 5 km", "Run", .oneTime, 15, 5, 3, .custom, "km"),
+    ("Run 3x weekly 1 hour", "Run", .repeating, 180, 60, 3, .time, ""),
+] as [(String, String, TaskMode, Double, Double, Int, GoalUnitKind, String)])
+func smartAddSessions(text: String, title: String, mode: TaskMode, target: Double, step: Double, days: Int,
+                      kind: GoalUnitKind, unit: String) {
+    let task = smartAddRules(text)
+    #expect(task.title == title)
+    #expect(task.type == .goal)
+    #expect(task.mode == mode)
+    #expect(task.goalTarget == target)
+    #expect(task.goalStep == step)
+    #expect(task.goalDays == days)
+    #expect(task.goalKind == kind)
+    #expect(task.goalUnit == unit)
+}
+
+/// Words that only look like sessions are read as before.
+@Test func smartAddSessionLookalikes() {
+    #expect(smartAddRules("Meeting at 3 for 45 min") == ParsedTask(title: "Meeting at 3", type: .goal, goalTarget: 45, goalKind: .time))
+    #expect(smartAddRules("Call 2 clients 30 min").goalStep == nil)
+    #expect(smartAddRules("Take 2 pills twice a day").goalTarget == 14, "a count per day stays a count")
+    #expect(smartAddRules("Gym Mon, Wed, Fri 1 hour").goalTarget == 180, "days are still days")
+    #expect(smartAddRules("Run 3x") == ParsedTask(title: "Run", type: .goal, goalTarget: 3))
+}
+
+/// A list's title isn't one of its items ("Bugs" came back as a list holding "Bugs").
+@Test func listTitleIsntAnItem() {
+    for text in ["Bugs", "v1.2", "Packing list"] {
+        let list = TaskTextHints.dropInvented(ParsedTask(title: text, type: .list, items: [text]), from: text)
+        #expect(list.type == .list, "\(text)")
+        #expect(list.items.isEmpty, "\(text)")
+    }
+    let groceries = TaskTextHints.dropInvented(ParsedTask(title: "Groceries", type: .list, items: ["Groceries", "milk", "eggs"]),
+                                               from: "Groceries: milk, eggs")
+    #expect(groceries.items == ["milk", "eggs"])
+}
+
+/// Return in a wrapping rename field saves the name, without the line break.
+@Test func renameFieldReturnSaves() {
+    #expect(RenameField.submitted("Plan the trip") == nil)
+    #expect(RenameField.submitted("Plan the trip\n") == "Plan the trip")
+    #expect(RenameField.submitted("Plan the\ntrip") == "Plan the trip")
+    #expect(RenameField.submitted("\n") == "")
+}
+
+/// A task moved by its handle lands past each task whose middle it reaches, going up or
+/// down, and can't go past either end of the list.
+@Test func taskReorderLanding() {
+    let ids = (0..<3).map { _ in UUID() }
+    let frames = Dictionary(uniqueKeysWithValues: ids.enumerated().map {
+        ($1, CGRect(x: 0, y: CGFloat($0) * 60, width: 300, height: 40))
+    })
+    var down = TaskReorder(taskID: ids[0], order: ids, frames: frames, from: 0)
+    down.distance = 50
+    #expect(down.landing == 0, "not yet at the next task's middle")
+    down.distance = 60
+    #expect(down.landing == 1)
+    down.distance = 120
+    #expect(down.landing == 2)
+    #expect(down.clamped(500) == 120)
+    down.target = 2
+    #expect(down.offset(for: ids[1], spacing: 20) == -60)
+    #expect(down.offset(for: ids[2], spacing: 20) == -60)
+    #expect(down.offset(for: ids[0], spacing: 20) == 120)
+
+    var up = TaskReorder(taskID: ids[2], order: ids, frames: frames, from: 2)
+    up.distance = -60
+    #expect(up.landing == 1)
+    up.distance = -120
+    #expect(up.landing == 0)
+    #expect(up.clamped(-500) == -120)
+    up.target = 1
+    #expect(up.offset(for: ids[0], spacing: 20) == 0)
+    #expect(up.offset(for: ids[1], spacing: 20) == 60)
+}
+
+/// Held at either end of the list, a task takes the end task's place: a tall task (one
+/// with sub-tasks) past a short last one, and rows whose sizes don't add up exactly.
+@Test func taskReorderReachesTheEnds() {
+    let ids = (0..<2).map { _ in UUID() }
+    let frames = [ids[0]: CGRect(x: 0, y: 0, width: 300, height: 120), ids[1]: CGRect(x: 0, y: 134, width: 300, height: 40)]
+    var tall = TaskReorder(taskID: ids[0], order: ids, frames: frames, from: 0)
+    tall.distance = tall.clamped(1000)
+    #expect(tall.landing == 1, "the tall task passes the short last one")
+    var short = TaskReorder(taskID: ids[1], order: ids, frames: frames, from: 1)
+    short.distance = short.clamped(-1000)
+    #expect(short.landing == 0)
+
+    let thirds = (0..<3).map { _ in UUID() }
+    let height = 100.0 / 3, gap = 14.0 + 1.0 / 3
+    let rows = Dictionary(uniqueKeysWithValues: thirds.enumerated().map {
+        ($1, CGRect(x: 0, y: CGFloat($0) * (height + gap), width: 300, height: height))
+    })
+    var down = TaskReorder(taskID: thirds[0], order: thirds, frames: rows, from: 0)
+    down.distance = down.clamped(1000)
+    #expect(down.landing == 2)
+    var up = TaskReorder(taskID: thirds[2], order: thirds, frames: rows, from: 2)
+    up.distance = up.clamped(-1000)
+    #expect(up.landing == 0)
+}
+
+/// A lifted task scrolls the grid only near the top or bottom of what's visible, faster
+/// closer to the edge.
+@Test func autoScrollSpeed() {
+    let zone = TaskAutoScroller.zone, top: CGFloat = 100, bottom: CGFloat = 800
+    #expect(TaskAutoScroller.velocity(fingerY: 450, top: top, bottom: bottom) == 0)
+    #expect(TaskAutoScroller.velocity(fingerY: top + zone, top: top, bottom: bottom) == 0)
+    #expect(TaskAutoScroller.velocity(fingerY: top + zone / 2, top: top, bottom: bottom) == -TaskAutoScroller.maxSpeed / 2)
+    #expect(TaskAutoScroller.velocity(fingerY: top - 40, top: top, bottom: bottom) == -TaskAutoScroller.maxSpeed, "capped past the edge")
+    #expect(TaskAutoScroller.velocity(fingerY: bottom - zone / 2, top: top, bottom: bottom) == TaskAutoScroller.maxSpeed / 2)
+    #expect(TaskAutoScroller.velocity(fingerY: bottom + 10, top: top, bottom: bottom) == TaskAutoScroller.maxSpeed)
+    #expect(TaskAutoScroller.velocity(fingerY: 120, top: 100, bottom: 200) == 0, "no room for both edges: no scrolling")
+}

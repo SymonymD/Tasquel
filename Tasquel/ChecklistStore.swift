@@ -25,6 +25,9 @@ final class ChecklistStore {
     /// A task Smart Add just added, its row lit for a moment so it's seen (not with Reduce
     /// Motion). Not saved.
     var highlightedTaskID: UUID?
+    /// A task is being moved by its handle (a card's edit mode): the week isn't swiped
+    /// meanwhile. Read only by gestures, so changing it redraws nothing. Not saved.
+    @ObservationIgnored var isReorderingTask = false
     /// How category cards are ordered (Settings ▸ Categories).
     var categorySort: CategorySortOrder = .manual
     /// When each category (by name) last had a task added, changed or removed, for the
@@ -832,7 +835,7 @@ final class ChecklistStore {
 
                 for ti in week.categories[ci].tasks.indices.reversed() {
                     let copy = week.categories[ci].tasks[ti]
-                    guard let sourceID = copy.carriedFrom, copy.mode == .carryOver, !copy.isUserEdited,
+                    guard let sourceID = copy.carriedFrom, copy.syncMode == .carryOver, !copy.isUserEdited,
                           !copy.isCompleted, !copy.subtasks.contains(where: \.isCompleted) else { continue }
                     // Linked to the source, or to the copy the source week has of it (a
                     // week in between was saved after this one).
@@ -864,7 +867,7 @@ final class ChecklistStore {
                 let present = week.categories[ci].tasks.contains { isCopy($0) || $0.title == task.title }
                     || week.categories.contains { $0.tasks.contains(where: isCopy) }
                 guard !present else { continue }
-                week.categories[ci].tasks.append(carriedCopy(of: task))
+                week.categories[ci].tasks.append(arriving(carriedCopy(of: task), in: week.categories[ci]))
                 changed = true
             }
             if followsSource, !(week.userOrderedCategories ?? []).contains(sourceCategory.name),
@@ -967,7 +970,7 @@ final class ChecklistStore {
             for ti in week.categories[ci].tasks.indices.reversed() {
                 let copy = week.categories[ci].tasks[ti]
                 // A copy the user changed in this week is theirs: it neither follows nor goes away.
-                guard let sourceID = copy.repeatsFrom, copy.mode == .repeating, !copy.isUserEdited else { continue }
+                guard let sourceID = copy.repeatsFrom, copy.syncMode == .repeating, !copy.isUserEdited else { continue }
                 // Linked to the source, or to the task the source itself repeats (a week
                 // in between was saved after this one).
                 let source = sources[sourceID] ?? sourceCategory.tasks.first { $0.repeatsFrom == sourceID }
@@ -993,7 +996,7 @@ final class ChecklistStore {
                 guard !week.categories.contains(where: { $0.tasks.contains {
                     $0.repeatsFrom == task.id || (task.repeatsFrom != nil && $0.repeatsFrom == task.repeatsFrom)
                 } }) else { continue }
-                week.categories[ci].tasks.append(resetRecurringTask(task))
+                week.categories[ci].tasks.append(arriving(resetRecurringTask(task), in: week.categories[ci]))
                 changed = true
             }
             if !(week.userOrderedCategories ?? []).contains(sourceCategory.name),
@@ -1113,17 +1116,19 @@ final class ChecklistStore {
 
     /// Turns "This week only" on or off for a category in the viewed week (its card's
     /// edit mode). On: its carry-over and repeating tasks become one-time, since nothing
-    /// in it comes back, and later weeks lose it, keeping only tasks the user added or
-    /// changed there. Off: it comes back in later weeks like any category.
+    /// in it comes back (each remembers its mode), and later weeks lose it, keeping only
+    /// tasks the user added or changed there. Off: its tasks get their modes back, and it
+    /// comes back in later weeks like any category.
     func setCategoryThisWeekOnly(_ categoryID: UUID, _ thisWeekOnly: Bool) {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               weeks[wi].categories[ci].isThisWeekOnly != thisWeekOnly else { return }
         let category = weeks[wi].categories[ci]
         weeks[wi].categories[ci].isThisWeekOnly = thisWeekOnly
+        if !thisWeekOnly { restoreModes(wi, ci) }
         if thisWeekOnly {
             for ti in category.tasks.indices where category.tasks[ti].mode != .oneTime {
-                weeks[wi].categories[ci].tasks[ti].mode = .oneTime
+                weeks[wi].categories[ci].tasks[ti] = Self.madeOneTime(category.tasks[ti])
                 weeks[wi].categories[ci].tasks[ti].isUserEdited = true
             }
             // Later weeks lose the copies of its tasks the user hasn't touched there, and the
@@ -1144,11 +1149,38 @@ final class ChecklistStore {
 
     /// A carry-over or repeating task comes back next week, so its category has to as
     /// well: adding one to a "This week only" category (or changing a task to one) turns
-    /// that off.
+    /// that off, and its other tasks get their modes back as when the switch is turned off.
     private func keepCategory(_ wi: Int, _ ci: Int, for mode: TaskMode) {
         guard mode != .oneTime, weeks[wi].categories[ci].isThisWeekOnly else { return }
         weeks[wi].categories[ci].isThisWeekOnly = false
+        restoreModes(wi, ci)
         keepSavedCategory(for: weeks[wi].categories[ci])
+    }
+
+    /// A task made one-time for a "This week only" card, remembering its mode (and whether
+    /// the user had changed it) for when the card stops being this week only.
+    private static func madeOneTime(_ task: ChecklistTask) -> ChecklistTask {
+        guard task.mode != .oneTime else { return task }
+        var task = task
+        task.modeBeforeThisWeekOnly = .init(mode: task.mode, wasUserEdited: task.isUserEdited)
+        task.mode = .oneTime
+        return task
+    }
+
+    /// A copy synced into `category`: one-time if the card is this week only, since
+    /// nothing in it carries on (the copy remembers its mode, like the card's other tasks).
+    private static func arriving(_ task: ChecklistTask, in category: Category) -> ChecklistTask {
+        category.isThisWeekOnly ? madeOneTime(task) : task
+    }
+
+    /// Puts back the modes a card's tasks had before it was made this week only.
+    private func restoreModes(_ wi: Int, _ ci: Int) {
+        for ti in weeks[wi].categories[ci].tasks.indices {
+            guard let saved = weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly else { continue }
+            weeks[wi].categories[ci].tasks[ti].mode = saved.mode
+            weeks[wi].categories[ci].tasks[ti].isUserEdited = saved.wasUserEdited
+            weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
+        }
     }
 
     /// Categories added for this week only before they were kept in Saved Categories
@@ -1333,7 +1365,7 @@ final class ChecklistStore {
             // In a future week, a deleted repeating task must not be synced back in.
             // Remembered by its source, so a different task given the same name still
             // repeats into this week; by title only if the copy never knew its source.
-            if task.mode == .repeating && isFutureWeek(weeks[wi]) {
+            if task.syncMode == .repeating && isFutureWeek(weeks[wi]) {
                 if let sourceID = task.repeatsFrom {
                     weeks[wi].dismissCarryOver(sourceID)
                 } else if !task.isUserEdited, !(weeks[wi].dismissedRepeating ?? []).contains(task.title) {
@@ -1364,6 +1396,8 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
         weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        // The user picked this mode: it isn't put back to the one from before This week only.
+        weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
         keepCategory(wi, ci, for: mode)
         noteEdit(categoryID)
         save()

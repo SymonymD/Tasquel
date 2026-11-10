@@ -481,18 +481,44 @@ private struct ExpandedCategoryContent: View {
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
 
+    /// The task being moved by its handle (the card's edit mode), if any.
+    @State private var reorder: TaskReorder?
+    /// Each task row's frame in the task list (laid out, without a reorder's offsets).
+    @State private var rowFrames: [UUID: CGRect] = [:]
+    /// Scrolls the grid while a lifted task is held near the top or bottom.
+    @State private var autoScroller = TaskAutoScroller()
+    @Environment(\.cardGridBottomBar) private var bottomBar
+
+    /// Wider than the gaps inside a task (sub-tasks, a goal's bar and buttons), so each
+    /// task reads as one group.
+    private var taskSpacing: CGFloat { 14 * expandedCardScale }
+
     var body: some View {
-        // Wider than the gaps inside a task (sub-tasks, a goal's bar and buttons), so each
-        // task reads as one group.
-        VStack(alignment: .leading, spacing: 14 * expandedCardScale) {
+        VStack(alignment: .leading, spacing: taskSpacing) {
             ForEach(category.tasks) { task in
+                let isLifted = reorder?.taskID == task.id
                 TaskRowCard(
                     task: task,
                     categoryID: category.id,
                     store: store,
                     isEditing: isEditing,
-                    isPastWeek: isPastWeek
+                    isPastWeek: isPastWeek,
+                    onHandleDrag: { moveLifted(task.id, by: $0, at: $1) },
+                    onHandleRelease: { drop(task.id) }
                 )
+                // A lifted task sits over the others on its own card, a little larger.
+                .background {
+                    if isLifted { LiftedTaskBackground(theme: theme, rc: rc) }
+                }
+                .scaleEffect(isLifted ? 1.03 : 1)
+                .offset(y: reorder?.offset(for: task.id, spacing: taskSpacing) ?? 0)
+                // Measured outside the offset, so it's where the row is laid out.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(TaskReorder.space)) } action: {
+                    rowFrames[task.id] = $0
+                }
+                // Last, so the stack sees it: before the measuring, the rows it passed while the
+                // grid scrolled were drawn over it.
+                .zIndex(isLifted ? 1 : 0)
             }
 
             // Adding is off while the card is in edit mode. The This week only switch takes
@@ -530,6 +556,166 @@ private struct ExpandedCategoryContent: View {
                 .accessibilityLabel("Close \(category.name)")
             }
         }
+        .coordinateSpace(.named(TaskReorder.space))
+        .background { TaskAutoScrollAnchor(scroller: autoScroller).hiddenFromVoiceOver() }
+        // A firm tap as a task lifts, a lighter one as it drops, a tick for each place it passes.
+        .sensoryFeedback(trigger: reorder?.taskID) { _, lifted in
+            lifted != nil ? .impact(weight: .medium) : .impact(weight: .light)
+        }
+        .sensoryFeedback(.selection, trigger: reorder?.target) { old, new in old != nil && new != nil }
+        // Leaving edit mode takes the handle away mid-drag: the task goes back to its place.
+        .onChange(of: isEditing) { _, editing in
+            if !editing && reorder != nil { endReorder() }
+        }
+        .onDisappear { if reorder != nil { endReorder() } }
+    }
+
+    /// The handle of `taskID` moved `translation` on the screen from where it was touched,
+    /// the finger now at `fingerY` (window coordinates): the first move lifts the task, then
+    /// it follows the finger and the tasks it passes slide over to make room.
+    private func moveLifted(_ taskID: UUID, by translation: CGFloat, at fingerY: CGFloat) {
+        guard isEditing, !isPastWeek else { return }
+        if reorder == nil {
+            let order = category.tasks.map(\.id)
+            guard let from = order.firstIndex(of: taskID), order.allSatisfy({ rowFrames[$0] != nil }) else { return }
+            // The week can't be swiped meanwhile: a sideways wobble changed the week.
+            store.isReorderingTask = true
+            autoScroller.begin()
+            withAnimation(.snappy(duration: 0.15)) {
+                reorder = TaskReorder(taskID: taskID, order: order, frames: rowFrames, from: from)
+            }
+        }
+        guard reorder?.taskID == taskID else { return }
+        reorder?.fingerTranslation = translation
+        reorder?.fingerY = fingerY
+        followFinger()
+    }
+
+    /// Puts the lifted task under the finger: its move on the screen plus however far the
+    /// grid has scrolled under it. Near the top or bottom the grid scrolls (once the finger
+    /// has moved a little, so a task lifted near the bottom bar doesn't set it off), until the
+    /// task reaches that end of its card; each step comes back here.
+    private func followFinger() {
+        guard let moving = reorder else { return }
+        let bounds = moving.distanceBounds
+        let distance = moving.clamped(moving.fingerTranslation + autoScroller.scrolled)
+        reorder?.distance = distance
+        if let landing = reorder?.landing, landing != reorder?.target {
+            withAnimation(.snappy(duration: 0.2)) { reorder?.target = landing }
+        }
+        let hasMoved = abs(moving.fingerTranslation) > 8
+        autoScroller.update(fingerY: moving.fingerY,
+                            canScrollUp: hasMoved && distance > bounds.lowerBound + 0.5,
+                            canScrollDown: hasMoved && distance < bounds.upperBound - 0.5,
+                            bottomBar: bottomBar,
+                            onScroll: { followFinger() })
+    }
+
+    /// The handle let go: the task takes the place it was dragged to.
+    private func drop(_ taskID: UUID) {
+        guard let moving = reorder, moving.taskID == taskID else { return }
+        withAnimation(.snappy(duration: 0.25)) {
+            // (Not if the card's tasks changed meanwhile: the places no longer match.)
+            if moving.target != moving.from, moving.order.indices.contains(moving.target),
+               category.tasks.map(\.id) == moving.order {
+                store.moveTask(categoryID: category.id, taskID: taskID, to: moving.order[moving.target])
+            }
+            endReorder()
+        }
+    }
+
+    private func endReorder() {
+        autoScroller.end()
+        reorder = nil
+        store.isReorderingTask = false
+    }
+}
+
+/// A task being moved by its handle in a card's edit mode: it follows the finger, and the
+/// tasks it passes slide over to make room. The frames are the rows' as it was lifted.
+struct TaskReorder {
+    /// The task list's coordinate space, which doesn't move during a drag (the handle's
+    /// own space moves with the lifted row).
+    static let space = "taskList"
+
+    let taskID: UUID
+    let order: [UUID]
+    let frames: [UUID: CGRect]
+    let from: Int
+    /// How far the task has moved in the list, up (negative) or down: the finger's move
+    /// plus the grid's scrolling.
+    var distance: CGFloat = 0
+    /// The place it would take if let go now.
+    var target: Int
+    /// The finger's move on the screen since it touched the handle, and where it is now
+    /// (window coordinates).
+    var fingerTranslation: CGFloat = 0
+    var fingerY: CGFloat = 0
+
+    init(taskID: UUID, order: [UUID], frames: [UUID: CGRect], from: Int) {
+        self.taskID = taskID
+        self.order = order
+        self.frames = frames
+        self.from = from
+        target = from
+    }
+
+    /// `distance` kept within the list, so the task can't be dragged past either end, but
+    /// always far enough for its middle to reach the end tasks' (a tall task held at the
+    /// end of the list stopped short of a short last task's middle, and couldn't pass it).
+    func clamped(_ distance: CGFloat) -> CGFloat {
+        min(max(distance, distanceBounds.lowerBound), distanceBounds.upperBound)
+    }
+
+    /// How far up (negative) and down the task can go: to either end of the list.
+    var distanceBounds: ClosedRange<CGFloat> {
+        guard let frame = frames[taskID], let first = order.first.flatMap({ frames[$0] }),
+              let last = order.last.flatMap({ frames[$0] }) else { return -CGFloat.infinity...CGFloat.infinity }
+        let top = min(first.minY - frame.minY, first.midY - frame.midY, 0)
+        let bottom = max(last.maxY - frame.maxY, last.midY - frame.midY, 0)
+        return top...bottom
+    }
+
+    /// Where the task would land: past every task whose middle its own middle has reached,
+    /// to within a point (held at the end of the list, the two middles meet exactly, and a
+    /// rounding error decided it).
+    var landing: Int {
+        guard let frame = frames[taskID] else { return from }
+        let middle = frame.midY + distance
+        var index = 0
+        for (i, id) in order.enumerated() where id != taskID {
+            guard let other = frames[id] else { continue }
+            // Reaching a task's middle takes its place, going up or down.
+            if i < from ? other.midY < middle - 1 : other.midY <= middle + 1 { index += 1 }
+        }
+        return index
+    }
+
+    /// How far a row is drawn from its place: the lifted one with the finger, the ones it
+    /// has passed by its height, toward the place it left.
+    func offset(for id: UUID, spacing: CGFloat) -> CGFloat {
+        if id == taskID { return distance }
+        guard let i = order.firstIndex(of: id), let height = frames[taskID]?.height else { return 0 }
+        if from < i && i <= target { return -(height + spacing) }
+        if target <= i && i < from { return height + spacing }
+        return 0
+    }
+}
+
+/// Behind a lifted task: its own card, outlined, with a shadow (Retro: a bright outline).
+private struct LiftedTaskBackground: View {
+    let theme: AppearanceMode
+    let rc: RetroColor
+
+    var body: some View {
+        let isRetro = Theme.isRetro(theme)
+        let shape = RoundedRectangle(cornerRadius: isRetro ? 2 : 10)
+        shape.fill(Theme.cardFill(theme))
+            .overlay { shape.stroke(Theme.accent(theme, rc: rc).opacity(isRetro ? 1 : 0.35), lineWidth: 1) }
+            .shadow(color: .black.opacity(isRetro ? 0 : 0.22), radius: 8, y: 3)
+            .padding(.horizontal, -8)
+            .padding(.vertical, -6)
+            .hiddenFromVoiceOver()
     }
 }
 
@@ -593,4 +779,7 @@ extension EnvironmentValues {
     @Entry var isCardOpen = true
     /// Scrolls the week's grid of cards, so a field can bring itself wholly into view.
     @Entry var cardGridScroll: ScrollViewProxy? = nil
+    /// The bottom bar's height from the window's bottom (0 while the keyboard is up), so a
+    /// task moved by its handle scrolls the grid before reaching it.
+    @Entry var cardGridBottomBar: CGFloat = 0
 }

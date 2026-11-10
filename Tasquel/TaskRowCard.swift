@@ -78,6 +78,11 @@ struct TaskRowCard: View {
     let store: ChecklistStore
     let isEditing: Bool
     var isPastWeek: Bool = false
+    /// Moving the task by its handle (edit mode): how far the finger has gone up or down the
+    /// screen from where it touched the handle and where it is now (window coordinates), and
+    /// the handle let go. The card lifts, moves and drops the row (`TaskReorder`).
+    var onHandleDrag: ((_ translation: CGFloat, _ fingerY: CGFloat) -> Void)? = nil
+    var onHandleRelease: (() -> Void)? = nil
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -99,8 +104,8 @@ struct TaskRowCard: View {
     @State private var isEditingGoal = false
     @FocusState private var focusedGoalField: GoalFocus?
     @State private var showOptions = false
-    /// Another task is being dragged over this one (reordering in edit mode).
-    @State private var isDropTarget = false
+    /// A finger is on the reorder handle.
+    @GestureState private var isHoldingHandle = false
     /// Smart Add just added this task: lit like a drop target for a moment.
     private var isHighlighted: Bool { store.highlightedTaskID == task.id }
     /// The add-sub-task (or a list's add-item) field is open.
@@ -159,13 +164,22 @@ struct TaskRowCard: View {
 
                 // Title
                 if isEditingTitle {
-                    TextField("Task name", text: $editedTitle)
+                    // Wraps like the name it replaces, so every part of a long name can be
+                    // reached (on one line the start scrolled out of view). Return saves.
+                    TextField("Task name", text: $editedTitle, axis: .vertical)
+                        .lineLimit(1...8)
+                        // (A wrapping field is a text view: it doesn't take its name from the title.)
+                        .accessibilityIdentifier("Task name")
+                        .accessibilityLabel("Task name")
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .cardField(theme, rc: rc, outset: true)
                         .focused($isTitleFocused)
                         // The keyboard opens with the field, so one tap is enough.
                         .onAppear { isTitleFocused = true }
                         .onSubmit(commitTitle)
+                        .onChange(of: editedTitle) { _, text in
+                            if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
+                        }
                         // Closing the keyboard (Done, or scrolling) also saves the name.
                         .onChange(of: isTitleFocused) { _, focused in
                             if !focused && isEditingTitle { commitTitle() }
@@ -292,17 +306,8 @@ struct TaskRowCard: View {
         .onChange(of: isSubtaskFieldFocused) { _, focused in
             if focused && !isCardOpen { isSubtaskFieldFocused = false }
         }
-        // A task dragged by its handle (edit mode) and dropped here takes this place.
-        .dropDestination(for: TaskDragItem.self) { items, _ in
-            // Only within this card, and only while it's being edited.
-            guard isEditing, !isPastWeek, let item = items.first, item.categoryID == categoryID else { return false }
-            withAnimation(.snappy(duration: 0.25)) {
-                store.moveTask(categoryID: categoryID, taskID: item.taskID, to: task.id)
-            }
-            return true
-        } isTargeted: { isDropTarget = $0 && isEditing }
         .background {
-            if isDropTarget || isHighlighted {
+            if isHighlighted {
                 RoundedRectangle(cornerRadius: 8).fill(Theme.accent(theme, rc: rc).opacity(0.12)).padding(-4)
             }
         }
@@ -432,14 +437,27 @@ struct TaskRowCard: View {
         }
     }
 
-    /// In edit mode: hold and drag to move the task within its card.
+    /// In edit mode: touch and drag to move the task within its card. It lifts at the
+    /// touch and follows the finger (the card moves it; see `TaskReorder`). Not the system's
+    /// drag and drop: its task lifted only after a hold, showed only a small copy under the
+    /// finger, and a sideways wobble meanwhile swiped the week.
     private var reorderHandle: some View {
         rowIcon("line.3.horizontal", color: Theme.textTertiary(theme, rc: rc))
-            .draggable(TaskDragItem(taskID: task.id, categoryID: categoryID)) {
-                Text(task.title)
-                    .font(.expandedCard(size: 16))
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Theme.cardFill(theme), in: RoundedRectangle(cornerRadius: 8))
+            .gesture(
+                // On the screen: the handle's own space moves with the lifted row, and the
+                // task list's with the grid as it scrolls (the card adds that in).
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .updating($isHoldingHandle) { _, holding, _ in holding = true }
+                    .onChanged { onHandleDrag?($0.translation.height, $0.location.y) }
+                    // Where the finger let go, which the last change may not have reached.
+                    .onEnded {
+                        onHandleDrag?($0.translation.height, $0.location.y)
+                        onHandleRelease?()
+                    }
+            )
+            // Cancelled (the system took the touch): the task still lands where it is.
+            .onChange(of: isHoldingHandle) { _, holding in
+                if !holding { onHandleRelease?() }
             }
             .hiddenFromVoiceOver()  // VoiceOver uses Move Up / Move Down on the task
     }
@@ -1177,16 +1195,19 @@ private struct GoalBarStyle: ProgressViewStyle {
     }
 }
 
-// MARK: - Dragging Tasks
+// MARK: - Rename Fields
 
-/// What a task's reorder handle drags. Raw data rather than text, so a text field (or
-/// another app) doesn't take it as something to paste.
-struct TaskDragItem: Codable, Transferable {
-    let taskID: UUID
-    let categoryID: UUID
-
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .data)
+/// The rename fields wrap (`axis: .vertical`), so Return types a line break instead of
+/// submitting: a line break means Return, and the name is saved without it.
+enum RenameField {
+    /// The name to save when `text` holds a line break (Return, or pasted lines, joined
+    /// with spaces); nil while there's none.
+    static func submitted(_ text: String) -> String? {
+        guard text.contains(where: \.isNewline) else { return nil }
+        return text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }
 
@@ -1374,12 +1395,19 @@ struct SubTaskRowCard: View {
             }
 
             if !isPastWeek && isEditingTitle {
-                TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle)
+                // Wraps, like a task's rename field, so all of a long name can be reached.
+                TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle, axis: .vertical)
+                    .lineLimit(1...8)
+                    .accessibilityIdentifier(isListItem ? "Item" : "Sub-task")
+                    .accessibilityLabel(isListItem ? "Item" : "Sub-task")
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
                     .cardField(theme, rc: rc, outset: true)
                     .focused($isTitleFocused)
                     .onAppear { isTitleFocused = true }
                     .onSubmit(commitTitle)
+                    .onChange(of: editedTitle) { _, text in
+                        if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
+                    }
                     // Closing the keyboard (Done, or scrolling) also saves the name.
                     .onChange(of: isTitleFocused) { _, focused in
                         if !focused && isEditingTitle { commitTitle() }
