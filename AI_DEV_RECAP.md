@@ -28,18 +28,25 @@ Repo: https://github.com/SymonymD/Tasquel
 Simulator: Use an available iPhone 17 Pro runtime; simulator IDs vary by machine/session.
 Figma File Key: `m5BPKMcJmfaMXsMmpAFzjF`
 
-## Current State (as of 2026-11-08)
+## Current State (as of 2026-11-09)
 
-- **App Store**: 1.0 went live 2026-11-05, and 1.0.1 (6) is live now. 1.0.2 (7) was uploaded 2026-11-08 from `737ac71` and was still processing. The user still has to create version 1.0.2 in App Store Connect, add the new screenshots (`screenshots/appstore/`), pick build 7 and submit it.
-- **Branches**: `release-1.0.2` (`44ac0de`, pushed) holds everything. It was cut from `release-1.0.1` (`9fcce78`, build 6), which came from `build-3` (`d8e6c8d`). `main` is at `47e4358` (build 2), and none of the release branches are merged into it. There are no tags. Old merged branches still exist locally and on GitHub; delete them only when the user says so:
+- **App Store**: 1.0 went live 2026-11-05, and 1.0.1 (6) is live now.
+  - **Build 10 is the one to submit for 1.0.2**, not 7, 8 or 9. Its version commit is `a142cd2`, and its archive is `~/Library/Developer/Xcode/Archives/2026-11-09/Tasquel 1.0.2 (10).xcarchive`.
+  - Build 7 was uploaded 2026-11-08, and build 8 was archived the same day. Build 9 was archived 2026-11-09 but replaced before upload.
+  - The user still has to:
+    - upload build 10 from Organizer ▸ Distribute App (the command-line upload fails with "Failed to Use Accounts");
+    - create or open version 1.0.2 in App Store Connect and replace its screenshots with the ones in `screenshots/appstore/iphone` (1320×2868, the 6.9" slot) and `/ipad` (2064×2752, the 13" slot), in 01–07 order;
+    - pick build 10 and submit it.
+  - `screenshots/appstore/iphone-6.3/` (1206×2622, dated 2026-11-09 06:34) is untracked. It wasn't made by this session, so ask before committing or deleting it.
+- **Branches**: `release-1.0.2` (`a142cd2`, pushed) holds everything. It was cut from `release-1.0.1` (`9fcce78`, build 6), which came from `build-3` (`d8e6c8d`). `main` is at `47e4358` (build 2), and none of the release branches are merged into it. There are no tags. Old merged branches still exist locally and on GitHub; delete them only when the user says so:
   - `audit-fixes-2026-10-19` (local only)
   - `audit-fixes-and-test-isolation`
   - `calendar-integration-and-card-rework`
   - `final-sync-and-gregorian`
   - `final-sync-legacy-weeks`
 - **Size**:
-  - Swift: ~11,700 lines in the app, ~2,650 in unit tests and ~2,200 in UI tests.
-  - Tests: 143 unit tests (Swift Testing) and 61 UI tests. `ScreenshotTests` is skipped unless the screenshot script runs it.
+  - Swift: ~12,250 lines in the app, ~2,950 in unit tests and ~2,500 in UI tests.
+  - Tests: 163 unit tests (Swift Testing) and 72 UI tests; a full run reports 234 tests. `ScreenshotTests` is skipped unless the screenshot script runs it.
 - **Phone**: the user tests every change on their iPhone. Build, install and launch with `devicectl` (see Development Workflow); the install fails while the phone is locked.
 - **App icons**: Icon Composer files `Tasquel/AppIcon.icon` and `AppIconRetro.icon`. The retro icon is an alternate the Retro theme switches to.
 
@@ -50,38 +57,38 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
 | File | Lines | Purpose |
 |------|-------|---------|
 | `Tasquel/TasquelApp.swift` | 22 | `@main` App struct; owns the one `ChecklistStore` and `CalendarService` (shared by iPad windows) |
-| `Tasquel/Models.swift` | 506 | Data models and enums, lenient task decoding, `DayKey`, `GoalNumber` |
-| `Tasquel/ChecklistStore.swift` | 1545 | `@Observable` store: persistence, rollover, previews and sync, skipped-week final sync, undo, sorting, validation, load/save errors |
+| `Tasquel/Models.swift` | 553 | Data models and enums, lenient task decoding, `DayKey`, `GoalNumber` |
+| `Tasquel/ChecklistStore.swift` | 1632 | `@Observable` store: persistence, rollover, previews and sync, skipped-week final sync, undo, sorting, validation, load/save errors |
 | `Tasquel/Theme.swift` | 201 | Theme colors/fonts, `cardField`, `ScanlineOverlay` |
-| `Tasquel/ContentView.swift` | 1680 | Root view: frosted week header, week paging, card grid (order, expansion, drag, sort), glass bottom bar, calendar sheet wiring, keyboards, day changes, error screens |
-| `Tasquel/WeekDayStrip.swift` | 79 | The viewed week's 7 day pills (past green, today's ordinal, future empty) |
-| `Tasquel/CategoryCard.swift` | 593 | `CategoryGridCard` (one card for both states), completion ring, This week only switch |
+| `Tasquel/ContentView.swift` | 1764 | Root view: frosted week header, week paging, card grid (order, expansion, drag, sort), glass bottom bar, calendar sheet wiring, keyboards, day changes, error screens |
+| `Tasquel/WeekDayStrip.swift` | 80 | The viewed week's 7 day pills (past green, today's ordinal, future empty) |
+| `Tasquel/CategoryCard.swift` | 596 | `CategoryGridCard` (one card for both states), completion ring, This week only switch |
 | `Tasquel/CategoryGridLayout.swift` | 101 | Custom `Layout`: 2/3/4 columns, full-width rows for open cards |
-| `Tasquel/TaskRowCard.swift` | 1861 | Task, sub-task and add-task rows, goal row (`GoalStepsLayout`, `GoalBarStyle`), `PlusOpener`, `.revealFromLeading`, Smart Add flow |
+| `Tasquel/TaskRowCard.swift` | 1987 | Task, sub-task and add-task rows, goal row (`goalSteps`, `GoalBarStyle`) and goal editor (5 | 7 Days toggle), `PlusOpener`, `.revealFromLeading`, Smart Add flow |
 | `Tasquel/TaskOptionsPicker.swift` | 200 | Type/mode picker and the row's type+mode capsule |
 | `Tasquel/CategorySymbols.swift` | 211 | Category icons and emoji (`CategoryIcon`, `CategorySymbolMenu`, emoji picker host) |
 | `Tasquel/SavedCategoriesView.swift` | 249 | Settings ▸ Saved Categories, edited in place |
 | `Tasquel/AddCategorySheet.swift` | 217 | Add Category (saved templates + create new, This week only) |
-| `Tasquel/CalendarSheet.swift` | 367 | The week selector's sheet: Events (a pager between weeks) and Weeks (`WeekPickerCalendar`) |
+| `Tasquel/CalendarSheet.swift` | 405 | The week selector's sheet: Events (a pager between weeks) and Weeks (`WeekPickerCalendar`) |
 | `Tasquel/CalendarEventsList.swift` | 102 | The viewed week's events, the sheet's Events side |
 | `Tasquel/CalendarService.swift` | 333 | EventKit/fake providers, week event cache, `FeatureAccess` |
 | `Tasquel/CalendarSettings.swift` | 155 | Calendar settings rows and picker |
 | `Tasquel/SettingsSheet.swift` | 415 | Standard and retro settings layouts, `AppInfo` |
-| `Tasquel/HelpSheet.swift` | 148 | Help guide |
-| `Tasquel/OnboardingSheet.swift` | 205 | Onboarding and the longer Welcome Tour (`isReplay`) |
-| `Tasquel/FeatureAnimations.swift` | 742 | Onboarding feature animations + shared `Illustration` parts |
-| `Tasquel/TourAnimations.swift` | 463 | Welcome Tour animations: Smart Add, Tidy Up, Goals |
+| `Tasquel/HelpSheet.swift` | 150 | Help guide |
+| `Tasquel/OnboardingSheet.swift` | 209 | Onboarding and the longer Welcome Tour (`isReplay`) |
+| `Tasquel/FeatureAnimations.swift` | 910 | Onboarding feature animations + shared `Illustration` parts |
+| `Tasquel/TourAnimations.swift` | 468 | Welcome Tour animations: Smart Add, Tidy Up, Goals |
 | `Tasquel/WeekCarryOverAnimation.swift` | 229 | Welcome carry-over animation (`KeyframeAnimator`) |
-| `Tasquel/ParsedTask.swift` | 437 | Smart Add, platform-neutral: `ParsedTask`, `TaskTextParser`, `TaskTextHints` rules |
+| `Tasquel/ParsedTask.swift` | 469 | Smart Add, platform-neutral: `ParsedTask`, `TaskTextParser`, `TaskTextHints` rules |
 | `Tasquel/AppleIntelligenceTaskParser.swift` | 253 | Smart Add's model (the only FoundationModels file), `RulesOnlyTaskParser` |
 | `Tasquel/AppIconSwitcher.swift` | 33 | Retro home-screen icon switch |
 | `Tasquel/FeatureIdeasSurvey.swift` | 206 | Settings ▸ Feature Ideas anonymous survey |
 | `Tasquel/DemoData.swift` | 111 | `-demoData` sample week and `-demoToday` clock (debug only, for screenshots) |
 | `Tasquel/PrivacyInfo.xcprivacy` | — | Privacy manifest (survey data types, UserDefaults and keyboard reasons) |
-| `TasquelTests/TasquelTests.swift` | 2651 | 143 unit tests |
-| `TasquelUITests/*.swift` | 2200 | 61 UI tests (journey, calendar, goals, cards, Smart Add, emoji picker, bottom bar, settings, screenshots) |
+| `TasquelTests/TasquelTests.swift` | 2957 | 163 unit tests |
+| `TasquelUITests/*.swift` | 2487 | 72 UI tests (journey, calendar, goals, cards, Smart Add, emoji picker, bottom bar, settings, screenshots) |
 | `scripts/app-store-screenshots.sh`, `screenshots/appstore/make_appstore_images.py` | — | App Store screenshots and framing |
-| `CLAUDE.md` / `AGENTS.md` | 144 / 142 | Architecture reference for Claude Code / Codex (AGENTS.md lags a little; keep in sync) |
+| `CLAUDE.md` / `AGENTS.md` | 146 / 144 | Architecture reference for Claude Code / Codex (AGENTS.md lags a little; keep in sync) |
 
 ### Features Implemented
 
@@ -269,6 +276,30 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
     - `-demoToday yyyy-MM-dd` sets the demo store's clock, and views read today from `store.currentDate`.
     - The script uses this week's Wednesday, so the day strip shows past days, today and days to come.
     - The script paints the iPad status bar's real date out of the shots.
+73. **1.0.2 (8) (2026-11-08)** (`c478def`, `081ee1e`):
+    - The bottom bar's sides are each as wide as the wider of Edit and Done, so the week arrows get a full 44pt on every iPhone.
+    - The calendar sheet has This Week at the top left, and Weeks has Cancel and Go at the bottom.
+    - Closed + rows show their field's words, light ("Add Task", "Add Item"), and placeholders are in title case.
+    - A card's edit mode keeps the Add task row mounted, so a Smart Add still working, or words typed, aren't lost.
+    - Help and onboarding were brought up to date for 1.0.2.
+74. **Logic audit (2026-11-08)** (`5472573`): four read-only reviews, with each finding checked before fixing.
+    - It fixed the four data issues a reviewer had reported (dismissals one week deep, week start vs saved weeks, preview IDs, duplicate carry-overs after a rename) and about 35 more.
+    - The rest covered Smart Add rules, goal rounding, a westward time-zone change moving the viewed week, the orphan keyboard after a week swipe, and Reduce Motion's week change, which now happens in `onChange`.
+    - The commit message lists every fix.
+75. **Goal steps and Days (2026-11-09)** (`eb139aa`; `f2ae547`'s Days field was replaced the same day):
+    - With no Step set, + adds Target ÷ Days in every mode, counts too (`ChecklistTask.automaticStep`).
+      - Days is 7 unless set. The step is rounded up to a whole minute or number, so Days taps reach the target (70m by 10, 67m over 5 days by 14, 100 by 15).
+      - The old size table, which made 70 minutes +15, is gone.
+    - In the goal editor, Days is a 5 | 7 segmented toggle (`goalDaysSelection`). A goal Smart Add gave other days gets its number as a third option.
+      - A typed Step makes the Target Step × Days, and a typed Target puts the Step back to Auto.
+      - A hint shows the math, and Days is saved without a Step too; no days and 7 are the same.
+    - − is 56pt wide, 12pt from +, and always there, dimmed until there's progress, so neither step moves under a finger. `GoalStepsLayout` is gone.
+    - The "Deleted … · Undo" message is only as wide as its words, only Undo takes taps, and it hides while the keyboard is up.
+    - Smart Add's 4s note goes away when its task is deleted.
+76. **Text size caps (2026-11-09)** (`1fad0b6`):
+    - `editLabel` and the `WeekDayStrip` (capped at its call site in ContentView) stop growing at xxxLarge.
+    - At the largest size the arrows had shrunk to 28pt, and the strip had pushed the whole screen to ~705pt wide.
+    - `BottomBarUITests.testWeekArrowsAreFullSizeAtLargestText` covers it.
 
 ### UI Layout (current)
 
@@ -281,7 +312,7 @@ There are **two clones on the T7**: this one (`/Volumes/T7/Design/JB Portfolio/S
 - **Task rows**:
   - Each row has a checkbox, goal ring or list, a title (tap to rename), and a + that wipes open a sub-task field.
   - The type/mode capsule opens the picker; card edit mode adds a trash can and a drag handle.
-  - Goal rows: sliders, bar and amount on one line, with − and + under the bar.
+  - Goal rows: sliders, bar and amount on one line, with − (always there, dimmed at zero) and + under the bar.
 - **Bottom bar** (floating glass): Settings (circle, left), the week selector `‹ calendar ›` (center; opens the calendar sheet), Edit/Done (right). It becomes a small keyboard-down button while typing.
 
 ## Commit History
@@ -382,6 +413,18 @@ e6f7baa Goals, week header and bottom bar, calendar sheet, Smart Add rules, add 
 0af3f1e App Store screenshots for 1.0.2
 737ac71 Version 1.0.2 (7)
 44ac0de Screenshots on a Wednesday; calendar caption
+011e959 Update AI dev recap
+c478def Help and onboarding for 1.0.2: calendar sheet, This Week, Add Task, goals per day
+081ee1e Full-size week arrows, This Week in the calendar, per-day goal steps, Add Task labels, edit-mode fixes
+89d4b03 App Store screenshots for 1.0.2 (8)
+79644c3 Version 1.0.2 (8)
+f2ae547 Goal editor Days field; day's-share step for repeating time goals
+5472573 Logic audit fixes: dismissals, week start, time zones, sync, Smart Add rules, goals, view state
+eb139aa Goal steps by Target ÷ Days, a 5 | 7 Days toggle, a larger −, compact Undo
+043980b Version 1.0.2 (9)
+1fad0b6 Cap the Edit/Done label and the day strip at xxxLarge text
+ff9e006 App Store screenshots for 1.0.2 (10): goal steps by Target ÷ Days, the larger −
+a142cd2 Version 1.0.2 (10)
 ```
 
 ## Development Workflow
@@ -398,13 +441,15 @@ e6f7baa Goals, week header and bottom bar, calendar sheet, Smart Add rules, add 
   3. Launch with `xcrun devicectl device process launch --terminate-existing --device … com.symonym.Tasquel`.
   The install or launch fails while the phone is locked; ask the user to unlock it.
 - **Release**:
-  1. Bump `CURRENT_PROJECT_VERSION` for every upload. Build numbers keep rising across versions; 1.0.2 is build 7.
+  1. Bump `CURRENT_PROJECT_VERSION` for every upload, and only with the user's approval. Build numbers keep rising across versions; 1.0.2 is at build 10.
   2. `xcodebuild archive` into `~/Library/Developer/Xcode/Archives/<date>/`, so Organizer lists it.
   3. Upload with `xcodebuild -exportArchive -allowProvisioningUpdates` and ExportOptions: method app-store-connect, destination upload, team W66Q4GJBCV, automatic signing, `manageAppVersionAndBuildNumber` false.
   4. If it says "Failed to Use Accounts", upload from Organizer ▸ Distribute App instead.
 - **Screenshots**:
   1. Run `scripts/app-store-screenshots.sh`.
   2. Then run `INTER_DIR=<Inter extras/otf> python3 screenshots/appstore/make_appstore_images.py screenshots screenshots/appstore`. It needs Pillow and Inter Display.
+     - Pillow is in the user's site-packages, so don't run it with `python3 -I`.
+     - Past sessions downloaded Inter to their scratchpad, which doesn't last. Download the Inter release zip again and point `INTER_DIR` at its `extras/otf`.
 - **Full test runs**:
   - Run `build-for-testing` once, then `test-without-building` with `-only-testing:TasquelUITests` and with `-only-testing:TasquelTests`.
   - Read the results with `xcrun xcresulttool get test-results summary`.
@@ -487,6 +532,14 @@ e6f7baa Goals, week header and bottom bar, calendar sheet, Smart Add rules, add 
 71. **`simctl status_bar --time` can't change iPad's status bar date**: an ISO time is accepted only as `…T14:41:00.000Z` (UTC), and the date stays real. The screenshot script paints the date out.
 72. **`xcodebuild -exportArchive` "Failed to Use Accounts"** (2026-11-08): Xcode showed the account signed in, but the command-line upload found no App Store Connect access for the team. Uploading from Organizer worked.
 73. **`DragGesture` updating state during a programmatic page animation**: in the events pager, the drag's end reset (`isDragging` → false) arrived mid-page and snapped the offset back. Guard drag-end handling with `!isPaging`.
+74. **`@ScaledMetric` reads the environment outside the view** (2026-11-09): a `.dynamicTypeSize(...)` cap inside `WeekDayStrip` didn't reach its pill sizes. Cap it where ContentView places it.
+    - To find what overflowed at the largest text size, read the failing test's UI hierarchy attachment (`xcresulttool export attachments`). Element frames past the window's edges show the culprit.
+    - Large text in a UI test: launch with `-UIPreferredContentSizeCategoryName UICTContentSizeCategoryAccessibilityXXXL`.
+75. **A segmented `Picker` takes taps just outside it**: the goal editor's Days toggle swallowed a tap meant for the Step field above it. It now sits 6pt further away (`.padding(.top, 6)`).
+76. **Don't change state on keyboard notifications**: a stray `keyboardWillShow` fired as a focused field was removed (a goal editor's Delete Task), and clearing Undo on it lost the Undo. Hide on keyboard-up instead of clearing.
+77. **Deleting a card's only task ends that card's edit mode**: a UI test that needs edit mode afterwards must add two tasks.
+78. **Prove a new test catches the bug**: temporarily undo the fix (e.g. comment it out with a marker), see the test fail, then put the fix back.
+79. **Bash here is 3.2**: commands with complex `$(...)` get rejected. Keep shell commands simple, or use a short Python script.
 
 ### Historical notes (files since removed or rewritten)
 
@@ -504,16 +557,16 @@ H4. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., 
 
 ## Planned / Not Yet Implemented
 
-- **Open (2026-11-08)**:
-  - Swiping to another week while typing leaves the keyboard up with no field focused.
+- **Open (2026-11-09)**. The orphan keyboard, the Reduce Motion week change and the reported data issues were all fixed in `5472573`.
+  - **Left for the user to decide** (from the logic audit):
+    - Sync can put repeating or carry-over copies into a future week's This week only card. Should they become one-time?
+    - Turning This week only on is one-way: it makes the card's tasks one-time for good.
+    - "Gym 3 times 45 min" drops "3 times" from the title. Should it be 3 sessions of 45 min?
+    - The home-indicator inset may go unmeasured if onboarding opens on a Home-button iPhone (low confidence, untested).
   - The website's privacy page still calls the survey "Coming Soon"; the app says "Feature Ideas".
-  - A flaky GoalUITest: `testEditGoalFieldsFocusOnFirstTap` adds a task with Return and taps its options button while the row is still animating. This is a test-side problem.
-  - The Reduce Motion week change still calls `navigateToDate` from `asyncAfter` inside `withAnimation` (see gotcha 66).
-  - Data issues a reviewer reported, not verified:
-    - dismissals are checked only one week deep;
-    - the week-start setting and saved weeks can disagree after a failed write;
-    - `reuseIDs` gives a preview a stored week's ID after two week-start toggles;
-    - renaming a category, then re-creating the old name, duplicates carry-overs.
+  - **Flaky UI tests** (test-side):
+    - `GoalUITests.testReorderTasksByHandle` (drag timing);
+    - `testEditGoalFieldsFocusOnFirstTap` (it taps a new row's options while the row still animates; it failed once in the last full run, then passed).
 - **Branch housekeeping** (only with the user's approval): merge the release branches into `main` and tag the releases; delete the old merged branches.
 - **Release plan**: v1 under the user's individual account with no in-app purchases. A later version with in-app purchases under Symonym Design LLC, which doesn't exist yet. Keep Apple-only features (Apple Intelligence, Siri) isolated and optional for a possible Android build.
 - **Ideas, tabled**: hidden categories behind Face ID or a passcode, maybe paid. The Feature Ideas survey asks about Sync Across Devices, Stats & Charts and Locked Categories.
@@ -527,28 +580,30 @@ H4. **FeedbackSheet**: Standard + retro dual-layout sheet. POSTs `{"name": ..., 
 - **Expansion persistence on relaunch**: open cards are remembered while switching weeks, not across launches.
 - Data export/import.
 
-## Last Session Summary (2026-11-05 → 2026-11-08, Claude Code)
+## Last Session Summary (2026-11-05 → 2026-11-09, Claude Code)
 
 **What was done**:
-- **2026-11-05**: reviewed `build-3` and found two bugs, fixed for 1.0.1 build 5:
-  - weeks the app skipped got no final sync;
-  - Smart Add's added task could be missing from its card.
-- **2026-11-06**: This week only became a switch on the card, with Done in the task picker, in build 6. **1.0.1 (6) is live.**
-- **2026-11-07 → 08**: built 1.0.2 (items 67–71):
-  - Smart Add rules;
-  - the goals redesign;
-  - the frosted header with the day strip and the Tasquel mark, and the glass bottom bar;
-  - the combined calendar sheet with the week picker and an events pager that slides with the cards;
-  - + add fields that wipe open;
-  - more space between tasks.
-- **2026-11-08, release**:
-  - The full suite passed (60 UI tests, with the screenshot test skipped, and 143 unit tests).
-  - Versioned 1.0.2 (7) and committed on `release-1.0.2`.
-  - Retook and framed the screenshots on a Wednesday (item 72), with a new calendar caption.
-  - Pushed `release-1.0.2`.
-  - The command-line upload failed ("Failed to Use Accounts"), so the user uploaded build 7 from Organizer. It was processing.
+- **2026-11-05/06, 1.0.1**: the skipped-week final sync, the Smart Add `onChange` fix, and This week only as a switch on the card. **1.0.1 (6) is live.**
+- **2026-11-07/08, 1.0.2 (7)**: features 67–72, then uploaded from Organizer.
+- **2026-11-08, 1.0.2 (8)**: feature 73 and the logic audit (feature 74).
+- **2026-11-09, 1.0.2 (9) and (10)**: from the user's phone testing.
+  - "Meditate 70 minutes" still showed +15. The user decided: "Any goal should just divide the total by 7." The size table went (see memory `feedback-simple-rules`: replace old rules outright, don't layer special cases).
+  - Changing Days did nothing. Days became a 5 | 7 toggle, and the step became Target ÷ Days, rounded up.
+  - − was too small, and taps meant for it hit +. It's now twice as wide, with more space, and always shown.
+  - The screen-wide Undo bar covered the Add Task row. It's now compact and hides while typing.
+  - Smart Add's note stayed after its task was deleted. It now goes with the task.
+  - The Edit/Done label and the day strip are capped at xxxLarge.
+  - Screenshots were retaken and framed (`ff9e006`).
+  - Committed, archived and pushed to `a142cd2`.
+- **Last verified**: the full suite was 232 of 234 passed (1 skipped, 1 flaky failure, since fixed). After the later changes, the affected test classes all passed. The phone runs the latest build.
 
 **In progress / next**:
-- When build 7 finishes processing: create version 1.0.2 in App Store Connect, add the screenshots from `screenshots/appstore/iphone` and `/ipad`, and paste the What's New text. A draft was given in the session: new header and day strip, floating buttons, one calendar with swipe between weeks, redesigned goals, + to add, more Smart Add phrases, more room between tasks. Then pick build 7 and submit it.
-- The open items above. The orphan keyboard after a week swipe was offered as a fix.
+- The user uploads **build 10** from Organizer, adds the screenshots in App Store Connect, picks build 10 and submits it. Never submit on their behalf.
+- The decisions under Planned / Open (This week only and sync, "Gym 3 times 45 min", the website's "Coming Soon").
 - Merging the release branches into `main`, tags, and deleting old branches are all waiting on the user.
+
+**Standing rules from the user**:
+- Build, test, install and launch on the iPhone after every change.
+- Commit or push only when asked. Change the version or build number only with approval.
+- Never tap Send in Settings ▸ Feature Ideas (it posts to the live server).
+- Don't probe the keychain.
