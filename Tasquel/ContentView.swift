@@ -1151,6 +1151,9 @@ struct ContentView: View {
         var entries = week.categories.compactMap { category in
             keysByID[category.id].map { CategoryGridEntry(id: $0, category: category) }
         }
+        // Pinned cards come first, in the week's own order whatever the sort.
+        let pinned = entries.filter(\.category.isPinned)
+        entries.removeAll(where: \.category.isPinned)
         if !sortedNames.isEmpty {
             // Names not in the snapshot (added since) go last, in their arranged order.
             let rank = Dictionary(sortedNames.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
@@ -1158,6 +1161,7 @@ struct ContentView: View {
                 .sorted { (rank[$0.element.id.name] ?? Int.max, $0.offset) < (rank[$1.element.id.name] ?? Int.max, $1.offset) }
                 .map(\.element)
         }
+        entries = pinned + entries
         let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let order = week.id == store.selectedWeek?.id ? (liveCardOrder ?? categoryDisplayOrder) : categoryDisplayOrder
         let ordered = order.compactMap { entriesByKey[$0] }
@@ -1237,14 +1241,20 @@ struct ContentView: View {
     }
 
     private func expandCategory(_ key: CategoryLayoutKey, in week: Week) {
-        var order = gridEntries(for: week).map(\.id)
+        let entries = gridEntries(for: week)
+        var order = entries.map(\.id)
+        let pinned = Set(entries.filter(\.category.isPinned).map(\.id))
         let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || expandedCategoryKeys.contains($0) },
                                            columns: gridColumns)
         if let row = rows.first(where: { $0.dropFirst().contains { order[$0] == key } }),
            let index = row.first(where: { order[$0] == key }) {
-            order.remove(at: index)
-            order.insert(key, at: row[0])
-            categoryDisplayOrder = order
+            // Never ahead of a pinned card: they keep the start of the grid.
+            let slot = pinned.contains(key) ? row[0] : (row.first { !pinned.contains(order[$0]) } ?? index)
+            if slot < index {
+                order.remove(at: index)
+                order.insert(key, at: slot)
+                categoryDisplayOrder = order
+            }
         }
         expandedCategoryKeys.insert(key)
         lastToggledCategory = key
@@ -1262,6 +1272,8 @@ struct ContentView: View {
         var location: CGPoint
         /// The card last swapped with, so hovering over it doesn't swap back and forth.
         var lastTarget: CategoryLayoutKey?
+        /// The cards it can swap with: the pinned ones if it's pinned, else the rest.
+        var group: Set<CategoryLayoutKey> = []
     }
 
     /// Card places in the week being viewed.
@@ -1271,10 +1283,13 @@ struct ContentView: View {
 
     private func liftCard(_ key: CategoryLayoutKey, in week: Week) {
         guard cardDrag == nil, let frame = cardFrames[key] else { return }
-        liveCardOrder = gridEntries(for: week).map(\.id)
+        let entries = gridEntries(for: week)
+        liveCardOrder = entries.map(\.id)
         liftedCardOrder = liveCardOrder
+        let isPinned = entries.first { $0.id == key }?.category.isPinned ?? false
+        let group = Set(entries.filter { $0.category.isPinned == isPinned }.map(\.id))
         withAnimation(.snappy(duration: 0.2)) {
-            cardDrag = CardDrag(key: key, grab: nil, location: frame.origin)
+            cardDrag = CardDrag(key: key, grab: nil, location: frame.origin, group: group)
         }
     }
 
@@ -1287,7 +1302,8 @@ struct ContentView: View {
         }
         drag.location = location
         // Only cards in this week's order: places of deleted or renamed cards may linger.
-        let target = liveCardOrder?.first { $0 != drag.key && cardFrames[$0]?.contains(location) == true }
+        // Pinned cards swap only with each other, so none of them leaves the start.
+        let target = liveCardOrder?.first { $0 != drag.key && drag.group.contains($0) && cardFrames[$0]?.contains(location) == true }
         if let target, target != drag.lastTarget, var order = liveCardOrder,
            let from = order.firstIndex(of: drag.key), let to = order.firstIndex(of: target) {
             order.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
@@ -1342,12 +1358,15 @@ struct ContentView: View {
     /// VoiceOver: move a closed card one place earlier or later.
     @ViewBuilder
     private func cardMoveActions(_ key: CategoryLayoutKey, in week: Week) -> some View {
-        let order = gridEntries(for: week).map(\.id)
+        let entries = gridEntries(for: week)
+        let order = entries.map(\.id)
+        let isPinned = entries.map(\.category.isPinned)
+        // Only within the pinned cards, or the rest.
         if let index = order.firstIndex(of: key) {
-            if index > 0 {
+            if index > 0, isPinned[index - 1] == isPinned[index] {
                 Button("Move Earlier") { moveCard(key, by: -1, in: order, week: week) }
             }
-            if index < order.count - 1 {
+            if index < order.count - 1, isPinned[index + 1] == isPinned[index] {
                 Button("Move Later") { moveCard(key, by: 1, in: order, week: week) }
             }
         }

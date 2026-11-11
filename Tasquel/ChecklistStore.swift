@@ -693,6 +693,7 @@ final class ChecklistStore {
     private func rollForwardCategories(from source: Week) -> [Category] {
         source.categories.filter { !$0.isThisWeekOnly }.map { category in
             var newCategory = Category(name: category.name, symbol: category.symbol)
+            newCategory.isPinned = category.isPinned
             // In the same order as this week. Repeating tasks always come back (reset);
             // carry-over tasks only if unfinished; one-time tasks never.
             newCategory.tasks = category.tasks.compactMap { task in
@@ -902,6 +903,7 @@ final class ChecklistStore {
         newTask.goalStep = task.goalStep
         newTask.goalDays = task.goalDays
         newTask.isListFolded = task.isListFolded
+        newTask.isPinned = task.isPinned
         newTask.carriedFrom = task.id
         return newTask
     }
@@ -952,6 +954,7 @@ final class ChecklistStore {
                 guard addsCategories, !dismissedCategories.contains(sourceCategory.name) else { continue }
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
+                newCat.isPinned = sourceCategory.isPinned
                 newCat.tasks = recurringTasks.filter { !isDismissed($0) }.map { resetRecurringTask($0) }
                 week.categories.append(newCat)
                 changed = true
@@ -1055,6 +1058,7 @@ final class ChecklistStore {
         newTask.goalStep = task.goalStep
         newTask.goalDays = task.goalDays
         newTask.isListFolded = task.isListFolded
+        newTask.isPinned = task.isPinned
         newTask.repeatsFrom = task.id
         return newTask
     }
@@ -1320,7 +1324,9 @@ final class ChecklistStore {
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let from = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
-              let to = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == targetID }) else { return }
+              let to = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == targetID }),
+              // Pinned tasks move among themselves, the others among theirs.
+              weeks[wi].categories[ci].tasks[from].isPinned == weeks[wi].categories[ci].tasks[to].isPinned else { return }
         weeks[wi].categories[ci].tasks.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
         // Syncing with the week before must not put the old order back.
         let name = weeks[wi].categories[ci].name
@@ -1331,9 +1337,10 @@ final class ChecklistStore {
         save()
     }
 
-    /// Moves a task one place up (-1) or down (+1) in its category.
+    /// Moves a task one place up (-1) or down (+1) in its category, among the pinned tasks
+    /// if it's pinned, else among the rest.
     func moveTask(categoryID: UUID, taskID: UUID, by offset: Int) {
-        guard let tasks = selectedWeek?.categories.first(where: { $0.id == categoryID })?.tasks,
+        guard let tasks = selectedWeek?.categories.first(where: { $0.id == categoryID })?.reorderGroup(for: taskID),
               let index = tasks.firstIndex(where: { $0.id == taskID }),
               tasks.indices.contains(index + offset) else { return }
         moveTask(categoryID: categoryID, taskID: taskID, to: tasks[index + offset].id)
@@ -1440,23 +1447,87 @@ final class ChecklistStore {
     }
 
     /// Sets the fold of the list `taskID` in the week starting `start` and of its untouched
-    /// copies in the saved weeks after it, found week by week along their links (a week
-    /// skipped while unsaved links straight to the week before it). A copy the user changed
-    /// is their own and keeps its fold, and so do its copies.
+    /// copies in the saved weeks after it (`taskAndUntouchedCopies`).
     private static func fold(_ taskID: UUID, from start: DayKey, folded: Bool, in weeks: inout [Week]) {
+        for (wi, ci, ti) in taskAndUntouchedCopies(of: taskID, from: start, in: weeks, following: { $0.taskType == .list }) {
+            weeks[wi].categories[ci].tasks[ti].isListFolded = folded
+        }
+    }
+
+    /// Pins a task to the top of its card, or unpins it, up to `Category.maxPins` a card.
+    /// Like a fold: not an edit (no edited mark, no card edit time), a delete's Undo stays
+    /// with the pin made in its snapshot too, and the task's untouched copies in later saved
+    /// weeks take it (except in a card already holding two pins).
+    func setTaskPinned(categoryID: UUID, taskID: UUID, pinned: Bool) {
+        guard let task = viewedTask(categoryID, taskID), task.isPinned != pinned,
+              let wi = editableSelectedWeekIndex(),
+              let category = weeks[wi].categories.first(where: { $0.id == categoryID }),
+              !pinned || category.pinnedTaskCount < Category.maxPins else { return }
+        let start = weeks[wi].startDay
+        Self.pin(taskID, from: start, pinned: pinned, in: &weeks)
+        if weeksBeforeDelete != nil { Self.pin(taskID, from: start, pinned: pinned, in: &weeksBeforeDelete!) }
+        save(keepsUndo: true)
+    }
+
+    private static func pin(_ taskID: UUID, from start: DayKey, pinned: Bool, in weeks: inout [Week]) {
+        for (wi, ci, ti) in taskAndUntouchedCopies(of: taskID, from: start, in: weeks) {
+            guard !pinned || weeks[wi].startDay == start
+                    || weeks[wi].categories[ci].pinnedTaskCount < Category.maxPins else { continue }
+            weeks[wi].categories[ci].tasks[ti].isPinned = pinned
+        }
+    }
+
+    /// The task `taskID` in the week starting `start`, then its untouched copies in the saved
+    /// weeks after it, found week by week along their links (a week skipped while unsaved
+    /// links straight to the week before it). A copy the user changed is their own and is
+    /// left out, and so are its copies; `following` leaves out others.
+    private static func taskAndUntouchedCopies(of taskID: UUID, from start: DayKey, in weeks: [Week],
+                                               following: (ChecklistTask) -> Bool = { _ in true }) -> [(Int, Int, Int)] {
         var sources: Set<UUID> = [taskID]
+        var found: [(Int, Int, Int)] = []
         let order = weeks.indices.filter { weeks[$0].startDay >= start }.sorted { weeks[$0].startDay < weeks[$1].startDay }
         for wi in order {
             for ci in weeks[wi].categories.indices {
                 for ti in weeks[wi].categories[ci].tasks.indices {
                     let task = weeks[wi].categories[ci].tasks[ti]
-                    let isTheList = weeks[wi].startDay == start && task.id == taskID
-                    let isCopy = weeks[wi].startDay > start && !task.isUserEdited && task.taskType == .list
+                    let isTheTask = weeks[wi].startDay == start && task.id == taskID
+                    let isCopy = weeks[wi].startDay > start && !task.isUserEdited && following(task)
                         && [task.carriedFrom, task.repeatsFrom].contains { $0.map(sources.contains) == true }
-                    guard isTheList || isCopy else { continue }
-                    weeks[wi].categories[ci].tasks[ti].isListFolded = folded
+                    guard isTheTask || isCopy else { continue }
+                    found.append((wi, ci, ti))
                     if isCopy { sources.insert(task.id) }
                 }
+            }
+        }
+        return found
+    }
+
+    /// Pins a card to the start of the grid, or unpins it, from the viewed week on: the
+    /// cards with its name in later weeks too (except in a week already holding two pins).
+    /// Up to `Category.maxPins` a week. Not an edit (no card edit time, so the card sort
+    /// doesn't change), and a delete's Undo stays, with the pin made in its snapshot too.
+    func setCategoryPinned(categoryID: UUID, pinned: Bool) {
+        guard let wi = editableSelectedWeekIndex(),
+              let category = weeks[wi].categories.first(where: { $0.id == categoryID }),
+              category.isPinned != pinned,
+              !pinned || weeks[wi].categories.filter(\.isPinned).count < Category.maxPins else { return }
+        let start = weeks[wi].startDay
+        Self.pinCategory(categoryID, named: category.name, from: start, pinned: pinned, in: &weeks)
+        if weeksBeforeDelete != nil {
+            Self.pinCategory(categoryID, named: category.name, from: start, pinned: pinned, in: &weeksBeforeDelete!)
+        }
+        save(keepsUndo: true)
+    }
+
+    private static func pinCategory(_ categoryID: UUID, named name: String, from start: DayKey, pinned: Bool,
+                                    in weeks: inout [Week]) {
+        for wi in weeks.indices where weeks[wi].startDay >= start {
+            let isViewed = weeks[wi].startDay == start
+            for ci in weeks[wi].categories.indices {
+                let category = weeks[wi].categories[ci]
+                guard isViewed ? category.id == categoryID : category.name == name, category.isPinned != pinned,
+                      !pinned || isViewed || weeks[wi].categories.filter(\.isPinned).count < Category.maxPins else { continue }
+                weeks[wi].categories[ci].isPinned = pinned
             }
         }
     }

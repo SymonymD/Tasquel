@@ -1481,6 +1481,132 @@ struct CardRingTests {
     }
 }
 
+// MARK: - Pins
+
+struct PinTests {
+    private let thisMonday = Week.startOfWeek(containing: Date())
+    private var nextMonday: Date { Calendar.current.date(byAdding: .weekOfYear, value: 1, to: thisMonday)! }
+    private var mondayAfter: Date { Calendar.current.date(byAdding: .weekOfYear, value: 2, to: thisMonday)! }
+
+    private func week(_ store: ChecklistStore, _ monday: Date) -> Week {
+        store.weeks.first { Calendar.current.isDate($0.startDate, inSameDayAs: monday) }!
+    }
+
+    /// Errands with Dry cleaning, Donations, Groceries and Gift, this week only.
+    private func makeErrands() -> (ChecklistStore, Tasquel.Category) {
+        let tasks = ["Dry cleaning", "Donations", "Groceries", "Gift"].map { ChecklistTask(title: $0) }
+        let category = Tasquel.Category(name: "Errands", symbol: "cart", tasks: tasks)
+        let store = makeIsolatedStore()
+        store.weeks = [Week(startDate: thisMonday, categories: [category])]
+        store.selectedDate = thisMonday
+        return (store, category)
+    }
+
+    private func shown(_ store: ChecklistStore) -> [String] {
+        store.selectedWeek!.categories[0].orderedTasks.map(\.title)
+    }
+
+    @Test("Up to two tasks pin to the top of their card; unpinned, a task goes back to its place")
+    func taskPins() {
+        let (store, category) = makeErrands()
+        let ids = category.tasks.map(\.id)
+        store.setTaskPinned(categoryID: category.id, taskID: ids[2], pinned: true)
+        #expect(shown(store) == ["Groceries", "Dry cleaning", "Donations", "Gift"])
+        store.setTaskPinned(categoryID: category.id, taskID: ids[3], pinned: true)
+        #expect(shown(store) == ["Groceries", "Gift", "Dry cleaning", "Donations"])
+        store.setTaskPinned(categoryID: category.id, taskID: ids[0], pinned: true)
+        #expect(!store.selectedWeek!.categories[0].tasks[0].isPinned, "two is the most")
+        #expect(store.selectedWeek!.categories[0].tasks.allSatisfy { !$0.isUserEdited }, "a pin isn't an edit")
+        #expect(store.categoryEditTimes.isEmpty, "nor does it count as editing the card")
+
+        store.setTaskPinned(categoryID: category.id, taskID: ids[2], pinned: false)
+        #expect(shown(store) == ["Gift", "Dry cleaning", "Donations", "Groceries"], "back in its place")
+    }
+
+    @Test("Pinned tasks move among themselves, the others among theirs")
+    func movesStayInTheirGroup() {
+        let (store, category) = makeErrands()
+        let ids = category.tasks.map(\.id)
+        store.setTaskPinned(categoryID: category.id, taskID: ids[2], pinned: true)
+        store.setTaskPinned(categoryID: category.id, taskID: ids[3], pinned: true)
+        let pinnedFirst = ["Groceries", "Gift", "Dry cleaning", "Donations"]
+
+        store.moveTask(categoryID: category.id, taskID: ids[0], to: ids[2])
+        #expect(shown(store) == pinnedFirst, "an unpinned task can't go among the pinned")
+        store.moveTask(categoryID: category.id, taskID: ids[0], by: -1)
+        #expect(shown(store) == pinnedFirst, "nor move up past them")
+        store.moveTask(categoryID: category.id, taskID: ids[3], by: -1)
+        #expect(shown(store) == ["Gift", "Groceries", "Dry cleaning", "Donations"], "the pinned swap places")
+        store.moveTask(categoryID: category.id, taskID: ids[0], by: 1)
+        #expect(shown(store) == ["Gift", "Groceries", "Donations", "Dry cleaning"])
+    }
+
+    @Test("A pinned task is still pinned next week, carried over or repeating, saved copies too")
+    func taskPinsCarry() {
+        let store = makeIsolatedStore()
+        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: [Tasquel.Category(name: "Errands", symbol: "cart")]) }
+        store.selectedDate = thisMonday
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Groceries")
+        store.addTask(categoryID: categoryID, title: "Gym", mode: .repeating)
+        store.addTask(categoryID: categoryID, title: "Gift")
+        store.navigateToDate(nextMonday)
+        #expect(week(store, nextMonday).categories[0].tasks.map(\.title) == ["Groceries", "Gym", "Gift"])
+
+        store.navigateToDate(thisMonday)
+        let tasks = week(store, thisMonday).categories[0].tasks
+        store.setTaskPinned(categoryID: categoryID, taskID: tasks[0].id, pinned: true)
+        store.setTaskPinned(categoryID: categoryID, taskID: tasks[1].id, pinned: true)
+        let next = week(store, nextMonday).categories[0].tasks
+        #expect(next.map(\.isPinned) == [true, true, false], "next week was saved before: its copies are pinned too")
+        #expect(next.allSatisfy { !$0.isUserEdited }, "and still follow their sources")
+
+        let later = store.ensureWeekExists(for: mondayAfter).categories[0].tasks
+        #expect(later.filter(\.isPinned).map(\.title) == ["Groceries", "Gym"], "a week built later takes the pins")
+    }
+
+    @Test("Up to two cards are pinned, from the viewed week on, and pinning isn't an edit")
+    func categoryPins() {
+        let store = makeIsolatedStore()
+        let names = ["Work", "Home", "Errands"]
+        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: names.map { Tasquel.Category(name: $0, symbol: "star") }) }
+        store.selectedDate = thisMonday
+        let categories = store.selectedWeek!.categories
+        store.setCategoryPinned(categoryID: categories[2].id, pinned: true)
+        store.setCategoryPinned(categoryID: categories[1].id, pinned: true)
+        store.setCategoryPinned(categoryID: categories[0].id, pinned: true)
+        #expect(store.selectedWeek!.categories.map(\.isPinned) == [false, true, true], "two is the most")
+        #expect(week(store, nextMonday).categories.map(\.isPinned) == [false, true, true], "next week's cards too")
+        #expect(store.categoryEditTimes.isEmpty, "pinning doesn't change the card sort")
+        #expect(store.ensureWeekExists(for: mondayAfter).categories.map(\.isPinned) == [false, true, true],
+                "a week built later takes them")
+
+        store.setCategoryPinned(categoryID: categories[1].id, pinned: false)
+        #expect(store.selectedWeek!.categories.map(\.isPinned) == [false, false, true])
+        #expect(week(store, mondayAfter).categories.map(\.isPinned) == [false, false, true])
+    }
+
+    @Test("Pinning keeps a delete's Undo, and files from before pins load unpinned")
+    func pinsKeepUndoAndLoadOldFiles() throws {
+        let (store, category) = makeErrands()
+        let ids = category.tasks.map(\.id)
+        store.deleteTask(categoryID: category.id, taskID: ids[0])
+        store.setTaskPinned(categoryID: category.id, taskID: ids[2], pinned: true)
+        store.setCategoryPinned(categoryID: category.id, pinned: true)
+        #expect(store.lastDelete != nil, "the Undo is still there")
+        store.undoLastDelete()
+        let restored = store.selectedWeek!.categories[0]
+        #expect(restored.tasks.map(\.title) == ["Dry cleaning", "Donations", "Groceries", "Gift"], "the delete is undone")
+        #expect(restored.isPinned && restored.tasks[2].isPinned, "but not the pins")
+
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(restored)) as? [String: Any])
+        json["isPinned"] = nil
+        json["tasks"] = (json["tasks"] as? [[String: Any]])?.map { var task = $0; task["isPinned"] = nil; return task }
+        let old = try JSONDecoder().decode(Tasquel.Category.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(!old.isPinned && old.tasks.allSatisfy { !$0.isPinned })
+    }
+}
+
 // MARK: - App Info
 
 struct AppInfoTests {

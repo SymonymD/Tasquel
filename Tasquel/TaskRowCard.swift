@@ -120,6 +120,10 @@ struct TaskRowCard: View {
     @State private var showOptions = false
     /// A finger is on the reorder handle.
     @GestureState private var isHoldingHandle = false
+    /// The row's width, its checkbox's (or goal ring's) and its icons', for `stacksIcons`.
+    @State private var rowWidth: CGFloat = 0
+    @State private var leadingWidth: CGFloat = 0
+    @State private var iconsWidth: CGFloat = 0
     /// Smart Add just added this task: lit like a drop target for a moment.
     private var isHighlighted: Bool { store.highlightedTaskID == task.id }
     /// The add-sub-task (or a list's add-item) field is open.
@@ -145,40 +149,43 @@ struct TaskRowCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 // Completion indicator
-                if task.taskType == .goal {
-                    goalIndicator
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(task.title) progress")
-                        .accessibilityValue(TaskAccessibility.goalValue(task))
-                        .accessibilityActions { moveActions }
-                } else {
-                    Button {
-                        guard !isPastWeek else { return }
-                        withAnimation(.snappy(duration: 0.2)) {
-                            store.toggleTask(categoryID: categoryID, taskID: task.id)
-                        }
-                    } label: {
-                        Group {
-                            if Theme.isRetro(theme) {
-                                Text(task.isCompleted ? "[x]" : "[ ]")
-                                    .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                            } else {
-                                Circle()
-                                    .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
-                                    .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                                    .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                Group {
+                    if task.taskType == .goal {
+                        goalIndicator
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(task.title) progress")
+                            .accessibilityValue(TaskAccessibility.goalValue(task))
+                            .accessibilityActions { moveActions }
+                    } else {
+                        Button {
+                            guard !isPastWeek else { return }
+                            withAnimation(.snappy(duration: 0.2)) {
+                                store.toggleTask(categoryID: categoryID, taskID: task.id)
                             }
+                        } label: {
+                            Group {
+                                if Theme.isRetro(theme) {
+                                    Text(task.isCompleted ? "[x]" : "[ ]")
+                                        .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                                } else {
+                                    Circle()
+                                        .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                                        .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                                        .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                                }
+                            }
+                            .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
+                            .touchTarget()
                         }
-                        .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
-                        .touchTarget()
+                        .buttonStyle(CheckboxButtonStyle())
+                        .disabled(isPastWeek)
+                        .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
+                        .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
+                        .accessibilityActions { moveActions }
                     }
-                    .buttonStyle(CheckboxButtonStyle())
-                    .disabled(isPastWeek)
-                    .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
-                    .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
-                    .accessibilityActions { moveActions }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
 
                 // Title
                 if isEditingTitle {
@@ -227,9 +234,9 @@ struct TaskRowCard: View {
                 if !isPastWeek && !stacksIcons { rowIcons }
             }
 
-            // At accessibility text sizes the icons get their own line under the name, which
-            // keeps the whole width: beside them it had a column too narrow for one word
-            // ("Gr / oc / eri / es").
+            // Where beside the icons the name's widest word wouldn't fit (and at accessibility
+            // text sizes), they get their own line under it, which keeps the whole width (see
+            // `stacksIcons`): beside them it had a column too narrow for one word ("Gr / oc / eri / es").
             if !isPastWeek && stacksIcons {
                 rowIcons.frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -298,6 +305,8 @@ struct TaskRowCard: View {
                 }
             }
         }
+        // The full row, whichever way its icons go (the name fills what they leave).
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .task(id: store.taskAwaitingFirstInput) {
             guard store.taskAwaitingFirstInput == task.id else { return }
             store.taskAwaitingFirstInput = nil
@@ -350,7 +359,7 @@ struct TaskRowCard: View {
     @ViewBuilder
     private var moveActions: some View {
         if isEditing && !isPastWeek,
-           let tasks = store.selectedWeek?.categories.first(where: { $0.id == categoryID })?.tasks,
+           let tasks = store.selectedWeek?.categories.first(where: { $0.id == categoryID })?.reorderGroup(for: task.id),
            let index = tasks.firstIndex(where: { $0.id == task.id }) {
             if index > 0 {
                 Button("Move Up") { withAnimation { store.moveTask(categoryID: categoryID, taskID: task.id, by: -1) } }
@@ -410,25 +419,49 @@ struct TaskRowCard: View {
     }
 
     /// The row's icons: add sub-task (checkbox tasks) or fold (lists), type and mode, and in
-    /// the card's edit mode delete and the reorder handle.
+    /// the card's edit mode pin, delete and the reorder handle.
     private var rowIcons: some View {
         HStack(spacing: 0) {
             if task.taskType == .checkbox && !isEditing { addSubtaskButton }
             if task.taskType == .list { foldButton }
             taskOptionsButton
             if isEditing {
+                pinButton
                 deleteButton
                 reorderHandle
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { iconsWidth = $0 }
     }
 
     /// The row's icons get their own line under the name (`rowIcons`) where beside it they'd
-    /// leave it too little room: at accessibility text sizes, and in the card's edit mode
-    /// (trash and handle too, four icons on a list) from XL up. At XXXL in edit mode a
-    /// list's name had a 48pt column ("Gro / ceri / es").
+    /// leave it too little room: at accessibility text sizes, and wherever the name's widest
+    /// word wouldn't fit beside them, so a name never breaks mid-word. (In the card's edit
+    /// mode a list has five icons, with the pin: "Grocerie / s" at the default size; at XXXL
+    /// with four it had a 48pt column, "Gro / ceri / es".) The widths it compares don't
+    /// depend on where the icons go, so it can't flip back and forth.
     private var stacksIcons: Bool {
-        dynamicTypeSize.isAccessibilitySize || (isEditing && dynamicTypeSize >= .xLarge)
+        if dynamicTypeSize.isAccessibilitySize { return true }
+        guard rowWidth > 0, iconsWidth > 0 else { return false }
+        let besideIcons = rowWidth - leadingWidth - 10 - 10 - iconsWidth  // the row's two gaps
+        return besideIcons < TaskRowCard.widestWord(of: titleWords, retro: Theme.isRetro(theme))
+    }
+
+    /// The name's pieces that can't break: its words, and a folded list's count ("2 of 5").
+    private var titleWords: [String] {
+        var words = task.title.split(whereSeparator: { $0.isWhitespace && $0 != "\u{00A0}" }).map(String.init)
+        if isFolded, !task.subtasks.isEmpty {
+            words.append("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
+        }
+        return words
+    }
+
+    /// How wide the widest of `words` is in a task name's font, plus a little for rounding.
+    static func widestWord(of words: [String], retro: Bool) -> CGFloat {
+        let size = expandedCardScaled(16)
+        let font = retro ? UIFont.monospacedSystemFont(ofSize: size, weight: .regular) : UIFont.systemFont(ofSize: size)
+        let widest = words.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return widest.rounded(.up) + 2
     }
 
     /// The task's name; done tasks are struck through, like done sub-tasks. A folded list
@@ -547,6 +580,27 @@ struct TaskRowCard: View {
                 if !holding { onHandleRelease?() }
             }
             .hiddenFromVoiceOver()  // VoiceOver uses Move Up / Move Down on the task
+    }
+
+    /// In the card's edit mode: pins the task to the top of the card, or unpins it. With two
+    /// pinned, the other tasks' pins are dimmed.
+    private var pinButton: some View {
+        let canPin = task.isPinned
+            || (store.selectedWeek?.categories.first { $0.id == categoryID }?.pinnedTaskCount ?? 0) < Category.maxPins
+        return Button {
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                store.setTaskPinned(categoryID: categoryID, taskID: task.id, pinned: !task.isPinned)
+            }
+        } label: {
+            rowIcon(task.isPinned ? "pin.fill" : "pin",
+                    color: task.isPinned ? Theme.pinned(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                .opacity(canPin ? 1 : 0.35)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canPin)
+        .accessibilityLabel(task.isPinned ? "Unpin \(task.title)" : "Pin \(task.title) to the top")
+        .accessibilityHint(canPin ? "" : "Two tasks are pinned. Unpin one to pin this one.")
+        .accessibilityIdentifier("Pin \(task.title)")
     }
 
     private var deleteButton: some View {

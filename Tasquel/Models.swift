@@ -188,6 +188,9 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// A list with its items folded away (its chevron). Not an edit: it doesn't make the task
     /// the user's own. Copies made for later weeks take it with them. Only lists fold.
     var isListFolded = false
+    /// Pinned to the top of its card (in the card's edit mode, up to `Category.maxPins`).
+    /// Not an edit, like a fold, and copies made for later weeks take it with them.
+    var isPinned = false
 
     /// Whether the list's items are folded away right now (another type keeps the setting
     /// but always shows its sub-tasks).
@@ -291,6 +294,7 @@ extension ChecklistTask {
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
         modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
         isListFolded = (try? container.decodeIfPresent(Bool.self, forKey: .isListFolded)) ?? false
+        isPinned = (try? container.decodeIfPresent(Bool.self, forKey: .isPinned)) ?? false
     }
 }
 
@@ -301,6 +305,24 @@ struct Category: Codable, Identifiable, Equatable {
     var tasks: [ChecklistTask] = []
     /// Added "for this week only": not rolled forward into later weeks.
     var isThisWeekOnly = false
+    /// Pinned to the start of the grid (in Edit, up to `maxPins`), whatever the card sort.
+    /// Later weeks' cards with its name take it too. Not an edit.
+    var isPinned = false
+
+    /// How many cards a week, and tasks a card, can be pinned.
+    static let maxPins = 2
+
+    /// The tasks as the card shows them: pinned ones first, each group in its saved order.
+    /// (Pinning doesn't move a task in `tasks`, so unpinned it goes back to its place.)
+    var orderedTasks: [ChecklistTask] { tasks.filter(\.isPinned) + tasks.filter { !$0.isPinned } }
+
+    /// The tasks `taskID` can be moved among: the pinned ones if it's pinned, else the rest.
+    func reorderGroup(for taskID: UUID) -> [ChecklistTask] {
+        let pinned = tasks.first { $0.id == taskID }?.isPinned ?? false
+        return tasks.filter { $0.isPinned == pinned }
+    }
+
+    var pinnedTaskCount: Int { tasks.filter(\.isPinned).count }
 
     var completedCount: Int { tasks.filter(\.isCompleted).count }
     var totalCount: Int { tasks.count }
@@ -321,6 +343,7 @@ extension Category {
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? "folder"
         tasks = try container.decodeIfPresent([ChecklistTask].self, forKey: .tasks) ?? []
         isThisWeekOnly = try container.decodeIfPresent(Bool.self, forKey: .isThisWeekOnly) ?? false
+        isPinned = (try? container.decodeIfPresent(Bool.self, forKey: .isPinned)) ?? false
     }
 }
 

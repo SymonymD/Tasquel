@@ -164,6 +164,31 @@ final class GoalUITests: XCTestCase {
     /// there first) and shows how many are checked; the list stays folded after a relaunch, and
     /// the chevron opens it again.
     @MainActor
+    func testListNameStaysWholeInEditMode() throws {
+        // In a card's edit mode a list has five icons (chevron, type, pin, trash, handle);
+        // beside them "Groceries" broke as "Grocerie / s". Its icons go under it instead.
+        for size in [nil, "UICTContentSizeCategoryXXXL"] as [String?] {
+            var arguments = ["-demoData", "-demoFirstCard", "Errands"]
+            if let size { arguments += ["-UIPreferredContentSizeCategoryName", size] }
+            let app = XCUIApplication()
+            app.launchArguments = arguments
+            app.launch()
+            let open = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+            XCTAssertTrue(open.waitForExistence(timeout: 5))
+            open.tap()
+            let name = app.staticTexts["Groceries"]
+            XCTAssertTrue(name.waitForExistence(timeout: 3))
+            sleep(1)
+            let oneLine = name.frame.height
+            app.buttons["Edit Errands"].tap()
+            XCTAssertTrue(app.buttons["Pin Groceries"].waitForExistence(timeout: 3))
+            sleep(1)
+            XCTAssertLessThan(name.frame.height, oneLine * 1.5, "Groceries stays on one line (\(size ?? "default size"))")
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testFoldingAList() throws {
         let arguments = ["-isolatedDataID", "fold-\(UUID().uuidString)"]
         let app = launchFresh(arguments)

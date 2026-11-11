@@ -83,6 +83,47 @@ final class CardOrderUITests: XCTestCase {
         }
     }
 
+    /// Pinned in Edit, Study and Appointments go to the start of the grid; a third card
+    /// can't be pinned. A task pinned in its card's edit mode goes to the top of the card.
+    @MainActor
+    func testPinningCardsAndTasks() throws {
+        app.buttons["Edit"].tap()
+        let pinStudy = app.buttons["Pin Study"]
+        XCTAssertTrue(pinStudy.waitForExistence(timeout: 3))
+        pinStudy.tap()
+        app.buttons["Pin Appointments"].tap()
+        sleep(1)
+        XCTAssertEqual(app.buttons["Pin Study"].label, "Unpin Study")
+        XCTAssertFalse(app.buttons["Pin Work"].isEnabled, "two cards is the most")
+        app.buttons["Done Editing"].tap()
+        sleep(1)
+
+        let study = card("Study").frame, appointments = card("Appointments").frame
+        for other in ["Errands", "Work", "Fitness"] {
+            XCTAssertLessThan(study.minY, card(other).frame.minY - 1, "Study comes before \(other)")
+            XCTAssertLessThan(appointments.minY, card(other).frame.minY - 1, "so does Appointments")
+        }
+        XCTAssertLessThan(study.minX, appointments.minX, "in the order they were in")
+        XCTAssertTrue(card("Study").label.contains("pinned"))
+
+        card("Errands").tap()
+        let field = app.addTaskField
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("Dry cleaning\n")
+        field.typeText("Donations\n")
+        field.typeText("Groceries\n")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Edit Errands"].tap()
+        let pinGroceries = app.buttons["Pin Groceries"]
+        XCTAssertTrue(pinGroceries.waitForExistence(timeout: 3))
+        pinGroceries.tap()
+        app.buttons["Done editing Errands"].tap()
+        sleep(1)
+        XCTAssertLessThan(app.staticTexts["Groceries"].frame.minY, app.staticTexts["Dry cleaning"].frame.minY,
+                          "the pinned task is at the top of the card")
+    }
+
     private func card(_ name: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open \(name),")).firstMatch
     }

@@ -69,10 +69,8 @@ struct CategoryGridCard: View {
                     .foregroundStyle(Theme.destructive(theme))
             }
 
-            Text(Theme.isRetro(theme)
-                 ? "done: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " [1WK]" : "")"
-                 : "Completed: \(category.completedCount)/\(category.totalCount)\(category.isThisWeekOnly ? " · This week" : "")")
-                .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", this week only" : "")")
+            completionLine
+                .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", this week only" : "")\(category.isPinned ? ", pinned" : "")")
                 .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .lineLimit(1)
@@ -133,6 +131,18 @@ struct CategoryGridCard: View {
                 .accessibilityLabel("Delete \(category.name)")
             }
         }
+        // The pin inside the bottom-left corner, across from the open arrow: outside the top
+        // left, it met the delete badge of the card beside it in the gap between them. (Not in
+        // the card's contents, which VoiceOver doesn't see while it's closed.)
+        .overlay(alignment: .bottomLeading) {
+            if isEditing && !isPastWeek && !isExpanded {
+                CardPinBadge(category: category, store: store)
+                    .padding(.leading, 8)
+                    .padding(.bottom, 6)
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+            }
+        }
+
         // No long-press menu: in edit mode holding a card starts a drag, and deleting
         // goes through the remove badge.
         .categoryDeletionConfirmation(isPresented: $showDeleteConfirmation, category: category, store: store)
@@ -238,10 +248,21 @@ struct CategoryGridCard: View {
 
     private var isSingleWordName: Bool { !category.name.contains(" ") }
 
+    /// "Completed: 2/4", then "· This week" for a card that's only this week's, and a pin for
+    /// a pinned one (Retro: "done: 2/4 [1WK] [PIN]").
+    private var completionLine: Text {
+        let counts = "\(category.completedCount)/\(category.totalCount)"
+        if Theme.isRetro(theme) {
+            return Text(verbatim: "done: \(counts)\(category.isThisWeekOnly ? " [1WK]" : "")\(category.isPinned ? " [PIN]" : "")")
+        }
+        let line = "Completed: \(counts)\(category.isThisWeekOnly ? " · This week" : "")"
+        return category.isPinned ? Text("\(line)  \(Image(systemName: "pin.fill"))") : Text(verbatim: line)
+    }
+
     /// What VoiceOver says for a closed card: "Open Work, 2 of 4 tasks complete" (in Edit,
     /// where cards don't open, without "Open").
     private var collapsedCardLabel: String {
-        let scope = category.isThisWeekOnly ? "this week only, " : ""
+        let scope = (category.isPinned ? "pinned, " : "") + (category.isThisWeekOnly ? "this week only, " : "")
         let tasks = category.totalCount == 0 ? "no tasks yet" : "\(category.completedCount) of \(category.totalCount) tasks complete"
         return (isEditing ? "" : "Open ") + "\(category.name), \(scope)\(tasks)"
     }
@@ -297,6 +318,37 @@ struct CategoryGridCard: View {
             }
         }
         .foregroundStyle(color)
+    }
+}
+
+// MARK: - Pin Badge
+
+/// In Edit, at a closed card's bottom-leading corner: pins the card to the start of the grid,
+/// or unpins it. With two pinned, the other cards' pins are dimmed.
+private struct CardPinBadge: View {
+    let category: Category
+    let store: ChecklistStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let canPin = category.isPinned
+            || (store.selectedWeek?.categories.filter(\.isPinned).count ?? 0) < Category.maxPins
+        Button {
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
+                store.setCategoryPinned(categoryID: category.id, pinned: !category.isPinned)
+            }
+        } label: {
+            Image(systemName: "pin.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.white, category.isPinned ? Theme.pinned(store.appearanceMode, rc: store.retroColor) : Color.gray)
+                .opacity(canPin ? 1 : 0.35)
+                .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .disabled(!canPin)
+        .accessibilityLabel(category.isPinned ? "Unpin \(category.name)" : "Pin \(category.name) to the top")
+        .accessibilityHint(canPin ? "" : "Two cards are pinned. Unpin one to pin this one.")
+        .accessibilityIdentifier("Pin \(category.name)")
     }
 }
 
@@ -430,7 +482,7 @@ private struct CollapsedCategoryContent: View {
                         .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                         .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 }
-                ForEach(category.tasks.prefix(Self.previewCount)) { task in
+                ForEach(category.orderedTasks.prefix(Self.previewCount)) { task in
                     HStack(spacing: 6) {
                         if Theme.isRetro(theme) {
                             Text(task.isCompleted ? "[x]" : "[ ]")
@@ -499,7 +551,8 @@ private struct ExpandedCategoryContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: taskSpacing) {
-            ForEach(category.tasks) { task in
+            // Pinned tasks first (`orderedTasks`).
+            ForEach(category.orderedTasks) { task in
                 let isLifted = reorder?.taskID == task.id
                 TaskRowCard(
                     task: task,
@@ -580,7 +633,8 @@ private struct ExpandedCategoryContent: View {
     private func moveLifted(_ taskID: UUID, by translation: CGFloat, at fingerY: CGFloat) {
         guard isEditing, !isPastWeek else { return }
         if reorder == nil {
-            let order = category.tasks.map(\.id)
+            // A pinned task moves among the pinned ones, another among the rest.
+            let order = category.reorderGroup(for: taskID).map(\.id)
             guard let from = order.firstIndex(of: taskID), order.allSatisfy({ rowFrames[$0] != nil }) else { return }
             // The week can't be swiped meanwhile: a sideways wobble changed the week.
             store.isReorderingTask = true
@@ -621,7 +675,7 @@ private struct ExpandedCategoryContent: View {
         withAnimation(.snappy(duration: 0.25)) {
             // (Not if the card's tasks changed meanwhile: the places no longer match.)
             if moving.target != moving.from, moving.order.indices.contains(moving.target),
-               category.tasks.map(\.id) == moving.order {
+               category.reorderGroup(for: taskID).map(\.id) == moving.order {
                 store.moveTask(categoryID: category.id, taskID: taskID, to: moving.order[moving.target])
             }
             endReorder()
