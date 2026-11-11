@@ -189,6 +189,48 @@ final class GoalUITests: XCTestCase {
     }
 
     @MainActor
+    func testDuplicatesAreMarkedAndCanBeTakenBack() throws {
+        let app = launchFresh(["-isolatedDataID", "dupes-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Groceries\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertFalse(app.staticTexts["“Groceries” is already in this card"].exists, "the first one isn't a duplicate")
+        addTask.typeText("groceries \n")
+
+        XCTAssertTrue(app.staticTexts["“groceries” is already in this card"].waitForExistence(timeout: 3), "the note says so")
+        let marked = app.staticTexts.matching(NSPredicate(format: "value == %@", "duplicate"))
+        XCTAssertEqual(marked.count, 2, "both are marked")
+        app.buttons["Undo adding groceries"].tap()
+        XCTAssertTrue(app.staticTexts["“groceries” is already in this card"].waitForNonExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "groceries")).count, 0, "the second one is gone")
+        XCTAssertEqual(marked.count, 0, "and Groceries isn't marked any more")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Deleted")).firstMatch.exists,
+                       "taking it back isn't a delete to undo")
+
+        // Items in a list.
+        addTask.typeText("Bugs")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
+        app.buttons["List"].firstMatch.tap()
+        app.buttons["Add Task"].tap()
+        let item = app.textFields["Add item"]
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        item.typeText("Crash\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        item.typeText("Crash\n")
+        XCTAssertTrue(app.staticTexts["“Crash” is already in Bugs"].waitForExistence(timeout: 3))
+        XCTAssertEqual(marked.count, 2, "both items are marked")
+        app.buttons["Undo adding Crash"].tap()
+        XCTAssertTrue(app.staticTexts["“Crash” is already in Bugs"].waitForNonExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Crash")).count, 1)
+        XCTAssertEqual(marked.count, 0)
+    }
+
+    @MainActor
     func testFoldingAList() throws {
         let arguments = ["-isolatedDataID", "fold-\(UUID().uuidString)"]
         let app = launchFresh(arguments)

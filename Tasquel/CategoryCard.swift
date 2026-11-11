@@ -552,6 +552,7 @@ private struct ExpandedCategoryContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: taskSpacing) {
             // Pinned tasks first (`orderedTasks`).
+            let duplicates = category.duplicateTaskIDs
             ForEach(category.orderedTasks) { task in
                 let isLifted = reorder?.taskID == task.id
                 TaskRowCard(
@@ -560,6 +561,7 @@ private struct ExpandedCategoryContent: View {
                     store: store,
                     isEditing: isEditing,
                     isPastWeek: isPastWeek,
+                    isDuplicate: duplicates.contains(task.id),
                     onHandleDrag: { moveLifted(task.id, by: $0, at: $1) },
                     onHandleRelease: { drop(task.id) }
                 )

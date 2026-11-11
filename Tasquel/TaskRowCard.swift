@@ -61,6 +61,26 @@ func expandedCardControl(_ length: CGFloat) -> CGFloat {
     min(expandedCardScaled(length), length * expandedCardScale * 1.6)
 }
 
+extension Text {
+    /// "⧉ Duplicate" after a task's or item's name whose name another one in its card (or
+    /// list) has; Retro "[DUP]". Caption-sized, in orange that keeps 4:1, never struck through.
+    static func duplicateMark(_ theme: AppearanceMode) -> Text {
+        let retro = Theme.isRetro(theme)
+        let mark = retro ? Text(verbatim: "[DUP]") : Text("\(Image(systemName: "square.on.square"))\u{00A0}Duplicate")
+        return mark
+            .font(.expandedCard(.caption1, design: retro ? .monospaced : .default))
+            .foregroundStyle(Theme.duplicate(theme))
+    }
+
+    /// How wide the mark is (it doesn't break), for a row deciding where its icons go.
+    static func duplicateMarkWidth(retro: Bool) -> CGFloat {
+        let size = UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: TextSizeSetting.shared.traits).pointSize * expandedCardScale
+        let font = retro ? UIFont.monospacedSystemFont(ofSize: size, weight: .regular) : UIFont.systemFont(ofSize: size)
+        let word = ((retro ? "[DUP]" : "Duplicate") as NSString).size(withAttributes: [.font: font]).width
+        return (word + (retro ? 0 : size * 1.6)).rounded(.up) + 2  // and the icon
+    }
+}
+
 extension View {
     /// Hides a decorative view from VoiceOver, even inside an open card. (An open card is
     /// marked `.accessibilityHidden(false)`, which brings back children hidden with
@@ -92,6 +112,8 @@ struct TaskRowCard: View {
     let store: ChecklistStore
     let isEditing: Bool
     var isPastWeek: Bool = false
+    /// Another task in its card has the same name: its name is marked Duplicate.
+    var isDuplicate = false
     /// Moving the task by its handle (edit mode): how far the finger has gone up or down the
     /// screen from where it touched the handle and where it is now (window coordinates), and
     /// the handle let go. The card lifts, moves and drops the row (`TaskReorder`).
@@ -106,6 +128,9 @@ struct TaskRowCard: View {
     @FocusState private var isTitleFocused: Bool
     @State private var newSubtaskTitle = ""
     @FocusState private var isSubtaskFieldFocused: Bool
+    /// An item or sub-task just added with the same name as another of this task's: a note
+    /// above the field says so for a few seconds, with Undo.
+    @State private var duplicateNote: DuplicateItemNote?
     @State private var goalKindSelection: GoalUnitKind = .quantity
     @State private var goalTargetInput = GoalAmountInput()
     @State private var goalUnitText = ""
@@ -133,6 +158,7 @@ struct TaskRowCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.cardGridScroll) private var gridScroll
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     /// A list with its items folded away. Past weeks show everything: they're view only,
     /// and a folded list there couldn't be opened to see what was in it.
     private var isFolded: Bool { task.isFolded && !isPastWeek }
@@ -226,7 +252,7 @@ struct TaskRowCard: View {
                         // The name stays the label (Voice Control's "tap Groceries"); a folded
                         // list's count is the value, so VoiceOver hears both.
                         .accessibilityLabel(task.title)
-                        .accessibilityValue(foldedCountDescription)
+                        .accessibilityValue(titleValue)
                 }
 
                 if isEditingTitle { Spacer(minLength: 0) }
@@ -245,6 +271,7 @@ struct TaskRowCard: View {
                 goalProgressSection
             } else if !isFolded {
                 // Checkbox: sub-tasks. List: its items, unless folded away.
+                let duplicates = task.duplicateSubtaskIDs
                 ForEach(task.subtasks) { subtask in
                     SubTaskRowCard(
                         subtask: subtask,
@@ -253,8 +280,15 @@ struct TaskRowCard: View {
                         store: store,
                         isEditing: isEditing,
                         isPastWeek: isPastWeek,
-                        isListItem: task.taskType == .list
+                        isListItem: task.taskType == .list,
+                        isDuplicate: duplicates.contains(subtask.id)
                     )
+                }
+                if let note = duplicateNote, !isPastWeek, !isEditing {
+                    duplicateItemMessage(note)
+                        .opacity(note.isFaded ? 0 : 1)
+                        .disabled(note.isFaded)
+                        .transition(.opacity)
                 }
                 // Adding is off while the card is in edit mode. A list's row is a + until it's
                 // tapped, like Add task; a sub-task's appears from the task's own +.
@@ -331,6 +365,25 @@ struct TaskRowCard: View {
         // after the card closed).
         .onChange(of: isSubtaskFieldFocused) { _, focused in
             if focused && !isCardOpen { isSubtaskFieldFocused = false }
+        }
+        // The Duplicate note goes after 4 seconds (with VoiceOver it stays until the next
+        // add, so Undo can be reached). While the field has the keyboard it fades but keeps
+        // its place until the keyboard goes, so the field doesn't move up under the typing.
+        .task(id: duplicateNote?.token) {
+            guard duplicateNote != nil, !voiceOverEnabled else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.25)) {
+                if isSubtaskFieldFocused { duplicateNote?.isFaded = true } else { duplicateNote = nil }
+            }
+        }
+        .onChange(of: isSubtaskFieldFocused) { _, focused in
+            guard !focused, duplicateNote?.isFaded == true else { return }
+            withAnimation(.snappy(duration: 0.25)) { duplicateNote = nil }
+        }
+        // Its item was deleted or renamed: the note goes too.
+        .onChange(of: duplicateNoteIsStale) { _, stale in
+            if stale { withAnimation(.snappy(duration: 0.25)) { duplicateNote = nil } }
         }
         .background {
             if isHighlighted {
@@ -444,7 +497,9 @@ struct TaskRowCard: View {
         if dynamicTypeSize.isAccessibilitySize { return true }
         guard rowWidth > 0, iconsWidth > 0 else { return false }
         let besideIcons = rowWidth - leadingWidth - 10 - 10 - iconsWidth  // the row's two gaps
-        return besideIcons < TaskRowCard.widestWord(of: titleWords, retro: Theme.isRetro(theme))
+        let widest = max(TaskRowCard.widestWord(of: titleWords, retro: Theme.isRetro(theme)),
+                         showsDuplicate ? Text.duplicateMarkWidth(retro: Theme.isRetro(theme)) : 0)
+        return besideIcons < widest
     }
 
     /// The name's pieces that can't break: its words, and a folded list's count ("2 of 5").
@@ -468,16 +523,27 @@ struct TaskRowCard: View {
     /// adds how many of its items are checked ("Groceries  2 of 5"), in the same text, so
     /// the count wraps with the name instead of taking width from it.
     private var titleText: Text {
-        let title = Text(task.title)
+        var text = Text(task.title)
             .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
             .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
-        guard isFolded, !task.subtasks.isEmpty else { return title }
-        // Non-breaking spaces: "2 of 5" wraps as one piece.
-        let count = Text("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
-            .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
-            .monospacedDigit()
-            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-        return Text("\(title)  \(count)")
+        if isFolded, !task.subtasks.isEmpty {
+            // Non-breaking spaces: "2 of 5" wraps as one piece.
+            let count = Text("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
+                .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+            text = Text("\(text)  \(count)")
+        }
+        if showsDuplicate { text = Text("\(text)  \(Text.duplicateMark(theme))") }
+        return text
+    }
+
+    /// Past weeks are view only: nothing there can be fixed, so nothing is marked.
+    private var showsDuplicate: Bool { isDuplicate && !isPastWeek }
+
+    /// What VoiceOver hears after the name: a folded list's count, and "duplicate".
+    private var titleValue: String {
+        [foldedCountDescription, showsDuplicate ? "duplicate" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     /// A folded list's count in words ("2 of 5 items checked"); empty otherwise.
@@ -1039,11 +1105,61 @@ struct TaskRowCard: View {
         var added = false
         withAnimation(.snappy(duration: 0.2)) {
             added = store.addSubtask(categoryID: categoryID, taskID: task.id, title: title)
+            // Its name is already one of this task's: a note says so, with Undo.
+            let saved = store.viewedTask(categoryID, task.id)
+            if added, let new = saved?.subtasks.last, saved?.duplicateSubtaskIDs.contains(new.id) == true {
+                duplicateNote = DuplicateItemNote(subtaskID: new.id, title: new.title)
+            } else if added {
+                duplicateNote = nil
+            }
         }
         guard added else { return false }
+        if let note = duplicateNote, note.subtaskID == store.viewedTask(categoryID, task.id)?.subtasks.last?.id {
+            AccessibilityNotification.Announcement("\(note.title) is already in \(task.title). Undo is above.").post()
+        }
         if typed == nil { newSubtaskTitle = "" }
         if keepTyping { isSubtaskFieldFocused = true }
         return true
+    }
+
+    private var duplicateNoteIsStale: Bool {
+        guard let note = duplicateNote else { return false }
+        return !task.duplicateSubtaskIDs.contains(note.subtaskID)
+    }
+
+    struct DuplicateItemNote: Equatable {
+        let subtaskID: UUID
+        let title: String
+        /// Its time is up while the field has the keyboard: invisible but in its place, so the
+        /// field being typed in doesn't move up.
+        var isFaded = false
+        let token = UUID()
+    }
+
+    /// "⧉ “Milk” is already in Groceries   Undo", above the Add Item field.
+    private func duplicateItemMessage(_ note: DuplicateItemNote) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "square.on.square").foregroundStyle(Theme.duplicate(theme))
+            Text("“\(note.title)” is already in \(task.title)")
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .lineLimit(2)
+                // Both lines: beside the Undo it was laid out one line tall ("is already i…").
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button("Undo") {
+                withAnimation(.snappy(duration: 0.2)) {
+                    store.deleteSubtask(categoryID: categoryID, taskID: task.id, subtaskID: note.subtaskID, undoable: false)
+                    duplicateNote = nil
+                }
+            }
+            .buttonStyle(.plain)
+            .fontWeight(.semibold)
+            .foregroundStyle(Theme.accent(theme, rc: rc))
+            .touchTarget()
+            .accessibilityLabel("Undo adding \(note.title)")
+        }
+        .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+        .padding(.leading, 24 * expandedCardScale)
     }
 
     private var renameFieldID: String { "rename-\(task.id)" }
@@ -1531,6 +1647,8 @@ struct SubTaskRowCard: View {
     let isPastWeek: Bool
     /// An item in a list task rather than a sub-task; only changes the wording.
     var isListItem = false
+    /// Another of its task's items or sub-tasks has the same name: marked Duplicate.
+    var isDuplicate = false
 
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
@@ -1604,12 +1722,8 @@ struct SubTaskRowCard: View {
                         if !focused && isEditingTitle { commitTitle() }
                     }
             } else {
-                Text(subtask.title)
+                nameText
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
-                    // Done ones are struck through in the secondary color, like done tasks (the
-                    // tertiary color was too faint to read); Retro's faint color reads fine.
-                    .foregroundStyle(subtask.isCompleted && Theme.isRetro(theme) ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                    .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                     // All the lines it needs, like a task's name: under a folded list a long
                     // item was laid out one line tall and cut off ("…passwor…").
                     .fixedSize(horizontal: false, vertical: true)
@@ -1622,6 +1736,9 @@ struct SubTaskRowCard: View {
                             isEditingTitle = true
                         }
                     }
+                    // The name stays the label (Voice Control's "tap Milk"); the mark is the value.
+                    .accessibilityLabel(subtask.title)
+                    .accessibilityValue(isDuplicate && !isPastWeek ? "duplicate" : "")
             }
         }
         .padding(.leading, 24 * expandedCardScale)
@@ -1634,6 +1751,16 @@ struct SubTaskRowCard: View {
         .onDisappear {
             if isEditingTitle { commitTitle() }
         }
+    }
+
+    /// The name: done ones are struck through in the secondary color, like done tasks (the
+    /// tertiary color was too faint to read); Retro's faint color reads fine. Then the
+    /// Duplicate mark, if another item has its name (not in past weeks, which are view only).
+    private var nameText: Text {
+        let name = Text(subtask.title)
+            .foregroundStyle(subtask.isCompleted && Theme.isRetro(theme) ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+            .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+        return isDuplicate && !isPastWeek ? Text("\(name)  \(Text.duplicateMark(theme))") : name
     }
 
     private var checkbox: some View {
@@ -1698,9 +1825,10 @@ struct AddTaskRowCard: View {
     @State private var smartAddCount = 0
     /// The field is open: + was tapped. Until then only a larger + shows (see `addRow`).
     @State private var isFieldOpen = false
-    /// What Smart Add just added, shown above the row (so right under the new task, which
-    /// goes at the end) for a few seconds with Undo.
-    @State private var smartAddResult: SmartAddResult?
+    /// What Smart Add just added, or that a task just added has the name of one already in
+    /// the card: shown above the row (so right under the new task, which goes at the end)
+    /// for a few seconds with Undo.
+    @State private var addNote: AddNote?
     /// What Smart Add worked out, waiting to be added (see `finishSmartAdd`).
     @State private var smartAddOutcome: SmartAddOutcome?
     #if DEBUG
@@ -1709,10 +1837,14 @@ struct AddTaskRowCard: View {
     private static let keepsSmartAddMessage = false
     #endif
 
-    private struct SmartAddResult: Equatable {
+    private struct AddNote: Equatable {
         let taskID: UUID
+        /// The words it was added from.
         let text: String
-        let summary: String
+        /// "Added Gym · repeating goal of 3" (Smart Add), or "“Groceries” is already in this card".
+        let message: String
+        /// Smart Add's note (sparkles), else a duplicate's (⧉).
+        var isSmartAdd = true
         /// The card was This week only before: a repeating or carry-over task turned that
         /// off, and Undo turns it back on.
         var wasThisWeekOnly = false
@@ -1722,7 +1854,7 @@ struct AddTaskRowCard: View {
         let token = UUID()
     }
 
-    private struct SmartAddTimer: Hashable {
+    private struct AddNoteTimer: Hashable {
         let token: UUID?
         let isEditing: Bool
     }
@@ -1787,8 +1919,8 @@ struct AddTaskRowCard: View {
             } else {
                 // Above the row, under the task it describes. (Below, it read as describing
                 // the empty field.)
-                if let result = smartAddResult {
-                    smartAddMessage(result)
+                if let result = addNote {
+                    addNoteMessage(result)
                         // (Never faded with VoiceOver: see the timer.)
                         .opacity(result.isFaded ? 0 : 1)
                         .disabled(result.isFaded)
@@ -1818,17 +1950,17 @@ struct AddTaskRowCard: View {
             isFocused = false
             isFieldOpen = false
         }
-        .task(id: SmartAddTimer(token: smartAddResult?.token, isEditing: isEditing)) {
+        .task(id: AddNoteTimer(token: addNote?.token, isEditing: isEditing)) {
             // With VoiceOver it stays (until the next task is added), so Undo can be reached.
             // So it does with demo data, for the App Store screenshot. In the card's edit
             // mode it's hidden: its time starts when editing ends.
-            guard smartAddResult != nil, !isEditing, !voiceOverEnabled, !Self.keepsSmartAddMessage else { return }
+            guard addNote != nil, !isEditing, !voiceOverEnabled, !Self.keepsSmartAddMessage else { return }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy(duration: 0.25)) {
                 // Taking its place away would move the field up under the next task being
                 // typed: it fades and its place goes with the keyboard or the next add.
-                if isFocused { smartAddResult?.isFaded = true } else { smartAddResult = nil }
+                if isFocused { addNote?.isFaded = true } else { addNote = nil }
             }
         }
         // A field in a closed card never keeps the keyboard (the + opening it may finish
@@ -1837,23 +1969,23 @@ struct AddTaskRowCard: View {
             if focused && !isCardOpen { isFocused = false }
         }
         .onChange(of: isFocused) { _, focused in
-            guard !focused, smartAddResult?.isFaded == true else { return }
-            withAnimation(.snappy(duration: 0.25)) { smartAddResult = nil }
+            guard !focused, addNote?.isFaded == true else { return }
+            withAnimation(.snappy(duration: 0.25)) { addNote = nil }
         }
         .onChange(of: smartAddOutcome) { _, outcome in
             guard let outcome else { return }
             smartAddOutcome = nil
             finishSmartAdd(outcome)
         }
-        .onChange(of: smartAddTaskIsGone) { _, gone in
-            if gone { withAnimation(.snappy(duration: 0.25)) { smartAddResult = nil } }
+        .onChange(of: noteTaskIsGone) { _, gone in
+            if gone { withAnimation(.snappy(duration: 0.25)) { addNote = nil } }
         }
     }
 
     /// The task Smart Add's note is about was deleted (in the card's edit mode, say, where
     /// the note waits to show again): the note goes with it.
-    private var smartAddTaskIsGone: Bool {
-        guard let id = smartAddResult?.taskID else { return false }
+    private var noteTaskIsGone: Bool {
+        guard let id = addNote?.taskID else { return false }
         return store.viewedTask(categoryID, id) == nil
     }
 
@@ -2004,20 +2136,25 @@ struct AddTaskRowCard: View {
     }
 
     /// "✨ Added Gym · repeating goal of 3   Undo": what Smart Add worked out, so a wrong
-    /// guess is seen and can be taken back (the task is removed; see `undoSmartAdd`).
-    private func smartAddMessage(_ result: SmartAddResult) -> some View {
+    /// guess is seen and can be taken back (the task is removed; see `undoAdd`). Or
+    /// "⧉ “Groceries” is already in this card   Undo", for a task added with a name the
+    /// card already had.
+    private func addNoteMessage(_ result: AddNote) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles").foregroundStyle(Theme.accent(theme, rc: rc))
-            Text("Added \(result.summary)")
+            Image(systemName: result.isSmartAdd ? "sparkles" : "square.on.square")
+                .foregroundStyle(result.isSmartAdd ? Theme.accent(theme, rc: rc) : Theme.duplicate(theme))
+            Text(result.message)
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .lineLimit(2)
+                // Both lines: beside the Undo it was laid out one line tall ("is already i…").
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            Button("Undo") { undoSmartAdd(result) }
+            Button("Undo") { undoAdd(result) }
                 .buttonStyle(.plain)
                 .fontWeight(.semibold)
                 .foregroundStyle(Theme.accent(theme, rc: rc))
                 .touchTarget()
-                .accessibilityLabel("Undo Smart Add")
+                .accessibilityLabel(result.isSmartAdd ? "Undo Smart Add" : "Undo adding \(result.text)")
         }
         .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
         .padding(.leading, 24 * expandedCardScale)
@@ -2025,11 +2162,11 @@ struct AddTaskRowCard: View {
 
     /// Takes the task back entirely: no "Deleted … · Undo" of its own, and nothing left
     /// in the field to be added again when the keyboard closes.
-    private func undoSmartAdd(_ result: SmartAddResult) {
+    private func undoAdd(_ result: AddNote) {
         withAnimation(.snappy(duration: 0.2)) {
             store.deleteTask(categoryID: categoryID, taskID: result.taskID, undoable: false)
             if result.wasThisWeekOnly { store.setCategoryThisWeekOnly(categoryID, true) }
-            smartAddResult = nil
+            addNote = nil
         }
     }
 
@@ -2111,6 +2248,7 @@ struct AddTaskRowCard: View {
         // row's highlight, so the Add task field moves down once. (The spinner going on its
         // own shrank the row for a frame first.)
         var added: UUID?
+        var isDuplicate = false
         let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         withAnimation(.snappy(duration: 0.2)) {
             isParsing = false
@@ -2118,7 +2256,9 @@ struct AddTaskRowCard: View {
             guard let added else { return }
             // A goal it couldn't find an amount for takes the keyboard for its target.
             if awaitsTarget { store.taskAwaitingFirstInput = added }
-            smartAddResult = SmartAddResult(taskID: added, text: outcome.text, summary: summary,
+            isDuplicate = isDuplicateInCard(added)
+            addNote = AddNote(taskID: added, text: outcome.text,
+                              message: "Added \(summary)" + (isDuplicate ? " · already in this card" : ""),
                                             wasThisWeekOnly: wasThisWeekOnly)
             if isCardOpen && !reduceMotion { store.highlightedTaskID = added }
             // Anything typed meanwhile stays.
@@ -2131,7 +2271,7 @@ struct AddTaskRowCard: View {
         smartAddCount += 1
         pickedType = false
         pickedMode = false
-        AccessibilityNotification.Announcement("Added \(Self.describe(parsed)). Undo is above.").post()
+        AccessibilityNotification.Announcement("Added \(Self.describe(parsed))\(isDuplicate ? ", already in this card" : ""). Undo is above.").post()
     }
 
     /// "Run, repeating goal of 3" (VoiceOver), or with " · " for the message above the row.
@@ -2173,16 +2313,26 @@ struct AddTaskRowCard: View {
         guard !title.isEmpty, !isParsing else { return false }
         let task = ParsedTask(title: title, type: newType, mode: newMode)
         let awaitsInput = task.type != .checkbox
+        let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         var added: UUID?
         withAnimation(.snappy(duration: 0.2)) {
             added = store.addParsedTask(task, categoryID: categoryID)
             if keepTyping && awaitsInput { store.taskAwaitingFirstInput = added }
-            // A Smart Add message would now sit under this task instead of its own.
-            if added != nil { smartAddResult = nil }
+            // A task with its name is already in the card: a note says so, with Undo. (Any
+            // other note would now sit under this task instead of its own.)
+            if let added {
+                addNote = isDuplicateInCard(added)
+                    ? AddNote(taskID: added, text: title, message: "“\(title)” is already in this card",
+                              isSmartAdd: false, wasThisWeekOnly: wasThisWeekOnly)
+                    : nil
+            }
         }
         // Refused (the week changed before the words landed: another iPad window, say):
         // the words stay in the field.
-        guard added != nil else { return false }
+        guard let added else { return false }
+        if addNote?.taskID == added {
+            AccessibilityNotification.Announcement("\(title) is already in this card. Undo is above.").post()
+        }
         if typed == nil { newTitle = "" }
         pickedType = false
         pickedMode = false
@@ -2194,6 +2344,11 @@ struct AddTaskRowCard: View {
     }
 
     private var rowID: String { "add-task-\(categoryID)" }
+
+    /// Another task in the card has the name of the task just added.
+    private func isDuplicateInCard(_ taskID: UUID) -> Bool {
+        store.selectedWeek?.categories.first { $0.id == categoryID }?.duplicateTaskIDs.contains(taskID) == true
+    }
 
     /// A task was just added above the field: if it still has the keyboard, the whole row
     /// scrolls into view, as little as it takes. (iOS keeps only the caret in view, which

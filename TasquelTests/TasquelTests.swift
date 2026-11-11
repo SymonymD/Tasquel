@@ -1607,6 +1607,52 @@ struct PinTests {
     }
 }
 
+// MARK: - Duplicates
+
+struct DuplicateTests {
+    @Test("Names are compared without capitals or extra spaces")
+    func keys() {
+        #expect(DuplicateNames.key("  Call   Mom ") == "call mom")
+        #expect(DuplicateNames.key("Groceries") == DuplicateNames.key("groceries"))
+        #expect(DuplicateNames.key("Groceries") != DuplicateNames.key("Grocery"))
+    }
+
+    @Test("Tasks in a card with the same name are duplicates, every one of them; blank names aren't")
+    func duplicateTasks() {
+        let tasks = ["Groceries", "Call Mom", "groceries ", "Gift", "GROCERIES", "", " "].map { ChecklistTask(title: $0) }
+        let category = Tasquel.Category(name: "Errands", symbol: "cart", tasks: tasks)
+        #expect(category.duplicateTaskIDs == Set([tasks[0].id, tasks[2].id, tasks[4].id]))
+        #expect(Tasquel.Category(name: "Work", symbol: "briefcase", tasks: [ChecklistTask(title: "Call Mom")]).duplicateTaskIDs.isEmpty,
+                "another card's task isn't a duplicate")
+    }
+
+    @Test("Items in a list, or sub-tasks of a task, with the same name are duplicates")
+    func duplicateItems() {
+        let items = ["Milk", "Eggs", "milk"].map { SubTask(title: $0) }
+        let list = ChecklistTask(title: "Groceries", subtasks: items, taskType: .list)
+        #expect(list.duplicateSubtaskIDs == Set([items[0].id, items[2].id]))
+    }
+
+    @Test("Taking back an item from its Duplicate note leaves no Undo of its own, and a done list done again")
+    func takeBackItem() throws {
+        let items = [SubTask(title: "Milk", isCompleted: true)]
+        let list = ChecklistTask(title: "Groceries", isCompleted: true, subtasks: items, taskType: .list)
+        let category = Tasquel.Category(name: "Errands", symbol: "cart", tasks: [list])
+        let store = makeIsolatedStore()
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        #expect(store.addSubtask(categoryID: category.id, taskID: list.id, title: "milk"))
+        let added = try #require(store.selectedWeek?.categories[0].tasks[0].subtasks.last)
+        #expect(store.selectedWeek?.categories[0].tasks[0].duplicateSubtaskIDs.contains(added.id) == true)
+        #expect(store.selectedWeek?.categories[0].tasks[0].isCompleted == false)
+
+        store.deleteSubtask(categoryID: category.id, taskID: list.id, subtaskID: added.id, undoable: false)
+        #expect(store.lastDelete == nil, "no Deleted … · Undo")
+        #expect(store.selectedWeek?.categories[0].tasks[0].subtasks.map(\.title) == ["Milk"])
+        #expect(store.selectedWeek?.categories[0].tasks[0].isCompleted == true, "done again, as before")
+    }
+}
+
 // MARK: - App Info
 
 struct AppInfoTests {

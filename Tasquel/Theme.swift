@@ -88,12 +88,16 @@ enum Theme {
     static func completionPartial(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : .orange }
     static func completionNone(_ m: AppearanceMode) -> Color { isRetro(m) ? retroRed : .red }
 
-    /// A pin that's on (a card's or task's in edit mode): orange, deeper in light mode so it
-    /// keeps 4:1 on a card (system orange is about 2:1 on white); the bright color in Retro.
+    /// Orange that keeps 4:1 on a card: deeper in light mode (system orange is about 2:1 on white).
+    private static let strongOrange = Color(UIColor {
+        $0.userInterfaceStyle == .dark ? .systemOrange : UIColor(red: 0.78, green: 0.37, blue: 0, alpha: 1)
+    })
+    /// A pin that's on (a card's or task's in edit mode); the bright color in Retro.
     static func pinned(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
-        isRetro(m) ? retroPalette(rc).bright
-            : Color(UIColor { $0.userInterfaceStyle == .dark ? .systemOrange : UIColor(red: 0.78, green: 0.37, blue: 0, alpha: 1) })
+        isRetro(m) ? retroPalette(rc).bright : strongOrange
     }
+    /// The Duplicate mark after a task's or item's name (Retro: yellow, like a part-done ring).
+    static func duplicate(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : strongOrange }
 
     // Accent
     static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).bright : .blue }

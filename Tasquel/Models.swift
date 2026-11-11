@@ -333,6 +333,37 @@ struct Category: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Duplicates
+
+/// Tasks in a card, or items in a list, with the same name: both are marked Duplicate.
+enum DuplicateNames {
+    /// A name as duplicates are compared: capitals and extra spaces don't count, so
+    /// "Call  mom " is "call mom".
+    static func key(_ name: String) -> String {
+        name.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// The ones whose name another of them also has (blank names aside).
+    static func duplicated<T: Identifiable>(_ items: [T], name: (T) -> String) -> Set<T.ID> {
+        var byName: [String: [T.ID]] = [:]
+        for item in items {
+            let key = key(name(item))
+            if !key.isEmpty { byName[key, default: []].append(item.id) }
+        }
+        return Set(byName.values.filter { $0.count > 1 }.joined())
+    }
+}
+
+extension Category {
+    /// Tasks with the same name as another task in this card.
+    var duplicateTaskIDs: Set<UUID> { DuplicateNames.duplicated(tasks) { $0.title } }
+}
+
+extension ChecklistTask {
+    /// Sub-tasks or list items with the same name as another one of this task's.
+    var duplicateSubtaskIDs: Set<UUID> { DuplicateNames.duplicated(subtasks) { $0.title } }
+}
+
 extension Category {
     /// Decodes leniently, like tasks: one category missing a field mustn't stop the whole
     /// file from loading (`isThisWeekOnly` is also missing in data saved before it existed).

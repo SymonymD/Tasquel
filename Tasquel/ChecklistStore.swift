@@ -1696,11 +1696,13 @@ final class ChecklistStore {
         save()
     }
 
-    func deleteSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID) {
+    /// With `undoable` false (taking back an item just added, from its Duplicate note)
+    /// there's no Undo message of its own.
+    func deleteSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, undoable: Bool = true) {
         guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        if let subtask = weeks[wi].categories[ci].tasks[ti].subtasks.first(where: { $0.id == subtaskID }) {
+        if undoable, let subtask = weeks[wi].categories[ci].tasks[ti].subtasks.first(where: { $0.id == subtaskID }) {
             rememberForUndo("“\(subtask.title)”")
         }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
@@ -1712,7 +1714,7 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].isCompleted = task.subtasks.allSatisfy(\.isCompleted)
         }
         noteEdit(categoryID)
-        saveDelete()
+        if undoable { saveDelete() } else { save() }
     }
 
     func renameSubtask(categoryID: UUID, taskID: UUID, subtaskID: UUID, newTitle: String) {
