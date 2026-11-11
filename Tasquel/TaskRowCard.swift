@@ -186,6 +186,7 @@ struct TaskRowCard: View {
                     // reached (on one line the start scrolled out of view). Return saves.
                     TextField("Task name", text: $editedTitle, axis: .vertical)
                         .lineLimit(1...8)
+                        .fixedSize(horizontal: false, vertical: true)
                         // (A wrapping field is a text view: it doesn't take its name from the title.)
                         .accessibilityIdentifier("Task name")
                         .accessibilityLabel("Task name")
@@ -1523,6 +1524,9 @@ struct SubTaskRowCard: View {
                 // Wraps, like a task's rename field, so all of a long name can be reached.
                 TextField(isListItem ? "Item" : "Sub-task", text: $editedTitle, axis: .vertical)
                     .lineLimit(1...8)
+                    // All its lines, like the name it replaces (one line tall, it showed only
+                    // the end of a long name).
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(isListItem ? "Item" : "Sub-task")
                     .accessibilityLabel(isListItem ? "Item" : "Sub-task")
                     // Growing a line can take it under the keyboard: it scrolls back.
@@ -1552,6 +1556,9 @@ struct SubTaskRowCard: View {
                     // tertiary color was too faint to read); Retro's faint color reads fine.
                     .foregroundStyle(subtask.isCompleted && Theme.isRetro(theme) ? Theme.textTertiary(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     .strikethrough(subtask.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+                    // All the lines it needs, like a task's name: under a folded list a long
+                    // item was laid out one line tall and cut off ("…passwor…").
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     // One tap renames, like a task's name.

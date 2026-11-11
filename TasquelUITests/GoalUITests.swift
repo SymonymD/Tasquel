@@ -209,6 +209,53 @@ final class GoalUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "value == %@", "0 of 2 items checked")).firstMatch.exists, "an open list shows no count")
     }
 
+    /// A long list item takes all the lines it needs, whatever comes after it in the card: with
+    /// two more lists below, it was laid out one line tall and cut off ("…passwor…"), and its
+    /// rename field showed only the end.
+    @MainActor
+    func testLongItemWrapsWithListsBelow() throws {
+        let app = launchFresh(["-isolatedDataID", "long-item-\(UUID().uuidString)"])
+        // A card below two rows of closed ones, as where it was seen.
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Appointments,")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.tap()
+
+        func addList(_ title: String, items: [String]) {
+            let addTask = app.addTaskField
+            XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+            addTask.tap()
+            addTask.typeText(title)
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
+            app.buttons["List"].firstMatch.tap()
+            app.buttons["Add Task"].tap()
+            let field = app.textFields["Add item"]
+            XCTAssertTrue(field.waitForExistence(timeout: 3))
+            for item in items {
+                for word in item.split(separator: " ") {
+                    field.typeText(word + " ")
+                    usleep(120_000)
+                }
+                field.typeText("\n")
+                Thread.sleep(forTimeInterval: 0.4)
+            }
+            app.buttons["Done"].firstMatch.tap()
+        }
+        let long = "Hidden tasks (for things like passwords) and now let's test the long text edit thing"
+        addList("Ideas", items: ["Cloud", "Watch", "Charts", long, "Voice", "Calendar views"])
+        addList("Next", items: ["Points"])
+        addList("Later", items: ["Site", "Video", "Posts", "Press"])
+
+        let item = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Hidden tasks")).firstMatch
+        let short = app.staticTexts["Cloud"]
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        while !item.isHittable { app.swipeUp(velocity: .slow) }
+        XCTAssertGreaterThan(item.frame.height, short.frame.height * 1.5, "the long item wraps onto more lines")
+        item.tap()
+        let rename = app.textViews["Item"].exists ? app.textViews["Item"] : app.textFields["Item"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(rename.frame.height, short.frame.height * 1.5, "its rename field shows every line")
+    }
+
     /// Help opens and shows every section (it once indexed past its last section and crashed).
     @MainActor
     func testHelpOpens() throws {
