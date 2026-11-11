@@ -1,0 +1,45 @@
+did twoOn:Errands
+did twoOff:Errands
+== week+0 2026-11-09 current
+  [Errands]
+    - Groceries | list oneTime | open | [x]Eggs [ ]Milk [ ]Bread | edited=true carried=false repeats=false
+    - Laundry | checkbox oneTime | open | [x]Wash [ ]Fold | edited=true carried=false repeats=false
+    - Buy stamps | checkbox oneTime | open | edited=true carried=false repeats=false
+    - Pay rent | checkbox oneTime | done | edited=true carried=false repeats=false
+    - Weekly list | list oneTime | open | [x]Soap [ ]Rice | edited=true carried=false repeats=false
+  [Work] this-week-only
+    - Report | checkbox oneTime | open | edited=true carried=false repeats=false
+    - Standup | checkbox oneTime | open | edited=true carried=false repeats=false
+    - Inbox | list oneTime | open | [ ]Reply | edited=true carried=false repeats=false
+  [Fitness]
+    - Run | goal repeating | open | 4.0/10.0 quantity step auto days - | edited=true carried=false repeats=false
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=true carried=false repeats=false
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=true carried=false repeats=false
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=true carried=false repeats=false
+  [Study]
+    - Essay | checkbox carryOver | open | edited=true carried=false repeats=false
+    - Flashcards | list carryOver | open | [ ]Deck 1 | edited=true carried=false repeats=false
+  [Appointments]
+  [Trip] this-week-only
+    - Pack | checkbox oneTime | open | edited=true carried=false repeats=false
+== week+1 2026-11-16 future
+  [Errands]
+    - Next week task | checkbox oneTime | open | edited=true carried=false repeats=false
+  [Fitness]
+    - Run | goal repeating | open | 0.0/10.0 quantity step auto days - | edited=false carried=false repeats=true
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=false carried=true repeats=false
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=false carried=false repeats=true
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=false carried=false repeats=true
+  [Study] this-week-only
+    - Essay | checkbox oneTime | open | edited=true carried=true repeats=false
+    - Flashcards | list carryOver | open | [ ]Deck 1 | edited=false carried=true repeats=false
+  [Appointments]
+== week+2 2026-11-23 future
+  [Errands]
+  [Fitness]
+    - Run | goal repeating | open | 0.0/10.0 quantity step auto days - | edited=false carried=false repeats=true
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=false carried=true repeats=false
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=false carried=false repeats=true
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=false carried=false repeats=true
+  [Appointments]
+saved weeks: 2026-11-16, 2026-11-09

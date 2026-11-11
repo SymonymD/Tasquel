@@ -1,0 +1,55 @@
+[
+  {
+    "id" : "A2BE3B8B-9107-4FDE-852E-1C4D91136D47",
+    "didFinalSync" : true,
+    "startDay" : "2026-11-09",
+    "startDate" : "2026-11-09T05:00:00Z",
+    "categories" : [
+      {
+        "tasks" : [
+
+        ],
+        "name" : "Errands",
+        "isThisWeekOnly" : false,
+        "id" : "03A88835-DF9D-47C9-B857-CAAF375366E8",
+        "symbol" : "cart"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "name" : "Work",
+        "isThisWeekOnly" : false,
+        "id" : "60A5A580-14A3-47B9-9665-0A52300E2536",
+        "symbol" : "briefcase"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "name" : "Fitness",
+        "isThisWeekOnly" : false,
+        "id" : "0403E459-E374-43CD-8945-C2BD291E2D0A",
+        "symbol" : "figure.run"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "name" : "Study",
+        "isThisWeekOnly" : false,
+        "id" : "E45B23CD-B9F5-498A-9C7B-0A8D89C74A7C",
+        "symbol" : "book"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "name" : "Appointments",
+        "isThisWeekOnly" : false,
+        "id" : "535ED574-1D1A-459B-AE22-0054250BB547",
+        "symbol" : "calendar.badge.clock"
+      }
+    ]
+  }
+]

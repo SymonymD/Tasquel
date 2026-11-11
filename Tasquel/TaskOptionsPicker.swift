@@ -16,7 +16,8 @@ struct TaskOptionsLabel: View {
             Image(systemName: mode.symbol)
                 .foregroundStyle(Theme.taskMode(mode, theme, rc: rc))
         }
-        .expandedCardFont(.subheadline)
+        // Stops growing at the largest text sizes, like the row's other icons.
+        .font(.expandedCardControl(.subheadline))
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: Capsule())

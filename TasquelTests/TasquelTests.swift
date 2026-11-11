@@ -953,6 +953,74 @@ struct ListTaskTests {
         #expect(rolled?.subtasks.map(\.title) == ["Milk"])
         #expect(rolled?.isCompleted == false)
     }
+
+    @Test("Folding a list is saved, isn't an edit, and keeps a delete's Undo")
+    func foldIsSavedNotAnEdit() throws {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, defaults: defaults)
+        let list = ChecklistTask(title: "Bugs", subtasks: [SubTask(title: "Crash", isCompleted: true), SubTask(title: "Typo")],
+                                 taskType: .list)
+        let other = ChecklistTask(title: "Call Sam")
+        let category = Category(name: "Tasquel", symbol: "hammer", tasks: [list, other])
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        store.deleteTask(categoryID: category.id, taskID: other.id)
+        #expect(store.lastDelete != nil)
+
+        store.setListFolded(categoryID: category.id, taskID: list.id, folded: true)
+        let folded = try #require(store.selectedWeek?.categories[0].tasks.first)
+        #expect(folded.isListFolded && folded.isFolded)
+        #expect(!folded.isUserEdited, "folding doesn't stop a copy following its source")
+        #expect(folded.subtasks.count == 2, "the items are only hidden")
+        #expect(store.lastDelete != nil, "the Undo for the delete is still there")
+
+        let relaunched = ChecklistStore(directory: directory, defaults: defaults)
+        #expect(relaunched.weeks.first?.categories.first?.tasks.first?.isListFolded == true)
+
+        store.setListFolded(categoryID: category.id, taskID: list.id, folded: false)
+        #expect(store.selectedWeek?.categories[0].tasks.first?.isListFolded == false)
+    }
+
+    @Test("Only lists fold; a task that becomes a list starts open, and old files load lists open")
+    func onlyListsFold() throws {
+        let task = ChecklistTask(title: "Groceries", subtasks: [SubTask(title: "Milk")], taskType: .list)
+        let (store, category) = makeStore(task)
+        store.setListFolded(categoryID: category.id, taskID: task.id, folded: true)
+        func saved() -> ChecklistTask { store.selectedWeek!.categories[0].tasks[0] }
+
+        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .checkbox)
+        #expect(!saved().isFolded, "a checkbox always shows its sub-tasks")
+        store.setListFolded(categoryID: category.id, taskID: task.id, folded: true)
+        #expect(!saved().isListFolded, "a checkbox can't be folded")
+        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .list)
+        #expect(!saved().isFolded, "a new list is open, so items can be added")
+
+        // A file saved before lists could fold.
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(task)) as? [String: Any])
+        json["isListFolded"] = nil
+        let old = try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(!old.isListFolded)
+    }
+
+    @Test("A folded list is still folded next week, carried over or repeating")
+    func foldRollsOver() {
+        let carried = ChecklistTask(title: "Bugs", mode: .carryOver, subtasks: [SubTask(title: "Typo")], taskType: .list)
+        let repeating = ChecklistTask(title: "Shopping", mode: .repeating, subtasks: [SubTask(title: "Milk")], taskType: .list)
+        let open = ChecklistTask(title: "Features", mode: .carryOver, subtasks: [SubTask(title: "Fold lists")], taskType: .list)
+        let store = makeIsolatedStore()
+        let category = Category(name: "Tasquel", symbol: "hammer", tasks: [carried, repeating, open])
+        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
+        store.selectedDate = Date()
+        store.setListFolded(categoryID: category.id, taskID: carried.id, folded: true)
+        store.setListFolded(categoryID: category.id, taskID: repeating.id, folded: true)
+
+        let nextStart = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: store.weeks[0].startDate)!
+        let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks ?? []
+        #expect(rolled.first { $0.title == "Bugs" }?.isListFolded == true)
+        #expect(rolled.first { $0.title == "Shopping" }?.isListFolded == true)
+        #expect(rolled.first { $0.title == "Features" }?.isListFolded == false)
+    }
 }
 
 // MARK: - Carry-Over Sync
@@ -998,6 +1066,35 @@ struct CarryOverSyncTests {
         }
         store.navigateToDate(nextMonday)
         #expect(tasks(store, nextMonday).isEmpty)
+    }
+
+    @Test("Folding a list folds next week's saved copy; a fold changed there stays")
+    func foldReachesSavedCopies() {
+        let store = makeIsolatedStore()
+        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: [Category(name: "Tasquel", symbol: "hammer")]) }
+        store.selectedDate = thisMonday
+        let categoryID = store.selectedWeek!.categories[0].id
+        store.addTask(categoryID: categoryID, title: "Bugs")
+        let list = tasks(store, thisMonday)[0]
+        store.updateTaskType(categoryID: categoryID, taskID: list.id, type: .list)
+        store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Typo")
+        store.navigateToDate(nextMonday)
+        #expect(tasks(store, nextMonday).map(\.title) == ["Bugs"], "next week has its copy")
+        #expect(!tasks(store, nextMonday)[0].isListFolded)
+
+        store.navigateToDate(thisMonday)
+        store.setListFolded(categoryID: categoryID, taskID: list.id, folded: true)
+        #expect(tasks(store, nextMonday)[0].isListFolded, "next week was saved before: its copy folds too")
+
+        // Opened in next week, it stays open there, whatever this week's does.
+        store.navigateToDate(nextMonday)
+        let nextCategoryID = store.selectedWeek!.categories[0].id
+        store.setListFolded(categoryID: nextCategoryID, taskID: tasks(store, nextMonday)[0].id, folded: false)
+        store.navigateToDate(thisMonday)
+        store.navigateToDate(nextMonday)
+        #expect(!tasks(store, nextMonday)[0].isListFolded, "syncing doesn't fold it again")
+        #expect(!tasks(store, nextMonday)[0].isUserEdited, "and the copy still follows its source")
+        #expect(tasks(store, thisMonday)[0].isListFolded)
     }
 
     @Test("An older copy without a source link is adopted and follows its source")
@@ -3109,10 +3206,30 @@ func smartAddSessions(text: String, title: String, mode: TaskMode, target: Doubl
 
 /// Return in a wrapping rename field saves the name, without the line break.
 @Test func renameFieldReturnSaves() {
-    #expect(RenameField.submitted("Plan the trip") == nil)
-    #expect(RenameField.submitted("Plan the trip\n") == "Plan the trip")
-    #expect(RenameField.submitted("Plan the\ntrip") == "Plan the trip")
-    #expect(RenameField.submitted("\n") == "")
+    #expect(RenameField.submitted("Plan the trip", was: "Plan the tri") == nil)
+    #expect(RenameField.submitted("Plan the trip\n", was: "Plan the trip") == "Plan the trip")
+    // Return typed with the cursor inside a word saves the name as it was, with no space.
+    #expect(RenameField.submitted("Groe\ncries", was: "Groecries") == "Groecries")
+    // Tab on a hardware keyboard saves too, and never ends up in the name.
+    #expect(RenameField.submitted("Pick up\t", was: "Pick up") == "Pick up")
+    // Pasted lines (and tabs) are joined with spaces.
+    #expect(RenameField.submitted("Plan the\ntrip", was: "") == "Plan the trip")
+    #expect(RenameField.submitted("Plan\tthe trip", was: "P") == "Plan the trip")
+    #expect(RenameField.submitted("\n", was: "") == "")
+}
+
+/// An add field's text, once it has a line break: every finished line (pasted ones too)
+/// and what's still being typed after the last break.
+@Test func typedLinesSplitsEveryLine() {
+    #expect(TypedLines("Milk") == nil)
+    let pasted = TypedLines("Line 1\nLine 2\n\nLine 3\nLine 4")
+    #expect(pasted?.lines == ["Line 1", "Line 2", "Line 3"], "blank lines are dropped")
+    #expect(pasted?.rest == "Line 4", "the last line is still being typed")
+    #expect(TypedLines("Eggs\n")?.lines == ["Eggs"])
+    #expect(TypedLines("Eggs\n")?.rest == "")
+    #expect(TypedLines("\n")?.lines == [], "Return in an empty field")
+    #expect(TypedLines("a\nb")?.leftover(keeping: ["a"]) == "a b", "a line that couldn't be added stays")
+    #expect(TypedLines("a\n")?.leftover(keeping: []) == "")
 }
 
 /// A task moved by its handle lands past each task whose middle it reaches, going up or
@@ -3182,4 +3299,186 @@ func smartAddSessions(text: String, title: String, mode: TaskMode, target: Doubl
     #expect(TaskAutoScroller.velocity(fingerY: bottom - zone / 2, top: top, bottom: bottom) == TaskAutoScroller.maxSpeed / 2)
     #expect(TaskAutoScroller.velocity(fingerY: bottom + 10, top: top, bottom: bottom) == TaskAutoScroller.maxSpeed)
     #expect(TaskAutoScroller.velocity(fingerY: 120, top: 100, bottom: 200) == 0, "no room for both edges: no scrolling")
+}
+
+// MARK: - Review 2026-11-10 fixes (store)
+
+/// From the 1.0.3 review (reviews/applereview-2026-11-10): edits made while a card is This
+/// week only, Undo against folds and renames, and This week only cards in 1.0.2 data.
+struct ReviewFixStoreTests {
+    private let clock = TestClock(2099, 3, 4)  // a Wednesday, New York
+    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
+
+    private func card(_ store: ChecklistStore, _ name: String) -> Tasquel.Category? {
+        store.selectedWeek?.categories.first { $0.name == name }
+    }
+
+    @Test("A copy renamed while This week only is on keeps its name after it's turned off")
+    func renameWhileThisWeekOnlySurvivesTurningItOff() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        _ = store.addTask(categoryID: card(store, "Trip")!.id, title: "Stretch", mode: .repeating)
+        store.navigateToDate(nextWeek)
+        let tripID = try #require(card(store, "Trip")?.id)
+        store.setCategoryThisWeekOnly(tripID, true)
+        let copy = try #require(card(store, "Trip")?.tasks.first)
+        store.renameTask(categoryID: tripID, taskID: copy.id, newTitle: "Yoga")
+        store.setCategoryThisWeekOnly(tripID, false)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        #expect(card(store, "Trip")?.tasks.map(\.title) == ["Yoga"], "the user's rename is kept")
+        #expect(card(store, "Trip")?.tasks.first?.mode == .repeating, "and the mode came back")
+    }
+
+    @Test("Items added to a repeating list while This week only is on survive adding a repeating task")
+    func listItemsSurviveTurningOffByAddingTask() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        let tripNow = card(store, "Trip")!.id
+        let packing = try #require(store.addTask(categoryID: tripNow, title: "Packing", mode: .repeating, type: .list))
+        _ = store.addSubtask(categoryID: tripNow, taskID: packing, title: "Passport")
+        store.navigateToDate(nextWeek)
+        let tripID = try #require(card(store, "Trip")?.id)
+        store.setCategoryThisWeekOnly(tripID, true)
+        let copy = try #require(card(store, "Trip")?.tasks.first)
+        _ = store.addSubtask(categoryID: tripID, taskID: copy.id, title: "Sunscreen")
+        _ = store.addTask(categoryID: tripID, title: "Stretch", mode: .repeating)  // turns it off
+        #expect(card(store, "Trip")?.isThisWeekOnly == false)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        let items = card(store, "Trip")?.tasks.first { $0.title == "Packing" }?.subtasks.map(\.title)
+        #expect(items == ["Passport", "Sunscreen"], "the item the user added is kept")
+    }
+
+    @Test("Progress on a carried goal while This week only is on survives turning it off")
+    func goalProgressSurvivesTurningOff() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        let tripNow = card(store, "Trip")!.id
+        let run = try #require(store.addTask(categoryID: tripNow, title: "Run", mode: .carryOver, type: .goal))
+        store.setGoalTarget(categoryID: tripNow, taskID: run, target: 10, kind: .custom, unit: "km")
+        store.navigateToDate(nextWeek)
+        let tripID = try #require(card(store, "Trip")?.id)
+        store.setCategoryThisWeekOnly(tripID, true)
+        let copy = try #require(card(store, "Trip")?.tasks.first)
+        store.updateGoalProgress(categoryID: tripID, taskID: copy.id, progress: 6)
+        store.setCategoryThisWeekOnly(tripID, false)
+        store.navigateToDate(clock.now)
+        store.navigateToDate(nextWeek)
+        #expect(card(store, "Trip")?.tasks.first?.goalProgress == 6, "the progress the user counted is kept")
+    }
+
+    @Test("An untouched copy still follows its task after This week only goes on and off")
+    func untouchedCopyStillFollows() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Trip", symbol: "airplane")
+        let stretch = try #require(store.addTask(categoryID: card(store, "Trip")!.id, title: "Stretch", mode: .repeating))
+        store.navigateToDate(nextWeek)
+        let tripID = try #require(card(store, "Trip")?.id)
+        store.setCategoryThisWeekOnly(tripID, true)
+        store.setCategoryThisWeekOnly(tripID, false)
+        #expect(card(store, "Trip")?.tasks.first?.isUserEdited == false, "turning it on and off isn't an edit")
+        store.navigateToDate(clock.now)
+        store.renameTask(categoryID: card(store, "Trip")!.id, taskID: stretch, newTitle: "Yoga")
+        store.navigateToDate(nextWeek)
+        #expect(card(store, "Trip")?.tasks.map(\.title) == ["Yoga"], "it follows the rename")
+    }
+
+    @Test("A step counted on a repeating goal while This week only is on isn't an edit: the copy still follows")
+    func repeatingGoalStepWhileThisWeekOnlyStillFollows() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Fitness", symbol: "figure.run")
+        let fitnessNow = card(store, "Fitness")!.id
+        let run = try #require(store.addTask(categoryID: fitnessNow, title: "Run", mode: .repeating, type: .goal))
+        store.setGoalTarget(categoryID: fitnessNow, taskID: run, target: 3)
+        store.navigateToDate(nextWeek)
+        let fitnessID = try #require(card(store, "Fitness")?.id)
+        store.setCategoryThisWeekOnly(fitnessID, true)
+        let copy = try #require(card(store, "Fitness")?.tasks.first)
+        store.updateGoalProgress(categoryID: fitnessID, taskID: copy.id, progress: 1)
+        store.setCategoryThisWeekOnly(fitnessID, false)
+        #expect(card(store, "Fitness")?.tasks.first?.isUserEdited == false,
+                "a repeating copy keeps its own progress while following its task")
+        store.navigateToDate(clock.now)
+        store.renameTask(categoryID: fitnessNow, taskID: run, newTitle: "Run club")
+        store.navigateToDate(nextWeek)
+        #expect(card(store, "Fitness")?.tasks.map(\.title) == ["Run club"], "it follows the rename")
+        #expect(card(store, "Fitness")?.tasks.first?.goalProgress == 1, "and keeps its own progress")
+    }
+
+    @Test("Undoing a delete keeps a list folded after the delete, in later weeks too")
+    func undoKeepsLaterFold() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Home", symbol: "house")
+        let home = card(store, "Home")!.id
+        let list = try #require(store.addTask(categoryID: home, title: "Groceries", mode: .repeating, type: .list))
+        _ = store.addSubtask(categoryID: home, taskID: list, title: "Milk")
+        let other = try #require(store.addTask(categoryID: home, title: "Call Sam", mode: .oneTime))
+        store.navigateToDate(nextWeek)
+        _ = store.addTask(categoryID: card(store, "Home")!.id, title: "Plan", mode: .oneTime)  // saves next week
+        store.navigateToDate(clock.now)
+
+        store.deleteTask(categoryID: home, taskID: other)
+        store.setListFolded(categoryID: home, taskID: list, folded: true)
+        #expect(store.lastDelete != nil, "folding keeps the Undo")
+        store.undoLastDelete()
+        #expect(card(store, "Home")?.tasks.map(\.title) == ["Groceries", "Call Sam"], "the task is back")
+        #expect(card(store, "Home")?.tasks.first?.isListFolded == true, "and the list stays folded")
+        store.navigateToDate(nextWeek)
+        #expect(card(store, "Home")?.tasks.first { $0.title == "Groceries" }?.isListFolded == true,
+                "next week's copy too")
+    }
+
+    @Test("A rename finished after a delete keeps the delete's Undo, and Undo keeps the rename")
+    func renameAfterDeleteKeepsUndo() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Home", symbol: "house")
+        let home = card(store, "Home")!.id
+        let list = try #require(store.addTask(categoryID: home, title: "Groceries", mode: .oneTime, type: .list))
+        for item in ["Milk", "Eggs"] { _ = store.addSubtask(categoryID: home, taskID: list, title: item) }
+        let items = try #require(card(store, "Home")?.tasks.first?.subtasks)
+        store.deleteSubtask(categoryID: home, taskID: list, subtaskID: items[1].id)
+        // The Milk rename field was open: it saves as the keyboard goes, after the delete.
+        store.renameSubtask(categoryID: home, taskID: list, subtaskID: items[0].id, newTitle: "Oat milk")
+        store.renameTask(categoryID: home, taskID: list, newTitle: "Shopping")
+        #expect(store.lastDelete != nil, "the delete can still be undone")
+        store.undoLastDelete()
+        let task = try #require(card(store, "Home")?.tasks.first)
+        #expect(task.subtasks.map(\.title) == ["Oat milk", "Eggs"], "Eggs is back and the rename stays")
+        #expect(task.title == "Shopping")
+    }
+
+    @Test("Other changes after a delete still end its Undo")
+    func otherChangesStillEndUndo() throws {
+        let store = makeIsolatedStore(clock: clock)
+        store.addCategory(name: "Home", symbol: "house")
+        let home = card(store, "Home")!.id
+        let a = try #require(store.addTask(categoryID: home, title: "A", mode: .oneTime))
+        store.deleteTask(categoryID: home, taskID: a)
+        _ = store.addTask(categoryID: home, title: "B", mode: .oneTime)
+        #expect(store.lastDelete == nil, "adding a task isn't in the weeks Undo would put back")
+    }
+
+    @Test("Carry-over and repeating tasks left in a This week only card by 1.0.2 load one-time")
+    func oldThisWeekOnlyCardLoadsOneTime() throws {
+        let directory = makeTempDirectory()
+        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
+        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        store.addCategory(name: "Study", symbol: "book")
+        let study = card(store, "Study")!.id
+        _ = store.addTask(categoryID: study, title: "Essay", mode: .oneTime)
+        // What 1.0.2 could leave: the card this week only, a carry-over copy in it.
+        let wi = try #require(store.weeks.firstIndex { $0.categories.contains { $0.id == study } })
+        let ci = try #require(store.weeks[wi].categories.firstIndex { $0.id == study })
+        store.weeks[wi].categories[ci].isThisWeekOnly = true
+        store.weeks[wi].categories[ci].tasks.append(ChecklistTask(title: "Flashcards", mode: .carryOver, taskType: .list,
+                                                                  carriedFrom: UUID()))
+        store.save()
+
+        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
+        let flashcards = try #require(card(relaunched, "Study")?.tasks.first { $0.title == "Flashcards" })
+        #expect(flashcards.mode == .oneTime, "a This week only card holds only one-time tasks")
+        #expect(flashcards.modeBeforeThisWeekOnly?.mode == .carryOver, "remembering the mode it had")
+        #expect(card(relaunched, "Study")?.tasks.first { $0.title == "Essay" }?.mode == .oneTime)
+    }
 }

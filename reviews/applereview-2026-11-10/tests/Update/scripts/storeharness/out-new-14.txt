@@ -1,0 +1,37 @@
+== week+0 2026-11-23 current
+  [Errands]
+    - Groceries | list carryOver | open | [ ]Milk [ ]Bread | edited=false carried=true repeats=false | folded=false before=-
+    - Laundry | checkbox repeating | open | [ ]Wash [ ]Fold | edited=false carried=false repeats=true | folded=false before=-
+    - Buy stamps | checkbox carryOver | open | edited=false carried=true repeats=false | folded=false before=-
+    - Weekly list | list repeating | open | [x]Soap [ ]Rice | edited=false carried=false repeats=true | folded=false before=-
+  [Fitness]
+    - Run | goal repeating | open | 0.0/10.0 quantity step auto days - | edited=false carried=false repeats=true | folded=false before=-
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=false carried=true repeats=false | folded=false before=-
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=false carried=false repeats=true | folded=false before=-
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=false carried=false repeats=true | folded=false before=-
+  [Appointments]
+== week+1 2026-11-30 future
+  [Errands]
+    - Groceries | list carryOver | open | [ ]Milk [ ]Bread | edited=false carried=true repeats=false | folded=false before=-
+    - Laundry | checkbox repeating | open | [ ]Wash [ ]Fold | edited=false carried=false repeats=true | folded=false before=-
+    - Buy stamps | checkbox carryOver | open | edited=false carried=true repeats=false | folded=false before=-
+    - Weekly list | list repeating | open | [x]Soap [ ]Rice | edited=false carried=false repeats=true | folded=false before=-
+  [Fitness]
+    - Run | goal repeating | open | 0.0/10.0 quantity step auto days - | edited=false carried=false repeats=true | folded=false before=-
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=false carried=true repeats=false | folded=false before=-
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=false carried=false repeats=true | folded=false before=-
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=false carried=false repeats=true | folded=false before=-
+  [Appointments]
+== week+2 2026-12-07 future
+  [Errands]
+    - Groceries | list carryOver | open | [ ]Milk [ ]Bread | edited=false carried=true repeats=false | folded=false before=-
+    - Laundry | checkbox repeating | open | [ ]Wash [ ]Fold | edited=false carried=false repeats=true | folded=false before=-
+    - Buy stamps | checkbox carryOver | open | edited=false carried=true repeats=false | folded=false before=-
+    - Weekly list | list repeating | open | [x]Soap [ ]Rice | edited=false carried=false repeats=true | folded=false before=-
+  [Fitness]
+    - Run | goal repeating | open | 0.0/10.0 quantity step auto days - | edited=false carried=false repeats=true | folded=false before=-
+    - Stretch | goal carryOver | open | 9.0/60.0 time step auto days - | edited=false carried=true repeats=false | folded=false before=-
+    - Read | goal repeating | open | 0.0/50.0 custom step 10.0 days 5 | edited=false carried=false repeats=true | folded=false before=-
+    - Gym bag | list repeating | open | [x]Shoes [ ]Towel | edited=false carried=false repeats=true | folded=false before=-
+  [Appointments]
+saved weeks: 2026-11-23, 2026-11-16, 2026-11-09

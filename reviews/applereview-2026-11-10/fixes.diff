@@ -1,0 +1,1151 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 7ce4550..becee7e 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -62,7 +62,7 @@ Simulator: iPhone 17 Pro (iOS 26.3). The installed iOS 26.0 runtime is a beta (2
+ ### Data Models (`Models.swift`)
+ 
+ - **`TaskMode`** — `.carryOver` (rolls if incomplete), `.repeating` (every week), `.oneTime` (never carries)
+-- **`TaskType`** — `.checkbox`, `.goal` (target/progress/unit) or `.list` (items stored as sub-tasks; checks itself off). Type and mode are independent.
++- **`TaskType`** — `.checkbox`, `.goal` (target/progress/unit) or `.list` (items stored as sub-tasks; checks itself off; `isListFolded` saves its fold, `isFolded` is that for lists only). Type and mode are independent.
+ - **`SubTask`**, **`ChecklistTask`**, **`Category`** (name + SF Symbol + tasks)
+ - **`Week`** — container of categories, identified by `startDay` (a `DayKey`: Gregorian year-month-day, saved as `"yyyy-MM-dd"`), not by a moment, so time-zone changes can't duplicate weeks. `startDate` is computed (midnight in the current time zone) and still written for older builds; files without `startDay` get it from `startDate` in the current time zone on first load and are re-saved. `dismissedCarryOvers` / `dismissedRepeating` record tasks the user deleted from that week.
+ - **`GoalNumber`** — locale-aware goal amount parsing/formatting; goal values are capped at `GoalUnitKind.maxValue` (999,999)
+@@ -113,6 +113,7 @@ Key behaviors:
+ - **Add Category**: a "This week only" toggle (off = every week) applies to whatever is added next; no second dialog. A category added for this week only is kept in Saved Categories too (ones from before are saved at launch, `saveThisWeekOnlyCategories`, unless removed there).
+ - **This week only on a card**: a card's own edit mode has a This week only switch (`ThisWeekOnlyToggle`, `store.setCategoryThisWeekOnly`) where the Add task row is outside edit mode (the row stays mounted, showing nothing, with `isEditing`: a Smart Add still working adds its task when done, and words typed but not added are added as editing starts; removed, it lost both), so no row moves as editing starts (with it under the card's name, the rows slid down and a tap meant for a delete button opened a sub-task field). On: its carry-over and repeating tasks become one-time, each remembering its mode (`ChecklistTask.modeBeforeThisWeekOnly`: the mode and whether the user had changed the task, saved in checklist.json), and later weeks lose the category, keeping only tasks the user added or changed there. Off: the tasks get their modes back exactly as before (`restoreModes`), and it comes back next week. Adding a carry-over or repeating task to such a card, or changing a task to one, turns it off (`keepCategory`) and puts the other tasks' modes back the same way; the picker's hint says so. A mode the user picks for a task replaces its remembered one. Carry-over and repeating copies that sync brings into a later week's This week only card arrive one-time too, remembering their mode (`arriving`); sync still follows, removes and keeps them deleted by that mode (`syncMode`), so they leave with a finished source and a deleted one stays deleted.
+ - **Reordering tasks**: in a card's edit mode each task has a drag handle. Touching it lifts the task at once (a medium haptic, 3% larger, on its own outlined card with a shadow, `LiftedTaskBackground`); it follows the finger and the tasks it passes slide over to make room (a selection tick for each), and letting go drops it there (`TaskReorder` in CategoryCard.swift: frames measured outside the offsets in the `taskList` coordinate space and snapshotted at the lift; it takes a task's place on reaching its middle, going up or down, and can't be dragged past either end). The handle's `DragGesture(minimumDistance: 0)` reads the finger in `.global` (its own space moves with the lifted row, the list's with the grid as it scrolls); the task's distance in the list is that move plus how far the grid has scrolled since the lift. Held within 72pt of the top (below the header, the scroll view's top inset) or bottom (above the bottom bar, `cardGridBottomBar` in the environment), the grid scrolls, up to 900pt/s at the edge (`TaskAutoScroller`, TaskAutoScroller.swift: it finds the page's `UIScrollView` from a plain view inside the card, `TaskAutoScrollAnchor`, and moves its content offset each frame with a display link, outside SwiftUI state), once the finger has moved 8pt and until the task reaches that end of its card. The lifted row's `zIndex` is its last modifier: before `onGeometryChange` the stack ignored it, and rows it passed while scrolling were drawn over it. No system drag and drop (`.draggable`): its task lifted only after a hold, showed only a small copy under the finger, and a sideways wobble meanwhile swiped the week. While a task is lifted `store.isReorderingTask` keeps the week swipe from starting (`@ObservationIgnored`, read only by the gesture). VoiceOver gets Move Up / Move Down. `store.moveTask` records the category in the week's `userOrderedCategories`, so syncing with the week before leaves that order alone.
++- **Folding lists**: a list has a chevron just before its type/mode button (`foldButton`; down while open, turned to the side while folded, mirrored right to left; VoiceOver "Collapse list" / "Expand list" with the list's name as its value). Folded, the items and the Add Item row are hidden and the row shows how many items are checked ("2 of 5", `foldedCount`; nothing for an empty list). A new list, or a task that becomes one, is open (`updateTaskType` clears the fold). Folding adds what was typed in Add Item first, and an item being renamed saves as its row goes (`SubTaskRowCard`'s `onDisappear`). `store.setListFolded` isn't an edit: no `isUserEdited`, no card edit time, and a delete's Undo stays (`save(keepsUndo: true)`). Carried and repeating copies take the fold when they're made (`carriedCopy`, `resetRecurringTask`), and folding also sets it on the list's untouched copies in later saved weeks (`foldLaterCopies`, along `carriedFrom`/`repeatsFrom`), so it's still folded next week; sync's follow never changes a fold, so one changed in a later week stays. Past weeks show every list open (view only). The chevron stays in a card's edit mode.
+ - **Header**: `Week.displayTitle` is "Week of Oct 5" in the user's locale, with the year only when it isn't this year.
+ - **Haptics**: light tap on ticking a task, selection on sub-tasks, success on finishing a goal or a whole card (keyed by category ID so paging weeks is silent). Closed cards with no tasks say "No tasks yet · Tap to add"; a ring is grey until something is done; done tasks are struck through.
+ - **Tasks**: checking a task with sub-tasks (or a list) checks them all; unchecking puts back the checks from before (cleared if there were none). Edits that change nothing (same name, same mode) don't mark a task `isUserEdited`. Typed but unadded tasks and sub-tasks are added however the keyboard closes; closing a card dismisses the keyboard first. Cards lift for dragging after a 0.5s hold. Tapping a task's or sub-task's name renames it. An open card also closes from a tap on its icon or name.
+diff --git a/Tasquel/ChecklistStore.swift b/Tasquel/ChecklistStore.swift
+index 39b43c8..d65ead2 100644
+--- a/Tasquel/ChecklistStore.swift
++++ b/Tasquel/ChecklistStore.swift
+@@ -164,6 +164,7 @@ final class ChecklistStore {
+         // on another day than the app was opened on.
+         selectedDate = midweek(weekStartDay(containing: now()))
+         saveThisWeekOnlyCategories()
++        makeThisWeekOnlyCardsOneTime()
+         pruneEditTimes()
+         let currentWeek = ensureWeekExists(for: now())
+         migrateStartersIfNeeded(into: currentWeek)
+@@ -900,6 +901,7 @@ final class ChecklistStore {
+         newTask.goalUnitKind = task.goalUnitKind
+         newTask.goalStep = task.goalStep
+         newTask.goalDays = task.goalDays
++        newTask.isListFolded = task.isListFolded
+         newTask.carriedFrom = task.id
+         return newTask
+     }
+@@ -1052,6 +1054,7 @@ final class ChecklistStore {
+         newTask.goalUnitKind = task.goalUnitKind
+         newTask.goalStep = task.goalStep
+         newTask.goalDays = task.goalDays
++        newTask.isListFolded = task.isListFolded
+         newTask.repeatsFrom = task.id
+         return newTask
+     }
+@@ -1183,6 +1186,25 @@ final class ChecklistStore {
+         }
+     }
+ 
++    /// A This week only card holds only one-time tasks, each remembering its mode (as when
++    /// the switch is turned on, and as copies arrive there). Data saved by 1.0.2 can still
++    /// have carry-over or repeating copies that sync put there before arrivals were made
++    /// one-time; they're made one-time the same way (still following their source by the
++    /// mode they had), so none says Carry Over and then doesn't carry. Past weeks stay as
++    /// they were.
++    private func makeThisWeekOnlyCardsOneTime() {
++        var changed = false
++        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
++            for ci in weeks[wi].categories.indices where weeks[wi].categories[ci].isThisWeekOnly {
++                for ti in weeks[wi].categories[ci].tasks.indices where weeks[wi].categories[ci].tasks[ti].mode != .oneTime {
++                    weeks[wi].categories[ci].tasks[ti] = Self.madeOneTime(weeks[wi].categories[ci].tasks[ti])
++                    changed = true
++                }
++            }
++        }
++        if changed { save() }
++    }
++
+     /// Categories added for this week only before they were kept in Saved Categories
+     /// get a saved category too (unless the user removed one with that name).
+     private func saveThisWeekOnlyCategories() {
+@@ -1395,7 +1417,7 @@ final class ChecklistStore {
+               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+         weeks[wi].categories[ci].tasks[ti].mode = mode
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
+         // The user picked this mode: it isn't put back to the one from before This week only.
+         weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
+         keepCategory(wi, ci, for: mode)
+@@ -1403,15 +1425,81 @@ final class ChecklistStore {
+         save()
+     }
+ 
++    /// Folds a list's items away, or opens it again. A view choice, not an edit: the task
++    /// isn't made the user's own and the card's edit time stays. Untouched copies in later
++    /// saved weeks fold with it (`fold(_:from:folded:in:)`), so the list is still folded next
++    /// week. While a delete can be undone, the fold is made in the weeks Undo puts back too:
++    /// it keeps the Undo, and Undo doesn't open the list again.
++    func setListFolded(categoryID: UUID, taskID: UUID, folded: Bool) {
++        guard let task = viewedTask(categoryID, taskID), task.taskType == .list, task.isListFolded != folded,
++              let wi = editableSelectedWeekIndex() else { return }
++        let start = weeks[wi].startDay
++        Self.fold(taskID, from: start, folded: folded, in: &weeks)
++        if weeksBeforeDelete != nil { Self.fold(taskID, from: start, folded: folded, in: &weeksBeforeDelete!) }
++        save(keepsUndo: true)
++    }
++
++    /// Sets the fold of the list `taskID` in the week starting `start` and of its untouched
++    /// copies in the saved weeks after it, found week by week along their links (a week
++    /// skipped while unsaved links straight to the week before it). A copy the user changed
++    /// is their own and keeps its fold, and so do its copies.
++    private static func fold(_ taskID: UUID, from start: DayKey, folded: Bool, in weeks: inout [Week]) {
++        var sources: Set<UUID> = [taskID]
++        let order = weeks.indices.filter { weeks[$0].startDay >= start }.sorted { weeks[$0].startDay < weeks[$1].startDay }
++        for wi in order {
++            for ci in weeks[wi].categories.indices {
++                for ti in weeks[wi].categories[ci].tasks.indices {
++                    let task = weeks[wi].categories[ci].tasks[ti]
++                    let isTheList = weeks[wi].startDay == start && task.id == taskID
++                    let isCopy = weeks[wi].startDay > start && !task.isUserEdited && task.taskType == .list
++                        && [task.carriedFrom, task.repeatsFrom].contains { $0.map(sources.contains) == true }
++                    guard isTheList || isCopy else { continue }
++                    weeks[wi].categories[ci].tasks[ti].isListFolded = folded
++                    if isCopy { sources.insert(task.id) }
++                }
++            }
++        }
++    }
++
+     func renameTask(categoryID: UUID, taskID: UUID, newTitle: String) {
+         guard viewedTask(categoryID, taskID)?.title != newTitle,
+               let wi = editableSelectedWeekIndex(),
+               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+-        weeks[wi].categories[ci].tasks[ti].title = newTitle
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        let rename = { (task: inout ChecklistTask) -> Bool in
++            task.title = newTitle
++            Self.markEdited(&task)
++            return true
++        }
++        _ = rename(&weeks[wi].categories[ci].tasks[ti])
+         noteEdit(categoryID)
+-        save()
++        save(keepsUndo: changeInUndo(week: weeks[wi].startDay, taskID: taskID, rename))
++    }
++
++    /// While a delete can be undone, a rename is made in the weeks Undo puts back too, when
++    /// the task is there, so it keeps the Undo: a rename finished after a delete (its field
++    /// was still open) never costs the delete its Undo, and Undo doesn't take the rename
++    /// back. `change` returns whether it found what it changes. Returns whether it was made.
++    private func changeInUndo(week start: DayKey, taskID: UUID, _ change: (inout ChecklistTask) -> Bool) -> Bool {
++        guard var saved = weeksBeforeDelete,
++              let wi = saved.firstIndex(where: { $0.startDay == start }),
++              let ci = saved[wi].categories.firstIndex(where: { $0.tasks.contains { $0.id == taskID } }),
++              let ti = saved[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
++              change(&saved[wi].categories[ci].tasks[ti]) else { return false }
++        weeksBeforeDelete = saved
++        return true
++    }
++
++    /// The user changed this task in its own week: syncing leaves it alone from now on. In a
++    /// This week only card the change is also kept in what the card remembers, so turning
++    /// the switch off (which puts back the mode and this mark from before) keeps it theirs.
++    private func markEdited(_ wi: Int, _ ci: Int, _ ti: Int) {
++        Self.markEdited(&weeks[wi].categories[ci].tasks[ti])
++    }
++
++    private static func markEdited(_ task: inout ChecklistTask) {
++        task.isUserEdited = true
++        task.modeBeforeThisWeekOnly?.wasUserEdited = true
+     }
+ 
+     // MARK: - Goal Task CRUD
+@@ -1422,7 +1510,9 @@ final class ChecklistStore {
+               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+         weeks[wi].categories[ci].tasks[ti].taskType = type
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
++        // A task that becomes a list starts open, so its first items can be added.
++        weeks[wi].categories[ci].tasks[ti].isListFolded = false
+         if type != .goal {
+             weeks[wi].categories[ci].tasks[ti].goalTarget = nil
+             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
+@@ -1457,7 +1547,7 @@ final class ChecklistStore {
+               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+         weeks[wi].categories[ci].tasks[ti].goalTarget = target
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
+         weeks[wi].categories[ci].tasks[ti].goalUnitKind = kind
+         weeks[wi].categories[ci].tasks[ti].goalUnit = kind == .custom ? unit : nil
+         // Auto-update completion
+@@ -1479,7 +1569,7 @@ final class ChecklistStore {
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+         weeks[wi].categories[ci].tasks[ti].goalStep = step
+         weeks[wi].categories[ci].tasks[ti].goalDays = days
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
+         noteEdit(categoryID)
+         save()
+     }
+@@ -1494,7 +1584,7 @@ final class ChecklistStore {
+         // A repeating copy keeps its own progress while following its source. A carried
+         // copy's progress comes from its source, so entering some makes the copy the user's.
+         if weeks[wi].categories[ci].tasks[ti].mode != .repeating {
+-            weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++            markEdited(wi, ci, ti)
+         }
+         weeks[wi].categories[ci].tasks[ti].isCompleted = weeks[wi].categories[ci].tasks[ti].goalIsComplete
+         noteEdit(categoryID)
+@@ -1511,7 +1601,7 @@ final class ChecklistStore {
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return false }
+         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
+         subtaskChecksBeforeCheck[taskID] = nil  // its items changed since the task was checked
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
+         // A new unchecked item means the task isn't done yet.
+         weeks[wi].categories[ci].tasks[ti].isCompleted = false
+         noteEdit(categoryID)
+@@ -1544,7 +1634,7 @@ final class ChecklistStore {
+         }
+         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
+         subtaskChecksBeforeCheck[taskID] = nil
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++        markEdited(wi, ci, ti)
+         // Deleting the last unchecked item completes the task, as checking it would.
+         let task = weeks[wi].categories[ci].tasks[ti]
+         if !task.subtasks.isEmpty {
+@@ -1559,11 +1649,16 @@ final class ChecklistStore {
+               let wi = editableSelectedWeekIndex(),
+               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
+-              let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
+-        weeks[wi].categories[ci].tasks[ti].subtasks[si].title = newTitle
+-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
++              weeks[wi].categories[ci].tasks[ti].subtasks.contains(where: { $0.id == subtaskID }) else { return }
++        let rename = { (task: inout ChecklistTask) -> Bool in
++            guard let si = task.subtasks.firstIndex(where: { $0.id == subtaskID }) else { return false }
++            task.subtasks[si].title = newTitle
++            Self.markEdited(&task)
++            return true
++        }
++        _ = rename(&weeks[wi].categories[ci].tasks[ti])
+         noteEdit(categoryID)
+-        save()
++        save(keepsUndo: changeInUndo(week: weeks[wi].startDay, taskID: taskID, rename))
+     }
+ 
+     // MARK: - Category Order
+diff --git a/Tasquel/ContentView.swift b/Tasquel/ContentView.swift
+index 9e098f3..b123d32 100644
+--- a/Tasquel/ContentView.swift
++++ b/Tasquel/ContentView.swift
+@@ -48,6 +48,10 @@ struct ContentView: View {
+     @State private var bottomBarHeight: CGFloat = 68
+     /// The screen's bottom safe area (home indicator), which the flush bar covers.
+     @State private var homeIndicatorInset: CGFloat = 34
++    /// How far in from the leading edge the header's Tasquel mark has to sit to clear an
++    /// iPadOS window's controls (close, minimize, full screen) in the top-leading corner;
++    /// 0 without them (iPhone, or an iPad app in full screen). See `WindowControlsInsetReader`.
++    @State private var windowControlsInset: CGFloat = 0
+     @Environment(\.openURL) private var openURL
+     @Environment(\.colorScheme) private var colorScheme
+     @Environment(\.scenePhase) private var scenePhase
+@@ -680,7 +684,7 @@ struct ContentView: View {
+                     .contentShape(Rectangle())
+             }
+             .buttonStyle(.plain)
+-            .padding(.leading, 12)
++            .padding(.leading, markLeadingInset)
+             .accessibilityLabel("This Week")
+             .accessibilityHint("Goes back to the current week")
+         }
+@@ -874,16 +878,24 @@ struct ContentView: View {
+             .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
+     }
+ 
++    /// The Tasquel mark's distance from the leading edge: 12pt, or more in an iPad window
++    /// whose controls sit in that corner (they covered it, and a tap there opened the window
++    /// menu instead of going back to this week).
++    private var markLeadingInset: CGFloat { max(12, windowControlsInset) }
++
+     /// The viewed week, between the Tasquel mark (back to this week) and Open/Close All.
+     private var weekTitleRow: some View {
+         weekTitleText
+             .font(.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default))
+             .lineLimit(1)
+             .minimumScaleFactor(0.6)
+-            .padding(.horizontal, 56)  // clear of the buttons on either side
++            // Clear of the buttons on either side (the mark is 44pt wide).
++            .padding(.leading, markLeadingInset + 44)
++            .padding(.trailing, 56)
+             .frame(maxWidth: .infinity)
+             .overlay(alignment: .leading) { homeButton }
+             .overlay(alignment: .trailing) { expandAllButton }
++            .background { WindowControlsInsetReader { windowControlsInset = $0 } }
+             .padding(.top, 8)
+     }
+ 
+@@ -1723,6 +1735,60 @@ private struct PullToCloseAll: ViewModifier {
+     }
+ }
+ 
++// MARK: - Window Controls
++
++/// Reports how far in from the leading edge content in this view must start to stay clear of
++/// an iPadOS window's controls in the top-leading corner (UIKit's safe area adapted to the
++/// window's corners, less the plain safe area): 0 when there are none. Read from a plain
++/// view behind the header's title row, so it's in that row's own space.
++private struct WindowControlsInsetReader: UIViewRepresentable {
++    let onChange: (CGFloat) -> Void
++
++    func makeUIView(context: Context) -> ProbeView { ProbeView(onChange: onChange) }
++
++    func updateUIView(_ view: ProbeView, context: Context) { view.onChange = onChange }
++
++    final class ProbeView: UIView {
++        var onChange: (CGFloat) -> Void
++        private var reported: CGFloat?
++
++        init(onChange: @escaping (CGFloat) -> Void) {
++            self.onChange = onChange
++            super.init(frame: .zero)
++            isUserInteractionEnabled = false
++        }
++
++        required init?(coder: NSCoder) { nil }
++
++        override func didMoveToWindow() {
++            super.didMoveToWindow()
++            report()
++        }
++
++        override func layoutSubviews() {
++            super.layoutSubviews()
++            report()
++        }
++
++        override func safeAreaInsetsDidChange() {
++            super.safeAreaInsetsDidChange()
++            report()
++        }
++
++        private func report() {
++            guard window != nil else { return }
++            let adapted = directionalEdgeInsets(for: .safeArea(cornerAdaptation: .horizontal)).leading
++            let plain = directionalEdgeInsets(for: .safeArea()).leading
++            let inset = max(0, (adapted - plain).rounded())
++            guard inset != reported else { return }
++            reported = inset
++            let onChange = onChange
++            // Not during the layout pass that noticed it.
++            DispatchQueue.main.async { onChange(inset) }
++        }
++    }
++}
++
+ // MARK: - Window Size
+ 
+ /// Reports the size of the window it's in, when it changes: rotation or an iPad window
+diff --git a/Tasquel/HelpSheet.swift b/Tasquel/HelpSheet.swift
+index 04ad536..68f67c7 100644
+--- a/Tasquel/HelpSheet.swift
++++ b/Tasquel/HelpSheet.swift
+@@ -26,9 +26,9 @@ struct HelpSheet: View {
+             ("slider.horizontal.3", "Type and Mode", "Every task has a type and a mode. Tap the icons at the end of a task to change either."),
+             ("checkmark.circle", "Checkbox", "A task to tick off. Tap the + at the end of a task to add sub-tasks."),
+             ("target", "Goal", "Progress toward a target, like 50 push-ups or 2 hours. Tap + under the bar to count one step (a day's share of the target: 70 minutes goes by 10, 100 push-ups by 15) or − to take one back. To change the target or the step, tap the sliders beside the bar. Days, 5 or 7, is how many days the goal is spread over: with no step set, a step is the target divided by the days, so 70 minutes over 5 days goes by 14. Type a step and the target becomes the step times the days (a 20-minute step over 7 days makes 140 minutes); type the target and the step goes back to automatic. Smart Add fills Days in for \"10 min daily\". It checks itself off when you reach the target, and + keeps counting past it."),
+-            ("list.bullet", "List", "A checklist like Groceries. Tap Add Item under it, type an item and press Return to start the next one. The list checks itself off when every item is checked."),
++            ("list.bullet", "List", "A checklist like Groceries. Tap Add Item under it, type an item and press Return to start the next one. The list checks itself off when every item is checked. Tap the arrow beside its type button to fold the items away (it shows how many are checked), and again to open it. A folded list stays folded next week too."),
+             ("keyboard.chevron.compact.down", "Closing the Keyboard", "Tap the round keyboard button at the bottom right, or swipe down on your cards. Anything you've typed is kept: a new task or sub-task is added, and the keyboard button also sets a goal amount you've typed."),
+-            ("hand.draw", "Rename, Reorder and Delete", "Tap a task's or sub-task's name to rename it. Tap a card's edit button to show a trash can and a handle on each task (hold and drag the handle to reorder), and a red − on each sub-task or list item. Deleting doesn't ask: tap Undo in the message that appears. A goal's editor also has Delete Task. Tap the green checkmark when you're done to add tasks again."),
++            ("hand.draw", "Rename, Reorder and Delete", "Tap a task's or sub-task's name to rename it. Tap a card's edit button to show a trash can and a handle on each task (drag a task by its handle to move it), and a red − on each sub-task or list item. Deleting doesn't ask: tap Undo in the message that appears. A goal's editor also has Delete Task. Tap the green checkmark when you're done to add tasks again."),
+         ]),
+         ("After This Week", [
+             ("1.circle", "One-Time", "This week only. New tasks start as One-Time; a type or mode you pick stays picked for the next task you add to that card, and the field says which (like Add Repeating Goal)."),
+diff --git a/Tasquel/Models.swift b/Tasquel/Models.swift
+index 35b42ba..c8b7474 100644
+--- a/Tasquel/Models.swift
++++ b/Tasquel/Models.swift
+@@ -185,6 +185,13 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
+     /// In a "This week only" card: the mode the task had before it was made one-time there,
+     /// put back when This week only is turned off. Nil for other tasks.
+     var modeBeforeThisWeekOnly: SavedMode? = nil
++    /// A list with its items folded away (its chevron). Not an edit: it doesn't make the task
++    /// the user's own. Copies made for later weeks take it with them. Only lists fold.
++    var isListFolded = false
++
++    /// Whether the list's items are folded away right now (another type keeps the setting
++    /// but always shows its sub-tasks).
++    var isFolded: Bool { taskType == .list && isListFolded }
+ 
+     /// A task's mode as it was, and whether the user had changed the task, so turning This
+     /// week only off leaves it exactly as before.
+@@ -269,6 +276,7 @@ extension ChecklistTask {
+         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
+         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+         modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
++        isListFolded = (try? container.decodeIfPresent(Bool.self, forKey: .isListFolded)) ?? false
+     }
+ }
+ 
+diff --git a/Tasquel/TaskOptionsPicker.swift b/Tasquel/TaskOptionsPicker.swift
+index 844d089..f516e96 100644
+--- a/Tasquel/TaskOptionsPicker.swift
++++ b/Tasquel/TaskOptionsPicker.swift
+@@ -16,7 +16,8 @@ struct TaskOptionsLabel: View {
+             Image(systemName: mode.symbol)
+                 .foregroundStyle(Theme.taskMode(mode, theme, rc: rc))
+         }
+-        .expandedCardFont(.subheadline)
++        // Stops growing at the largest text sizes, like the row's other icons.
++        .font(.expandedCardControl(.subheadline))
+         .padding(.horizontal, 7)
+         .padding(.vertical, 4)
+         .background(Theme.textTertiary(theme, rc: rc).opacity(0.2), in: Capsule())
+diff --git a/Tasquel/TaskRowCard.swift b/Tasquel/TaskRowCard.swift
+index 425f073..d02a2ca 100644
+--- a/Tasquel/TaskRowCard.swift
++++ b/Tasquel/TaskRowCard.swift
+@@ -34,6 +34,20 @@ extension Font {
+     static func expandedCard(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+         .system(size: expandedCardScaled(size), weight: weight, design: design)
+     }
++
++    /// Like `expandedCard`, but stops growing at 1.6× its default size, as the controls'
++    /// frames do (`expandedCardControl`): for row icons and the type/mode button, so they
++    /// don't crowd out the name at the largest text sizes. (These fonts read the app's
++    /// text size, so a `.dynamicTypeSize` cap around them has no effect.)
++    static func expandedCardControl(_ style: UIFont.TextStyle) -> Font {
++        let standard = UIFont.preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
++        let size = UIFont.preferredFont(forTextStyle: style, compatibleWith: TextSizeSetting.shared.traits).pointSize
++        return .system(size: min(size, standard * 1.6) * expandedCardScale)
++    }
++
++    static func expandedCardControl(size: CGFloat) -> Font {
++        .system(size: min(expandedCardScaled(size), size * expandedCardScale * 1.6))
++    }
+ }
+ 
+ /// A length enlarged for expanded cards that follows the user's text size, like body text.
+@@ -114,6 +128,10 @@ struct TaskRowCard: View {
+     @Environment(\.isCardOpen) private var isCardOpen
+     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
++    @Environment(\.cardGridScroll) private var gridScroll
++    /// A list with its items folded away. Past weeks show everything: they're view only,
++    /// and a folded list there couldn't be opened to see what was in it.
++    private var isFolded: Bool { task.isFolded && !isPastWeek }
+ 
+     /// The goal text fields, for moving the keyboard between them.
+     nonisolated private enum GoalField: Hashable { case target, step, unitName }
+@@ -171,14 +189,23 @@ struct TaskRowCard: View {
+                         // (A wrapping field is a text view: it doesn't take its name from the title.)
+                         .accessibilityIdentifier("Task name")
+                         .accessibilityLabel("Task name")
++                        // Growing a line can take it under the keyboard: it scrolls back.
++                        .id(renameFieldID)
++                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in keepRenameFieldInView() }
+                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+                         .cardField(theme, rc: rc, outset: true)
+                         .focused($isTitleFocused)
+                         // The keyboard opens with the field, so one tap is enough.
+                         .onAppear { isTitleFocused = true }
+                         .onSubmit(commitTitle)
+-                        .onChange(of: editedTitle) { _, text in
+-                            if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
++                        .onChange(of: editedTitle) { old, text in
++                            if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
++                        }
++                        // Escape (a hardware keyboard) puts the name back and stops renaming.
++                        .onKeyPress(.escape) {
++                            editedTitle = task.title
++                            isEditingTitle = false
++                            return .handled
+                         }
+                         // Closing the keyboard (Done, or scrolling) also saves the name.
+                         .onChange(of: isTitleFocused) { _, focused in
+@@ -186,41 +213,33 @@ struct TaskRowCard: View {
+                         }
+                 } else {
+                     // One tap renames. The whole width up to the icons is the target, not just the letters.
+-                    // Done tasks are struck through, like done sub-tasks.
+-                    Text(task.title)
++                    titleText
+                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+-                        .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+-                        .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+                         // All the lines it needs: beside the icons, a row could otherwise get
+                         // one line's height and cut the title off ("Plan Mom's birt…").
+                         .fixedSize(horizontal: false, vertical: true)
+                         .frame(maxWidth: .infinity, alignment: .leading)
+                         .contentShape(Rectangle())
+                         .onTapGesture { startEditingTitle() }
++                        .accessibilityLabel(titleAccessibilityLabel)
+                 }
+ 
+                 if isEditingTitle { Spacer(minLength: 0) }
+ 
+-                // Inline icons: add sub-task (checkbox tasks), type and mode, and delete in edit mode
+-                if !isPastWeek {
+-                    HStack(spacing: 0) {
+-                        if task.taskType == .checkbox && !isEditing { addSubtaskButton }
+-                        taskOptionsButton
+-                        if isEditing {
+-                            deleteButton
+-                            reorderHandle
+-                        }
+-                    }
+-                    // At the largest text sizes the icons stop growing, leaving the title
+-                    // room to wrap at word breaks ("Yog-a" otherwise).
+-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+-                }
++                if !isPastWeek && !stacksIcons { rowIcons }
++            }
++
++            // At accessibility text sizes the icons get their own line under the name, which
++            // keeps the whole width: beside them it had a column too narrow for one word
++            // ("Gr / oc / eri / es").
++            if !isPastWeek && stacksIcons {
++                rowIcons.frame(maxWidth: .infinity, alignment: .trailing)
+             }
+ 
+             if task.taskType == .goal {
+                 goalProgressSection
+-            } else {
+-                // Checkbox: sub-tasks. List: its items.
++            } else if !isFolded {
++                // Checkbox: sub-tasks. List: its items, unless folded away.
+                 ForEach(task.subtasks) { subtask in
+                     SubTaskRowCard(
+                         subtask: subtask,
+@@ -392,6 +411,71 @@ struct TaskRowCard: View {
+         }
+     }
+ 
++    /// The row's icons: add sub-task (checkbox tasks) or fold (lists), type and mode, and in
++    /// the card's edit mode delete and the reorder handle.
++    private var rowIcons: some View {
++        HStack(spacing: 0) {
++            if task.taskType == .checkbox && !isEditing { addSubtaskButton }
++            if task.taskType == .list { foldButton }
++            taskOptionsButton
++            if isEditing {
++                deleteButton
++                reorderHandle
++            }
++        }
++    }
++
++    /// At accessibility text sizes the row's icons go under the name (`rowIcons`).
++    private var stacksIcons: Bool { dynamicTypeSize.isAccessibilitySize }
++
++    /// The task's name; done tasks are struck through, like done sub-tasks. A folded list
++    /// adds how many of its items are checked ("Groceries  2 of 5"), in the same text, so
++    /// the count wraps with the name instead of taking width from it.
++    private var titleText: Text {
++        let title = Text(task.title)
++            .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
++            .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
++        guard isFolded, !task.subtasks.isEmpty else { return title }
++        // Non-breaking spaces: "2 of 5" wraps as one piece.
++        let count = Text("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
++            .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
++            .monospacedDigit()
++            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
++        return Text("\(title)  \(count)")
++    }
++
++    /// The name, and for a folded list its count in words ("2 of 5 items checked").
++    private var titleAccessibilityLabel: String {
++        guard isFolded, !task.subtasks.isEmpty else { return task.title }
++        let total = task.subtasks.count
++        return "\(task.title), \(task.subtasks.filter(\.isCompleted).count) of \(total) \(total == 1 ? "item" : "items") checked"
++    }
++
++    /// A list's chevron, just before its type and mode: pointing down while the items show,
++    /// forward while they're folded away (`chevron.forward` turns with the reading direction).
++    private var foldButton: some View {
++        Button(action: toggleFold) {
++            rowIcon(task.isListFolded ? "chevron.forward" : "chevron.down", color: Theme.textSecondary(theme, rc: rc))
++        }
++        .buttonStyle(.plain)
++        .accessibilityLabel(task.isListFolded ? "Expand list" : "Collapse list")
++        .accessibilityValue(task.title)
++        .accessibilityIdentifier("Fold \(task.title)")
++    }
++
++    /// Folding takes the Add Item field with the items: what was typed is added first (as
++    /// when the card's edit mode starts), and an item being renamed saves as its row goes.
++    private func toggleFold() {
++        let folding = !task.isListFolded
++        if folding {
++            addSubtask(keepTyping: false)
++            isAddingSubtask = false
++        }
++        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
++            store.setListFolded(categoryID: categoryID, taskID: task.id, folded: folding)
++        }
++    }
++
+     private var addSubtaskButton: some View {
+         Button(action: startAddingSubtask) {
+             rowIcon("plus", color: Theme.textSecondary(theme, rc: rc))
+@@ -472,7 +556,7 @@ struct TaskRowCard: View {
+ 
+     private func rowIcon(_ systemName: String, color: Color) -> some View {
+         Image(systemName: systemName)
+-            .font(.expandedCard(size: rowIconSize))
++            .font(.expandedCardControl(size: rowIconSize))
+             .foregroundStyle(color)
+             .frame(width: expandedCardControl(36), height: expandedCardControl(36))
+             .contentShape(Rectangle())
+@@ -880,16 +964,12 @@ struct TaskRowCard: View {
+     /// Return (a line break) adds the sub-task or item and keeps the keyboard for the next;
+     /// Return in an empty field closes it. Pasted lines each become one.
+     private func submitTypedSubtask(_ text: String) {
+-        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
+-        let line = String(text[..<lineBreak])
+-        let rest = String(text[text.index(after: lineBreak)...])
+-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
+-            newSubtaskTitle = rest
+-            if rest.isEmpty { isSubtaskFieldFocused = false }
+-            return
+-        }
+-        // One change to the field's text; the line stays if it couldn't be added.
+-        newSubtaskTitle = addSubtask(line) ? rest : line + rest
++        guard let typed = TypedLines(text) else { return }
++        // Every finished line at once (pasted lines too): the field's change isn't reported
++        // again for each line it's left with. One change to the field's text.
++        let kept = typed.lines.filter { !addSubtask($0) }
++        newSubtaskTitle = typed.leftover(keeping: kept)
++        if typed.lines.isEmpty && typed.rest.isEmpty { isSubtaskFieldFocused = false }
+     }
+ 
+     /// `typed`: a line already taken out of the field (Return), instead of the field's text.
+@@ -909,6 +989,18 @@ struct TaskRowCard: View {
+         return true
+     }
+ 
++    private var renameFieldID: String { "rename-\(task.id)" }
++
++    /// A rename field that wraps onto another line while it has the keyboard is scrolled
++    /// back into view, clear of the keyboard and its Done button, as Add task is after an
++    /// add: iOS keeps only the caret in view, and the field grew down under the keyboard.
++    private func keepRenameFieldInView() {
++        guard isTitleFocused, let gridScroll else { return }
++        DispatchQueue.main.async {
++            withAnimation(.snappy(duration: 0.2)) { gridScroll.scrollTo(renameFieldID) }
++        }
++    }
++
+     private func startEditingTitle() {
+         guard !isPastWeek else { return }
+         editedTitle = task.title
+@@ -1200,17 +1292,47 @@ private struct GoalBarStyle: ProgressViewStyle {
+ /// The rename fields wrap (`axis: .vertical`), so Return types a line break instead of
+ /// submitting: a line break means Return, and the name is saved without it.
+ enum RenameField {
+-    /// The name to save when `text` holds a line break (Return, or pasted lines, joined
+-    /// with spaces); nil while there's none.
+-    static func submitted(_ text: String) -> String? {
+-        guard text.contains(where: \.isNewline) else { return nil }
+-        return text.split(whereSeparator: \.isNewline)
++    /// The name to save when `text` (the field's text; `old`, what it held just before)
++    /// has a line break or a tab, which in a rename field mean Return (Tab on a hardware
++    /// keyboard: done too). One typed wherever the cursor was saves the name without it, so
++    /// a Return in the middle of a word adds no space. Pasted lines are joined with
++    /// spaces. Nil while there's neither.
++    static func submitted(_ text: String, was old: String) -> String? {
++        let ends = { (character: Character) in character.isNewline || character == "\t" }
++        guard text.contains(where: ends) else { return nil }
++        if text.count == old.count + 1, let typed = text.firstIndex(where: ends) {
++            var without = text
++            without.remove(at: typed)
++            if without == old { return old }
++        }
++        return text.split(whereSeparator: ends)
+             .map { $0.trimmingCharacters(in: .whitespaces) }
+             .filter { !$0.isEmpty }
+             .joined(separator: " ")
+     }
+ }
+ 
++/// What an add field (Add task, sub-task, item) holds once it has a line break: the
++/// finished lines to add (blank ones dropped) and what's after the last break, still being
++/// typed. Nil without a line break.
++struct TypedLines: Equatable {
++    let lines: [String]
++    let rest: String
++
++    init?(_ text: String) {
++        guard text.contains(where: \.isNewline) else { return nil }
++        var pieces = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
++        rest = pieces.removeLast()
++        lines = pieces.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
++    }
++
++    /// The field's new text: lines that couldn't be added (the week changed under them)
++    /// stay, joined with spaces so they aren't tried again at once, before the rest.
++    func leftover(keeping kept: [String]) -> String {
++        (kept + [rest]).filter { !$0.isEmpty }.joined(separator: " ")
++    }
++}
++
+ // MARK: - Checkboxes
+ 
+ /// A checkbox's button style: no press or disabled dimming of its own, so a past week's
+@@ -1359,6 +1481,7 @@ struct SubTaskRowCard: View {
+     @State private var isEditingTitle = false
+     @State private var editedTitle = ""
+     @FocusState private var isTitleFocused: Bool
++    @Environment(\.cardGridScroll) private var gridScroll
+ 
+     /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
+     private static let touchHeight: CGFloat = 32
+@@ -1400,13 +1523,27 @@ struct SubTaskRowCard: View {
+                     .lineLimit(1...8)
+                     .accessibilityIdentifier(isListItem ? "Item" : "Sub-task")
+                     .accessibilityLabel(isListItem ? "Item" : "Sub-task")
++                    // Growing a line can take it under the keyboard: it scrolls back.
++                    .id("rename-\(subtask.id)")
++                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
++                        guard isTitleFocused, let gridScroll else { return }
++                        DispatchQueue.main.async {
++                            withAnimation(.snappy(duration: 0.2)) { gridScroll.scrollTo("rename-\(subtask.id)") }
++                        }
++                    }
+                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
+                     .cardField(theme, rc: rc, outset: true)
+                     .focused($isTitleFocused)
+                     .onAppear { isTitleFocused = true }
+                     .onSubmit(commitTitle)
+-                    .onChange(of: editedTitle) { _, text in
+-                        if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
++                    .onChange(of: editedTitle) { old, text in
++                        if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
++                    }
++                    // Escape puts the name back and stops renaming.
++                    .onKeyPress(.escape) {
++                        editedTitle = subtask.title
++                        isEditingTitle = false
++                        return .handled
+                     }
+                     // Closing the keyboard (Done, or scrolling) also saves the name.
+                     .onChange(of: isTitleFocused) { _, focused in
+@@ -1436,6 +1573,10 @@ struct SubTaskRowCard: View {
+         .onChange(of: isEditing) { _, editing in
+             if !editing && isEditingTitle { commitTitle() }
+         }
++        // So does folding its list away: the row goes, field and all.
++        .onDisappear {
++            if isEditingTitle { commitTitle() }
++        }
+     }
+ 
+     private var checkbox: some View {
+@@ -1956,16 +2097,12 @@ struct AddTaskRowCard: View {
+     /// for the next task; Return in an empty field closes the keyboard. Pasted lines each
+     /// become a task. While Smart Add is still working, nothing is added and the words stay.
+     private func submitTyped(_ text: String) {
+-        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
+-        let line = String(text[..<lineBreak])
+-        let rest = String(text[text.index(after: lineBreak)...])
+-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
+-            newTitle = rest
+-            if rest.isEmpty { isFocused = false }
+-            return
+-        }
+-        // One change to the field's text, so keys typed right after Return aren't lost.
+-        newTitle = addTask(line, keepTyping: true) ? rest : line + rest
++        guard let typed = TypedLines(text) else { return }
++        // Every finished line at once (pasted lines too). One change to the field's text, so
++        // keys typed right after Return aren't lost.
++        let kept = typed.lines.filter { !addTask($0, keepTyping: true) }
++        newTitle = typed.leftover(keeping: kept)
++        if typed.lines.isEmpty && typed.rest.isEmpty { isFocused = false }
+     }
+ 
+     /// Adds exactly what was typed, with the type and mode last picked (Smart Add is the
+diff --git a/TasquelTests/TasquelTests.swift b/TasquelTests/TasquelTests.swift
+index fbc4c04..b2dd010 100644
+--- a/TasquelTests/TasquelTests.swift
++++ b/TasquelTests/TasquelTests.swift
+@@ -953,6 +953,74 @@ struct ListTaskTests {
+         #expect(rolled?.subtasks.map(\.title) == ["Milk"])
+         #expect(rolled?.isCompleted == false)
+     }
++
++    @Test("Folding a list is saved, isn't an edit, and keeps a delete's Undo")
++    func foldIsSavedNotAnEdit() throws {
++        let directory = makeTempDirectory()
++        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
++        let store = makeIsolatedStore(directory: directory, defaults: defaults)
++        let list = ChecklistTask(title: "Bugs", subtasks: [SubTask(title: "Crash", isCompleted: true), SubTask(title: "Typo")],
++                                 taskType: .list)
++        let other = ChecklistTask(title: "Call Sam")
++        let category = Category(name: "Tasquel", symbol: "hammer", tasks: [list, other])
++        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
++        store.selectedDate = Date()
++        store.deleteTask(categoryID: category.id, taskID: other.id)
++        #expect(store.lastDelete != nil)
++
++        store.setListFolded(categoryID: category.id, taskID: list.id, folded: true)
++        let folded = try #require(store.selectedWeek?.categories[0].tasks.first)
++        #expect(folded.isListFolded && folded.isFolded)
++        #expect(!folded.isUserEdited, "folding doesn't stop a copy following its source")
++        #expect(folded.subtasks.count == 2, "the items are only hidden")
++        #expect(store.lastDelete != nil, "the Undo for the delete is still there")
++
++        let relaunched = ChecklistStore(directory: directory, defaults: defaults)
++        #expect(relaunched.weeks.first?.categories.first?.tasks.first?.isListFolded == true)
++
++        store.setListFolded(categoryID: category.id, taskID: list.id, folded: false)
++        #expect(store.selectedWeek?.categories[0].tasks.first?.isListFolded == false)
++    }
++
++    @Test("Only lists fold; a task that becomes a list starts open, and old files load lists open")
++    func onlyListsFold() throws {
++        let task = ChecklistTask(title: "Groceries", subtasks: [SubTask(title: "Milk")], taskType: .list)
++        let (store, category) = makeStore(task)
++        store.setListFolded(categoryID: category.id, taskID: task.id, folded: true)
++        func saved() -> ChecklistTask { store.selectedWeek!.categories[0].tasks[0] }
++
++        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .checkbox)
++        #expect(!saved().isFolded, "a checkbox always shows its sub-tasks")
++        store.setListFolded(categoryID: category.id, taskID: task.id, folded: true)
++        #expect(!saved().isListFolded, "a checkbox can't be folded")
++        store.updateTaskType(categoryID: category.id, taskID: task.id, type: .list)
++        #expect(!saved().isFolded, "a new list is open, so items can be added")
++
++        // A file saved before lists could fold.
++        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(task)) as? [String: Any])
++        json["isListFolded"] = nil
++        let old = try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json))
++        #expect(!old.isListFolded)
++    }
++
++    @Test("A folded list is still folded next week, carried over or repeating")
++    func foldRollsOver() {
++        let carried = ChecklistTask(title: "Bugs", mode: .carryOver, subtasks: [SubTask(title: "Typo")], taskType: .list)
++        let repeating = ChecklistTask(title: "Shopping", mode: .repeating, subtasks: [SubTask(title: "Milk")], taskType: .list)
++        let open = ChecklistTask(title: "Features", mode: .carryOver, subtasks: [SubTask(title: "Fold lists")], taskType: .list)
++        let store = makeIsolatedStore()
++        let category = Category(name: "Tasquel", symbol: "hammer", tasks: [carried, repeating, open])
++        store.weeks = [Week(startDate: Week.startOfWeek(containing: Date()), categories: [category])]
++        store.selectedDate = Date()
++        store.setListFolded(categoryID: category.id, taskID: carried.id, folded: true)
++        store.setListFolded(categoryID: category.id, taskID: repeating.id, folded: true)
++
++        let nextStart = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: store.weeks[0].startDate)!
++        let rolled = store.ensureWeekExists(for: nextStart).categories.first?.tasks ?? []
++        #expect(rolled.first { $0.title == "Bugs" }?.isListFolded == true)
++        #expect(rolled.first { $0.title == "Shopping" }?.isListFolded == true)
++        #expect(rolled.first { $0.title == "Features" }?.isListFolded == false)
++    }
+ }
+ 
+ // MARK: - Carry-Over Sync
+@@ -1000,6 +1068,35 @@ struct CarryOverSyncTests {
+         #expect(tasks(store, nextMonday).isEmpty)
+     }
+ 
++    @Test("Folding a list folds next week's saved copy; a fold changed there stays")
++    func foldReachesSavedCopies() {
++        let store = makeIsolatedStore()
++        store.weeks = [thisMonday, nextMonday].map { Week(startDate: $0, categories: [Category(name: "Tasquel", symbol: "hammer")]) }
++        store.selectedDate = thisMonday
++        let categoryID = store.selectedWeek!.categories[0].id
++        store.addTask(categoryID: categoryID, title: "Bugs")
++        let list = tasks(store, thisMonday)[0]
++        store.updateTaskType(categoryID: categoryID, taskID: list.id, type: .list)
++        store.addSubtask(categoryID: categoryID, taskID: list.id, title: "Typo")
++        store.navigateToDate(nextMonday)
++        #expect(tasks(store, nextMonday).map(\.title) == ["Bugs"], "next week has its copy")
++        #expect(!tasks(store, nextMonday)[0].isListFolded)
++
++        store.navigateToDate(thisMonday)
++        store.setListFolded(categoryID: categoryID, taskID: list.id, folded: true)
++        #expect(tasks(store, nextMonday)[0].isListFolded, "next week was saved before: its copy folds too")
++
++        // Opened in next week, it stays open there, whatever this week's does.
++        store.navigateToDate(nextMonday)
++        let nextCategoryID = store.selectedWeek!.categories[0].id
++        store.setListFolded(categoryID: nextCategoryID, taskID: tasks(store, nextMonday)[0].id, folded: false)
++        store.navigateToDate(thisMonday)
++        store.navigateToDate(nextMonday)
++        #expect(!tasks(store, nextMonday)[0].isListFolded, "syncing doesn't fold it again")
++        #expect(!tasks(store, nextMonday)[0].isUserEdited, "and the copy still follows its source")
++        #expect(tasks(store, thisMonday)[0].isListFolded)
++    }
++
+     @Test("An older copy without a source link is adopted and follows its source")
+     func adoptsUnlinkedCopy() {
+         let store = makeIsolatedStore()
+@@ -3109,10 +3206,30 @@ func smartAddSessions(text: String, title: String, mode: TaskMode, target: Doubl
+ 
+ /// Return in a wrapping rename field saves the name, without the line break.
+ @Test func renameFieldReturnSaves() {
+-    #expect(RenameField.submitted("Plan the trip") == nil)
+-    #expect(RenameField.submitted("Plan the trip\n") == "Plan the trip")
+-    #expect(RenameField.submitted("Plan the\ntrip") == "Plan the trip")
+-    #expect(RenameField.submitted("\n") == "")
++    #expect(RenameField.submitted("Plan the trip", was: "Plan the tri") == nil)
++    #expect(RenameField.submitted("Plan the trip\n", was: "Plan the trip") == "Plan the trip")
++    // Return typed with the cursor inside a word saves the name as it was, with no space.
++    #expect(RenameField.submitted("Groe\ncries", was: "Groecries") == "Groecries")
++    // Tab on a hardware keyboard saves too, and never ends up in the name.
++    #expect(RenameField.submitted("Pick up\t", was: "Pick up") == "Pick up")
++    // Pasted lines (and tabs) are joined with spaces.
++    #expect(RenameField.submitted("Plan the\ntrip", was: "") == "Plan the trip")
++    #expect(RenameField.submitted("Plan\tthe trip", was: "P") == "Plan the trip")
++    #expect(RenameField.submitted("\n", was: "") == "")
++}
++
++/// An add field's text, once it has a line break: every finished line (pasted ones too)
++/// and what's still being typed after the last break.
++@Test func typedLinesSplitsEveryLine() {
++    #expect(TypedLines("Milk") == nil)
++    let pasted = TypedLines("Line 1\nLine 2\n\nLine 3\nLine 4")
++    #expect(pasted?.lines == ["Line 1", "Line 2", "Line 3"], "blank lines are dropped")
++    #expect(pasted?.rest == "Line 4", "the last line is still being typed")
++    #expect(TypedLines("Eggs\n")?.lines == ["Eggs"])
++    #expect(TypedLines("Eggs\n")?.rest == "")
++    #expect(TypedLines("\n")?.lines == [], "Return in an empty field")
++    #expect(TypedLines("a\nb")?.leftover(keeping: ["a"]) == "a b", "a line that couldn't be added stays")
++    #expect(TypedLines("a\n")?.leftover(keeping: []) == "")
+ }
+ 
+ /// A task moved by its handle lands past each task whose middle it reaches, going up or
+@@ -3183,3 +3300,163 @@ func smartAddSessions(text: String, title: String, mode: TaskMode, target: Doubl
+     #expect(TaskAutoScroller.velocity(fingerY: bottom + 10, top: top, bottom: bottom) == TaskAutoScroller.maxSpeed)
+     #expect(TaskAutoScroller.velocity(fingerY: 120, top: 100, bottom: 200) == 0, "no room for both edges: no scrolling")
+ }
++
++// MARK: - Review 2026-11-10 fixes (store)
++
++/// From the 1.0.3 review (reviews/applereview-2026-11-10): edits made while a card is This
++/// week only, Undo against folds and renames, and This week only cards in 1.0.2 data.
++struct ReviewFixStoreTests {
++    private let clock = TestClock(2099, 3, 4)  // a Wednesday, New York
++    private var nextWeek: Date { clock.weeks(1, from: clock.now) }
++
++    private func card(_ store: ChecklistStore, _ name: String) -> Tasquel.Category? {
++        store.selectedWeek?.categories.first { $0.name == name }
++    }
++
++    @Test("A copy renamed while This week only is on keeps its name after it's turned off")
++    func renameWhileThisWeekOnlySurvivesTurningItOff() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Trip", symbol: "airplane")
++        _ = store.addTask(categoryID: card(store, "Trip")!.id, title: "Stretch", mode: .repeating)
++        store.navigateToDate(nextWeek)
++        let tripID = try #require(card(store, "Trip")?.id)
++        store.setCategoryThisWeekOnly(tripID, true)
++        let copy = try #require(card(store, "Trip")?.tasks.first)
++        store.renameTask(categoryID: tripID, taskID: copy.id, newTitle: "Yoga")
++        store.setCategoryThisWeekOnly(tripID, false)
++        store.navigateToDate(clock.now)
++        store.navigateToDate(nextWeek)
++        #expect(card(store, "Trip")?.tasks.map(\.title) == ["Yoga"], "the user's rename is kept")
++        #expect(card(store, "Trip")?.tasks.first?.mode == .repeating, "and the mode came back")
++    }
++
++    @Test("Items added to a repeating list while This week only is on survive adding a repeating task")
++    func listItemsSurviveTurningOffByAddingTask() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Trip", symbol: "airplane")
++        let tripNow = card(store, "Trip")!.id
++        let packing = try #require(store.addTask(categoryID: tripNow, title: "Packing", mode: .repeating, type: .list))
++        _ = store.addSubtask(categoryID: tripNow, taskID: packing, title: "Passport")
++        store.navigateToDate(nextWeek)
++        let tripID = try #require(card(store, "Trip")?.id)
++        store.setCategoryThisWeekOnly(tripID, true)
++        let copy = try #require(card(store, "Trip")?.tasks.first)
++        _ = store.addSubtask(categoryID: tripID, taskID: copy.id, title: "Sunscreen")
++        _ = store.addTask(categoryID: tripID, title: "Stretch", mode: .repeating)  // turns it off
++        #expect(card(store, "Trip")?.isThisWeekOnly == false)
++        store.navigateToDate(clock.now)
++        store.navigateToDate(nextWeek)
++        let items = card(store, "Trip")?.tasks.first { $0.title == "Packing" }?.subtasks.map(\.title)
++        #expect(items == ["Passport", "Sunscreen"], "the item the user added is kept")
++    }
++
++    @Test("Progress on a carried goal while This week only is on survives turning it off")
++    func goalProgressSurvivesTurningOff() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Trip", symbol: "airplane")
++        let tripNow = card(store, "Trip")!.id
++        let run = try #require(store.addTask(categoryID: tripNow, title: "Run", mode: .carryOver, type: .goal))
++        store.setGoalTarget(categoryID: tripNow, taskID: run, target: 10, kind: .custom, unit: "km")
++        store.navigateToDate(nextWeek)
++        let tripID = try #require(card(store, "Trip")?.id)
++        store.setCategoryThisWeekOnly(tripID, true)
++        let copy = try #require(card(store, "Trip")?.tasks.first)
++        store.updateGoalProgress(categoryID: tripID, taskID: copy.id, progress: 6)
++        store.setCategoryThisWeekOnly(tripID, false)
++        store.navigateToDate(clock.now)
++        store.navigateToDate(nextWeek)
++        #expect(card(store, "Trip")?.tasks.first?.goalProgress == 6, "the progress the user counted is kept")
++    }
++
++    @Test("An untouched copy still follows its task after This week only goes on and off")
++    func untouchedCopyStillFollows() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Trip", symbol: "airplane")
++        let stretch = try #require(store.addTask(categoryID: card(store, "Trip")!.id, title: "Stretch", mode: .repeating))
++        store.navigateToDate(nextWeek)
++        let tripID = try #require(card(store, "Trip")?.id)
++        store.setCategoryThisWeekOnly(tripID, true)
++        store.setCategoryThisWeekOnly(tripID, false)
++        #expect(card(store, "Trip")?.tasks.first?.isUserEdited == false, "turning it on and off isn't an edit")
++        store.navigateToDate(clock.now)
++        store.renameTask(categoryID: card(store, "Trip")!.id, taskID: stretch, newTitle: "Yoga")
++        store.navigateToDate(nextWeek)
++        #expect(card(store, "Trip")?.tasks.map(\.title) == ["Yoga"], "it follows the rename")
++    }
++
++    @Test("Undoing a delete keeps a list folded after the delete, in later weeks too")
++    func undoKeepsLaterFold() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Home", symbol: "house")
++        let home = card(store, "Home")!.id
++        let list = try #require(store.addTask(categoryID: home, title: "Groceries", mode: .repeating, type: .list))
++        _ = store.addSubtask(categoryID: home, taskID: list, title: "Milk")
++        let other = try #require(store.addTask(categoryID: home, title: "Call Sam", mode: .oneTime))
++        store.navigateToDate(nextWeek)
++        _ = store.addTask(categoryID: card(store, "Home")!.id, title: "Plan", mode: .oneTime)  // saves next week
++        store.navigateToDate(clock.now)
++
++        store.deleteTask(categoryID: home, taskID: other)
++        store.setListFolded(categoryID: home, taskID: list, folded: true)
++        #expect(store.lastDelete != nil, "folding keeps the Undo")
++        store.undoLastDelete()
++        #expect(card(store, "Home")?.tasks.map(\.title) == ["Groceries", "Call Sam"], "the task is back")
++        #expect(card(store, "Home")?.tasks.first?.isListFolded == true, "and the list stays folded")
++        store.navigateToDate(nextWeek)
++        #expect(card(store, "Home")?.tasks.first { $0.title == "Groceries" }?.isListFolded == true,
++                "next week's copy too")
++    }
++
++    @Test("A rename finished after a delete keeps the delete's Undo, and Undo keeps the rename")
++    func renameAfterDeleteKeepsUndo() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Home", symbol: "house")
++        let home = card(store, "Home")!.id
++        let list = try #require(store.addTask(categoryID: home, title: "Groceries", mode: .oneTime, type: .list))
++        for item in ["Milk", "Eggs"] { _ = store.addSubtask(categoryID: home, taskID: list, title: item) }
++        let items = try #require(card(store, "Home")?.tasks.first?.subtasks)
++        store.deleteSubtask(categoryID: home, taskID: list, subtaskID: items[1].id)
++        // The Milk rename field was open: it saves as the keyboard goes, after the delete.
++        store.renameSubtask(categoryID: home, taskID: list, subtaskID: items[0].id, newTitle: "Oat milk")
++        store.renameTask(categoryID: home, taskID: list, newTitle: "Shopping")
++        #expect(store.lastDelete != nil, "the delete can still be undone")
++        store.undoLastDelete()
++        let task = try #require(card(store, "Home")?.tasks.first)
++        #expect(task.subtasks.map(\.title) == ["Oat milk", "Eggs"], "Eggs is back and the rename stays")
++        #expect(task.title == "Shopping")
++    }
++
++    @Test("Other changes after a delete still end its Undo")
++    func otherChangesStillEndUndo() throws {
++        let store = makeIsolatedStore(clock: clock)
++        store.addCategory(name: "Home", symbol: "house")
++        let home = card(store, "Home")!.id
++        let a = try #require(store.addTask(categoryID: home, title: "A", mode: .oneTime))
++        store.deleteTask(categoryID: home, taskID: a)
++        _ = store.addTask(categoryID: home, title: "B", mode: .oneTime)
++        #expect(store.lastDelete == nil, "adding a task isn't in the weeks Undo would put back")
++    }
++
++    @Test("Carry-over and repeating tasks left in a This week only card by 1.0.2 load one-time")
++    func oldThisWeekOnlyCardLoadsOneTime() throws {
++        let directory = makeTempDirectory()
++        let defaults = UserDefaults(suiteName: "TasquelTests-\(UUID().uuidString)")!
++        let store = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
++        store.addCategory(name: "Study", symbol: "book")
++        let study = card(store, "Study")!.id
++        _ = store.addTask(categoryID: study, title: "Essay", mode: .oneTime)
++        // What 1.0.2 could leave: the card this week only, a carry-over copy in it.
++        let wi = try #require(store.weeks.firstIndex { $0.categories.contains { $0.id == study } })
++        let ci = try #require(store.weeks[wi].categories.firstIndex { $0.id == study })
++        store.weeks[wi].categories[ci].isThisWeekOnly = true
++        store.weeks[wi].categories[ci].tasks.append(ChecklistTask(title: "Flashcards", mode: .carryOver, taskType: .list,
++                                                                  carriedFrom: UUID()))
++        store.save()
++
++        let relaunched = makeIsolatedStore(directory: directory, clock: clock, defaults: defaults)
++        let flashcards = try #require(card(relaunched, "Study")?.tasks.first { $0.title == "Flashcards" })
++        #expect(flashcards.mode == .oneTime, "a This week only card holds only one-time tasks")
++        #expect(flashcards.modeBeforeThisWeekOnly?.mode == .carryOver, "remembering the mode it had")
++        #expect(card(relaunched, "Study")?.tasks.first { $0.title == "Essay" }?.mode == .oneTime)
++    }
++}
+diff --git a/TasquelUITests/GoalUITests.swift b/TasquelUITests/GoalUITests.swift
+index be24cf5..108e7c1 100644
+--- a/TasquelUITests/GoalUITests.swift
++++ b/TasquelUITests/GoalUITests.swift
+@@ -160,6 +160,55 @@ final class GoalUITests: XCTestCase {
+         XCTAssertTrue(app.buttons["Mark Groceries incomplete"].waitForExistence(timeout: 2), "checking every item checks the list")
+     }
+ 
++    /// Folding a list: its chevron hides the items and the Add Item row (adding what was typed
++    /// there first) and shows how many are checked; the list stays folded after a relaunch, and
++    /// the chevron opens it again.
++    @MainActor
++    func testFoldingAList() throws {
++        let arguments = ["-isolatedDataID", "fold-\(UUID().uuidString)"]
++        let app = launchFresh(arguments)
++        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
++        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
++        openErrands.tap()
++
++        let addTask = app.addTaskField
++        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
++        addTask.tap()
++        addTask.typeText("Bugs")
++        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
++        app.buttons["List"].firstMatch.tap()
++        app.buttons["Add Task"].tap()
++
++        let item = app.textFields["Add item"]
++        XCTAssertTrue(item.waitForExistence(timeout: 3))
++        item.typeText("Crash\n")
++        Thread.sleep(forTimeInterval: 0.4)
++        item.typeText("Typo")  // typed, not added yet
++
++        let fold = app.buttons["Fold Bugs"]
++        XCTAssertTrue(fold.exists, "a list has a chevron")
++        XCTAssertEqual(fold.label, "Collapse list", "a new list starts open")
++        fold.tap()
++        XCTAssertTrue(app.staticTexts["Bugs, 0 of 2 items checked"].waitForExistence(timeout: 2),
++                      "what was typed is added, and the folded list shows its count")
++        XCTAssertFalse(app.staticTexts["Crash"].exists, "the items are folded away")
++        XCTAssertFalse(app.textFields["Add item"].exists, "and so is Add Item")
++        XCTAssertEqual(fold.label, "Expand list")
++
++        // Same storage again (open cards aren't remembered, so open Errands again).
++        app.terminate()
++        app.launch()
++        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
++        openErrands.tap()
++        XCTAssertTrue(app.staticTexts["Bugs, 0 of 2 items checked"].waitForExistence(timeout: 3), "still folded after a relaunch")
++        XCTAssertFalse(app.staticTexts["Crash"].exists)
++
++        app.buttons["Fold Bugs"].tap()
++        XCTAssertTrue(app.staticTexts["Crash"].waitForExistence(timeout: 2), "the chevron opens it again")
++        XCTAssertTrue(app.staticTexts["Typo"].exists)
++        XCTAssertFalse(app.staticTexts["Bugs, 0 of 2 items checked"].exists, "an open list shows no count")
++    }
++
+     /// Help opens and shows every section (it once indexed past its last section and crashed).
+     @MainActor
+     func testHelpOpens() throws {

@@ -1,0 +1,538 @@
+[
+  {
+    "startDate" : "2026-11-16T05:00:00Z",
+    "categories" : [
+      {
+        "tasks" : [
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "0ACDD463-ADF4-4904-8C36-275E25A3B805",
+                "title" : "Milk",
+                "isCompleted" : false
+              },
+              {
+                "id" : "C47CB131-1DE9-4446-941D-5C532237BB2E",
+                "title" : "Bread",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "EC13493D-D888-404F-9D2C-7A21C0393020",
+            "title" : "Groceries",
+            "mode" : "carryOver",
+            "carriedFrom" : "3DD32286-6D75-46E9-BFEF-E924E9481C1A",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "DA6E1CBE-13B9-416C-B7AC-5EB2D4032CB1",
+            "title" : "Next week task",
+            "mode" : "oneTime",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "repeatsFrom" : "7A84DE67-023D-4688-A1BA-8346ED591378",
+            "goalProgress" : 0,
+            "subtasks" : [
+              {
+                "id" : "BAB4D181-80B4-460D-B745-3C3763F982ED",
+                "title" : "Wash",
+                "isCompleted" : false
+              },
+              {
+                "id" : "BFDAAB8B-8F25-457A-AFFC-0E0D5C3048C0",
+                "title" : "Fold",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "EC0F741E-A138-43F7-825E-C716DB61753B",
+            "title" : "Laundry",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "372B2FFE-8BAB-498B-BCA3-9EEC0886217C",
+            "title" : "Buy stamps",
+            "mode" : "carryOver",
+            "carriedFrom" : "C2CD0370-8855-4865-8C07-57431D19F4C7",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "list",
+            "repeatsFrom" : "8E694333-B267-49F4-80B1-89F1C99AD623",
+            "subtasks" : [
+              {
+                "id" : "F1A70983-0E6A-41E3-9653-D9D96EEE6CD0",
+                "title" : "Soap",
+                "isCompleted" : true
+              },
+              {
+                "id" : "8AE73C83-805B-45D3-B609-A2DDC35132CD",
+                "title" : "Rice",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "5C7FEA0C-59D4-40C5-9F98-18481B4F0D88",
+            "title" : "Weekly list",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "5ABF4244-C645-4B05-84C7-ECF4C2461CDB",
+        "symbol" : "cart",
+        "name" : "Errands"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "goal",
+            "goalUnitKind" : "quantity",
+            "goalProgress" : 0,
+            "goalTarget" : 10,
+            "subtasks" : [
+
+            ],
+            "repeatsFrom" : "0B87DA80-86D2-4E08-BB85-F2C590C88D4D",
+            "id" : "23CD814C-DB82-4456-AC74-074BC18FCF5B",
+            "title" : "Run",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "goal",
+            "goalUnitKind" : "time",
+            "goalProgress" : 9,
+            "goalTarget" : 60,
+            "subtasks" : [
+
+            ],
+            "id" : "939A8FB1-A927-4547-A713-E987AB7877B0",
+            "title" : "Stretch",
+            "mode" : "carryOver",
+            "carriedFrom" : "551F4A53-67A9-4CE1-B10F-03E4FC120060",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          },
+          {
+            "subtasks" : [
+
+            ],
+            "isCompleted" : false,
+            "goalUnit" : "pages",
+            "goalStep" : 10,
+            "goalDays" : 5,
+            "goalProgress" : 0,
+            "goalUnitKind" : "custom",
+            "mode" : "repeating",
+            "isListFolded" : false,
+            "goalTarget" : 50,
+            "taskType" : "goal",
+            "repeatsFrom" : "B070BAC8-7097-4197-A2FE-E2C591264323",
+            "title" : "Read",
+            "isUserEdited" : false,
+            "id" : "EE765B1C-9A65-47E0-A9A6-CAB1D4175F0A"
+          },
+          {
+            "taskType" : "list",
+            "repeatsFrom" : "B4AF2DA8-2FFF-4677-B6D6-E2BF0D8F3A72",
+            "subtasks" : [
+              {
+                "id" : "A35C5C92-B01B-409D-A3A4-44E58DA0EFEC",
+                "title" : "Shoes",
+                "isCompleted" : true
+              },
+              {
+                "id" : "4AAC4CD6-9461-4D90-926C-BE403FD8A958",
+                "title" : "Towel",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "CE45DF50-55B6-4A75-93A4-83A0466C897E",
+            "title" : "Gym bag",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "3C834452-DB7D-48BE-A6B8-CB3571A8D3A2",
+        "symbol" : "figure.run",
+        "name" : "Fitness"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "D050602D-22CA-4F2C-BB91-32E8B58B7825",
+            "title" : "Essay",
+            "mode" : "oneTime",
+            "carriedFrom" : "C00FF961-0034-44B5-844D-2684DAF1C745",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "342E0D39-E5AA-4D70-91C6-400FCAD94DAD",
+                "title" : "Deck 1",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "01E342B7-0CA6-4572-801D-4F49D33E711D",
+            "title" : "Flashcards",
+            "mode" : "carryOver",
+            "carriedFrom" : "A3346776-4117-4A00-A3DB-6710B72DB169",
+            "isCompleted" : false,
+            "isUserEdited" : false,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : true,
+        "id" : "902738DD-1DD7-456D-93FA-87FFB1BB7B3D",
+        "symbol" : "book",
+        "name" : "Study"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "FFF82924-00A1-45E0-BA9A-0853025DCA8D",
+        "symbol" : "calendar.badge.clock",
+        "name" : "Appointments"
+      }
+    ],
+    "startDay" : "2026-11-16",
+    "didFinalSync" : false,
+    "id" : "89FF1D22-DA5A-4412-9A90-63E40DC0F129"
+  },
+  {
+    "startDate" : "2026-11-09T05:00:00Z",
+    "categories" : [
+      {
+        "tasks" : [
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "714AFAFA-5FA3-41D5-8DC6-0F0ED42E715D",
+                "title" : "Eggs",
+                "isCompleted" : true
+              },
+              {
+                "id" : "694D2ABD-5E48-4111-9B0F-56E6C476CCF0",
+                "title" : "Milk",
+                "isCompleted" : false
+              },
+              {
+                "id" : "2FA5D0AE-8867-40F5-8AE7-881755EADACF",
+                "title" : "Bread",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "3DD32286-6D75-46E9-BFEF-E924E9481C1A",
+            "title" : "Groceries",
+            "mode" : "carryOver",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+              {
+                "id" : "6B028B82-9509-4A1C-9BB8-4BB57E856610",
+                "title" : "Wash",
+                "isCompleted" : true
+              },
+              {
+                "id" : "58D18B28-1207-46D1-A8B6-A5851725A482",
+                "title" : "Fold",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "7A84DE67-023D-4688-A1BA-8346ED591378",
+            "title" : "Laundry",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "C2CD0370-8855-4865-8C07-57431D19F4C7",
+            "title" : "Buy stamps",
+            "mode" : "carryOver",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "4D93BC90-3B66-4AAA-9E25-C66922D6AD2F",
+            "title" : "Pay rent",
+            "mode" : "oneTime",
+            "isCompleted" : true,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "322C4C73-FD4D-444D-83A0-7837CA5A87F1",
+                "title" : "Soap",
+                "isCompleted" : true
+              },
+              {
+                "id" : "BBAE95C3-E904-4E01-8A2A-A13A58910638",
+                "title" : "Rice",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "8E694333-B267-49F4-80B1-89F1C99AD623",
+            "title" : "Weekly list",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "33EB100F-8EFB-4B59-9902-42C8F9A8B431",
+        "symbol" : "cart",
+        "name" : "Errands"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "3CDBF762-EC65-4733-A1C6-A218D4F0EDF8",
+            "title" : "Report",
+            "mode" : "oneTime",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "35FF1C6D-6C49-4233-9274-221A46DEE2B6",
+            "title" : "Standup",
+            "mode" : "oneTime",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "C55C3359-A0D2-44B0-8DE7-C0E90D043F64",
+                "title" : "Reply",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "97CA4353-5CD7-4D77-9CAD-C7892B505A33",
+            "title" : "Inbox",
+            "mode" : "oneTime",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : true,
+        "id" : "0E59C846-00D9-4E42-AB2C-DB032AAD8FB1",
+        "symbol" : "briefcase",
+        "name" : "Work"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "goal",
+            "goalUnitKind" : "quantity",
+            "goalProgress" : 4,
+            "goalTarget" : 10,
+            "subtasks" : [
+
+            ],
+            "id" : "0B87DA80-86D2-4E08-BB85-F2C590C88D4D",
+            "title" : "Run",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "goal",
+            "goalUnitKind" : "time",
+            "goalProgress" : 9,
+            "goalTarget" : 60,
+            "subtasks" : [
+
+            ],
+            "id" : "551F4A53-67A9-4CE1-B10F-03E4FC120060",
+            "title" : "Stretch",
+            "mode" : "carryOver",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "subtasks" : [
+
+            ],
+            "isCompleted" : false,
+            "goalUnit" : "pages",
+            "goalStep" : 10,
+            "goalDays" : 5,
+            "isListFolded" : false,
+            "goalUnitKind" : "custom",
+            "mode" : "repeating",
+            "goalTarget" : 50,
+            "taskType" : "goal",
+            "title" : "Read",
+            "isUserEdited" : true,
+            "id" : "B070BAC8-7097-4197-A2FE-E2C591264323"
+          },
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "07278ABD-C72D-4843-B0D4-A5727382DDB9",
+                "title" : "Shoes",
+                "isCompleted" : true
+              },
+              {
+                "id" : "AD42DC2F-A044-473C-985F-AE27BE350EF0",
+                "title" : "Towel",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "B4AF2DA8-2FFF-4677-B6D6-E2BF0D8F3A72",
+            "title" : "Gym bag",
+            "mode" : "repeating",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "E828C222-368A-49CC-A4A3-EA942FF80D1F",
+        "symbol" : "figure.run",
+        "name" : "Fitness"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "C00FF961-0034-44B5-844D-2684DAF1C745",
+            "title" : "Essay",
+            "mode" : "carryOver",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          },
+          {
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "id" : "453DBDD1-CC1E-4790-AAC4-12D7FC4D5DC7",
+                "title" : "Deck 1",
+                "isCompleted" : false
+              }
+            ],
+            "id" : "A3346776-4117-4A00-A3DB-6710B72DB169",
+            "title" : "Flashcards",
+            "mode" : "carryOver",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "2C6525E6-CABC-4C5E-9113-65DD1449F71B",
+        "symbol" : "book",
+        "name" : "Study"
+      },
+      {
+        "tasks" : [
+
+        ],
+        "isThisWeekOnly" : false,
+        "id" : "062D6683-4315-4FC0-89FE-E40466D52228",
+        "symbol" : "calendar.badge.clock",
+        "name" : "Appointments"
+      },
+      {
+        "tasks" : [
+          {
+            "taskType" : "checkbox",
+            "subtasks" : [
+
+            ],
+            "id" : "5B919D1B-1CD9-4C6A-9EEC-199EC4105D40",
+            "title" : "Pack",
+            "mode" : "oneTime",
+            "isCompleted" : false,
+            "isUserEdited" : true,
+            "isListFolded" : false
+          }
+        ],
+        "isThisWeekOnly" : true,
+        "id" : "119D6244-823D-4CF5-BBA5-E8C1FEA2EAA9",
+        "symbol" : "airplane",
+        "name" : "Trip"
+      }
+    ],
+    "userOrderedCategories" : [
+      "Errands"
+    ],
+    "startDay" : "2026-11-09",
+    "didFinalSync" : true,
+    "id" : "B924E3E2-32FD-490F-AF06-6FE8D49EEEF3"
+  }
+]

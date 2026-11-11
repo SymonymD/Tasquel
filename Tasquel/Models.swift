@@ -185,6 +185,13 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// In a "This week only" card: the mode the task had before it was made one-time there,
     /// put back when This week only is turned off. Nil for other tasks.
     var modeBeforeThisWeekOnly: SavedMode? = nil
+    /// A list with its items folded away (its chevron). Not an edit: it doesn't make the task
+    /// the user's own. Copies made for later weeks take it with them. Only lists fold.
+    var isListFolded = false
+
+    /// Whether the list's items are folded away right now (another type keeps the setting
+    /// but always shows its sub-tasks).
+    var isFolded: Bool { taskType == .list && isListFolded }
 
     /// A task's mode as it was, and whether the user had changed the task, so turning This
     /// week only off leaves it exactly as before.
@@ -269,6 +276,7 @@ extension ChecklistTask {
         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
         modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
+        isListFolded = (try? container.decodeIfPresent(Bool.self, forKey: .isListFolded)) ?? false
     }
 }
 

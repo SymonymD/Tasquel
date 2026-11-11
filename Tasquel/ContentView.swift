@@ -48,6 +48,10 @@ struct ContentView: View {
     @State private var bottomBarHeight: CGFloat = 68
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
     @State private var homeIndicatorInset: CGFloat = 34
+    /// How far in from the leading edge the header's Tasquel mark has to sit to clear an
+    /// iPadOS window's controls (close, minimize, full screen) in the top-leading corner;
+    /// 0 without them (iPhone, or an iPad app in full screen). See `WindowControlsInsetReader`.
+    @State private var windowControlsInset: CGFloat = 0
     @Environment(\.openURL) private var openURL
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -680,7 +684,7 @@ struct ContentView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.leading, 12)
+            .padding(.leading, markLeadingInset)
             .accessibilityLabel("This Week")
             .accessibilityHint("Goes back to the current week")
         }
@@ -874,16 +878,24 @@ struct ContentView: View {
             .frame(minWidth: Self.barButtonSize, minHeight: Theme.isRetro(theme) ? Self.barButtonSize * 0.75 : Self.barButtonSize)
     }
 
+    /// The Tasquel mark's distance from the leading edge: 12pt, or more in an iPad window
+    /// whose controls sit in that corner (they covered it, and a tap there opened the window
+    /// menu instead of going back to this week).
+    private var markLeadingInset: CGFloat { max(12, windowControlsInset) }
+
     /// The viewed week, between the Tasquel mark (back to this week) and Open/Close All.
     private var weekTitleRow: some View {
         weekTitleText
             .font(.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default))
             .lineLimit(1)
             .minimumScaleFactor(0.6)
-            .padding(.horizontal, 56)  // clear of the buttons on either side
+            // Clear of the buttons on either side (the mark is 44pt wide).
+            .padding(.leading, markLeadingInset + 44)
+            .padding(.trailing, 56)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .leading) { homeButton }
             .overlay(alignment: .trailing) { expandAllButton }
+            .background { WindowControlsInsetReader { windowControlsInset = $0 } }
             .padding(.top, 8)
     }
 
@@ -1719,6 +1731,60 @@ private struct PullToCloseAll: ViewModifier {
                 .padding(.top, 6)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)  // VoiceOver uses the Collapse All button
+        }
+    }
+}
+
+// MARK: - Window Controls
+
+/// Reports how far in from the leading edge content in this view must start to stay clear of
+/// an iPadOS window's controls in the top-leading corner (UIKit's safe area adapted to the
+/// window's corners, less the plain safe area): 0 when there are none. Read from a plain
+/// view behind the header's title row, so it's in that row's own space.
+private struct WindowControlsInsetReader: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> ProbeView { ProbeView(onChange: onChange) }
+
+    func updateUIView(_ view: ProbeView, context: Context) { view.onChange = onChange }
+
+    final class ProbeView: UIView {
+        var onChange: (CGFloat) -> Void
+        private var reported: CGFloat?
+
+        init(onChange: @escaping (CGFloat) -> Void) {
+            self.onChange = onChange
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        override func safeAreaInsetsDidChange() {
+            super.safeAreaInsetsDidChange()
+            report()
+        }
+
+        private func report() {
+            guard window != nil else { return }
+            let adapted = directionalEdgeInsets(for: .safeArea(cornerAdaptation: .horizontal)).leading
+            let plain = directionalEdgeInsets(for: .safeArea()).leading
+            let inset = max(0, (adapted - plain).rounded())
+            guard inset != reported else { return }
+            reported = inset
+            let onChange = onChange
+            // Not during the layout pass that noticed it.
+            DispatchQueue.main.async { onChange(inset) }
         }
     }
 }

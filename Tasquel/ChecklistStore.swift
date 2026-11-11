@@ -164,6 +164,7 @@ final class ChecklistStore {
         // on another day than the app was opened on.
         selectedDate = midweek(weekStartDay(containing: now()))
         saveThisWeekOnlyCategories()
+        makeThisWeekOnlyCardsOneTime()
         pruneEditTimes()
         let currentWeek = ensureWeekExists(for: now())
         migrateStartersIfNeeded(into: currentWeek)
@@ -900,6 +901,7 @@ final class ChecklistStore {
         newTask.goalUnitKind = task.goalUnitKind
         newTask.goalStep = task.goalStep
         newTask.goalDays = task.goalDays
+        newTask.isListFolded = task.isListFolded
         newTask.carriedFrom = task.id
         return newTask
     }
@@ -1052,6 +1054,7 @@ final class ChecklistStore {
         newTask.goalUnitKind = task.goalUnitKind
         newTask.goalStep = task.goalStep
         newTask.goalDays = task.goalDays
+        newTask.isListFolded = task.isListFolded
         newTask.repeatsFrom = task.id
         return newTask
     }
@@ -1181,6 +1184,25 @@ final class ChecklistStore {
             weeks[wi].categories[ci].tasks[ti].isUserEdited = saved.wasUserEdited
             weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
         }
+    }
+
+    /// A This week only card holds only one-time tasks, each remembering its mode (as when
+    /// the switch is turned on, and as copies arrive there). Data saved by 1.0.2 can still
+    /// have carry-over or repeating copies that sync put there before arrivals were made
+    /// one-time; they're made one-time the same way (still following their source by the
+    /// mode they had), so none says Carry Over and then doesn't carry. Past weeks stay as
+    /// they were.
+    private func makeThisWeekOnlyCardsOneTime() {
+        var changed = false
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
+            for ci in weeks[wi].categories.indices where weeks[wi].categories[ci].isThisWeekOnly {
+                for ti in weeks[wi].categories[ci].tasks.indices where weeks[wi].categories[ci].tasks[ti].mode != .oneTime {
+                    weeks[wi].categories[ci].tasks[ti] = Self.madeOneTime(weeks[wi].categories[ci].tasks[ti])
+                    changed = true
+                }
+            }
+        }
+        if changed { save() }
     }
 
     /// Categories added for this week only before they were kept in Saved Categories
@@ -1395,7 +1417,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
         // The user picked this mode: it isn't put back to the one from before This week only.
         weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
         keepCategory(wi, ci, for: mode)
@@ -1403,15 +1425,81 @@ final class ChecklistStore {
         save()
     }
 
+    /// Folds a list's items away, or opens it again. A view choice, not an edit: the task
+    /// isn't made the user's own and the card's edit time stays. Untouched copies in later
+    /// saved weeks fold with it (`fold(_:from:folded:in:)`), so the list is still folded next
+    /// week. While a delete can be undone, the fold is made in the weeks Undo puts back too:
+    /// it keeps the Undo, and Undo doesn't open the list again.
+    func setListFolded(categoryID: UUID, taskID: UUID, folded: Bool) {
+        guard let task = viewedTask(categoryID, taskID), task.taskType == .list, task.isListFolded != folded,
+              let wi = editableSelectedWeekIndex() else { return }
+        let start = weeks[wi].startDay
+        Self.fold(taskID, from: start, folded: folded, in: &weeks)
+        if weeksBeforeDelete != nil { Self.fold(taskID, from: start, folded: folded, in: &weeksBeforeDelete!) }
+        save(keepsUndo: true)
+    }
+
+    /// Sets the fold of the list `taskID` in the week starting `start` and of its untouched
+    /// copies in the saved weeks after it, found week by week along their links (a week
+    /// skipped while unsaved links straight to the week before it). A copy the user changed
+    /// is their own and keeps its fold, and so do its copies.
+    private static func fold(_ taskID: UUID, from start: DayKey, folded: Bool, in weeks: inout [Week]) {
+        var sources: Set<UUID> = [taskID]
+        let order = weeks.indices.filter { weeks[$0].startDay >= start }.sorted { weeks[$0].startDay < weeks[$1].startDay }
+        for wi in order {
+            for ci in weeks[wi].categories.indices {
+                for ti in weeks[wi].categories[ci].tasks.indices {
+                    let task = weeks[wi].categories[ci].tasks[ti]
+                    let isTheList = weeks[wi].startDay == start && task.id == taskID
+                    let isCopy = weeks[wi].startDay > start && !task.isUserEdited && task.taskType == .list
+                        && [task.carriedFrom, task.repeatsFrom].contains { $0.map(sources.contains) == true }
+                    guard isTheList || isCopy else { continue }
+                    weeks[wi].categories[ci].tasks[ti].isListFolded = folded
+                    if isCopy { sources.insert(task.id) }
+                }
+            }
+        }
+    }
+
     func renameTask(categoryID: UUID, taskID: UUID, newTitle: String) {
         guard viewedTask(categoryID, taskID)?.title != newTitle,
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        weeks[wi].categories[ci].tasks[ti].title = newTitle
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        let rename = { (task: inout ChecklistTask) -> Bool in
+            task.title = newTitle
+            Self.markEdited(&task)
+            return true
+        }
+        _ = rename(&weeks[wi].categories[ci].tasks[ti])
         noteEdit(categoryID)
-        save()
+        save(keepsUndo: changeInUndo(week: weeks[wi].startDay, taskID: taskID, rename))
+    }
+
+    /// While a delete can be undone, a rename is made in the weeks Undo puts back too, when
+    /// the task is there, so it keeps the Undo: a rename finished after a delete (its field
+    /// was still open) never costs the delete its Undo, and Undo doesn't take the rename
+    /// back. `change` returns whether it found what it changes. Returns whether it was made.
+    private func changeInUndo(week start: DayKey, taskID: UUID, _ change: (inout ChecklistTask) -> Bool) -> Bool {
+        guard var saved = weeksBeforeDelete,
+              let wi = saved.firstIndex(where: { $0.startDay == start }),
+              let ci = saved[wi].categories.firstIndex(where: { $0.tasks.contains { $0.id == taskID } }),
+              let ti = saved[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
+              change(&saved[wi].categories[ci].tasks[ti]) else { return false }
+        weeksBeforeDelete = saved
+        return true
+    }
+
+    /// The user changed this task in its own week: syncing leaves it alone from now on. In a
+    /// This week only card the change is also kept in what the card remembers, so turning
+    /// the switch off (which puts back the mode and this mark from before) keeps it theirs.
+    private func markEdited(_ wi: Int, _ ci: Int, _ ti: Int) {
+        Self.markEdited(&weeks[wi].categories[ci].tasks[ti])
+    }
+
+    private static func markEdited(_ task: inout ChecklistTask) {
+        task.isUserEdited = true
+        task.modeBeforeThisWeekOnly?.wasUserEdited = true
     }
 
     // MARK: - Goal Task CRUD
@@ -1422,7 +1510,9 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].taskType = type
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
+        // A task that becomes a list starts open, so its first items can be added.
+        weeks[wi].categories[ci].tasks[ti].isListFolded = false
         if type != .goal {
             weeks[wi].categories[ci].tasks[ti].goalTarget = nil
             weeks[wi].categories[ci].tasks[ti].goalProgress = nil
@@ -1457,7 +1547,7 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalTarget = target
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
         weeks[wi].categories[ci].tasks[ti].goalUnitKind = kind
         weeks[wi].categories[ci].tasks[ti].goalUnit = kind == .custom ? unit : nil
         // Auto-update completion
@@ -1479,7 +1569,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].goalStep = step
         weeks[wi].categories[ci].tasks[ti].goalDays = days
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
         noteEdit(categoryID)
         save()
     }
@@ -1493,8 +1583,8 @@ final class ChecklistStore {
         weeks[wi].categories[ci].tasks[ti].goalProgress = progress
         // A repeating copy keeps its own progress while following its source. A carried
         // copy's progress comes from its source, so entering some makes the copy the user's.
-        if weeks[wi].categories[ci].tasks[ti].mode != .repeating {
-            weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        if weeks[wi].categories[ci].tasks[ti].syncMode != .repeating {
+            markEdited(wi, ci, ti)
         }
         weeks[wi].categories[ci].tasks[ti].isCompleted = weeks[wi].categories[ci].tasks[ti].goalIsComplete
         noteEdit(categoryID)
@@ -1511,7 +1601,7 @@ final class ChecklistStore {
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return false }
         weeks[wi].categories[ci].tasks[ti].subtasks.append(SubTask(title: title))
         subtaskChecksBeforeCheck[taskID] = nil  // its items changed since the task was checked
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
         // A new unchecked item means the task isn't done yet.
         weeks[wi].categories[ci].tasks[ti].isCompleted = false
         noteEdit(categoryID)
@@ -1544,7 +1634,7 @@ final class ChecklistStore {
         }
         weeks[wi].categories[ci].tasks[ti].subtasks.removeAll { $0.id == subtaskID }
         subtaskChecksBeforeCheck[taskID] = nil
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+        markEdited(wi, ci, ti)
         // Deleting the last unchecked item completes the task, as checking it would.
         let task = weeks[wi].categories[ci].tasks[ti]
         if !task.subtasks.isEmpty {
@@ -1559,11 +1649,16 @@ final class ChecklistStore {
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
-              let si = weeks[wi].categories[ci].tasks[ti].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
-        weeks[wi].categories[ci].tasks[ti].subtasks[si].title = newTitle
-        weeks[wi].categories[ci].tasks[ti].isUserEdited = true
+              weeks[wi].categories[ci].tasks[ti].subtasks.contains(where: { $0.id == subtaskID }) else { return }
+        let rename = { (task: inout ChecklistTask) -> Bool in
+            guard let si = task.subtasks.firstIndex(where: { $0.id == subtaskID }) else { return false }
+            task.subtasks[si].title = newTitle
+            Self.markEdited(&task)
+            return true
+        }
+        _ = rename(&weeks[wi].categories[ci].tasks[ti])
         noteEdit(categoryID)
-        save()
+        save(keepsUndo: changeInUndo(week: weeks[wi].startDay, taskID: taskID, rename))
     }
 
     // MARK: - Category Order

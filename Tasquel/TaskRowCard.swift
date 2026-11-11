@@ -34,6 +34,20 @@ extension Font {
     static func expandedCard(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
         .system(size: expandedCardScaled(size), weight: weight, design: design)
     }
+
+    /// Like `expandedCard`, but stops growing at 1.6× its default size, as the controls'
+    /// frames do (`expandedCardControl`): for row icons and the type/mode button, so they
+    /// don't crowd out the name at the largest text sizes. (These fonts read the app's
+    /// text size, so a `.dynamicTypeSize` cap around them has no effect.)
+    static func expandedCardControl(_ style: UIFont.TextStyle) -> Font {
+        let standard = UIFont.preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+        let size = UIFont.preferredFont(forTextStyle: style, compatibleWith: TextSizeSetting.shared.traits).pointSize
+        return .system(size: min(size, standard * 1.6) * expandedCardScale)
+    }
+
+    static func expandedCardControl(size: CGFloat) -> Font {
+        .system(size: min(expandedCardScaled(size), size * expandedCardScale * 1.6))
+    }
 }
 
 /// A length enlarged for expanded cards that follows the user's text size, like body text.
@@ -114,6 +128,10 @@ struct TaskRowCard: View {
     @Environment(\.isCardOpen) private var isCardOpen
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.cardGridScroll) private var gridScroll
+    /// A list with its items folded away. Past weeks show everything: they're view only,
+    /// and a folded list there couldn't be opened to see what was in it.
+    private var isFolded: Bool { task.isFolded && !isPastWeek }
 
     /// The goal text fields, for moving the keyboard between them.
     nonisolated private enum GoalField: Hashable { case target, step, unitName }
@@ -171,14 +189,17 @@ struct TaskRowCard: View {
                         // (A wrapping field is a text view: it doesn't take its name from the title.)
                         .accessibilityIdentifier("Task name")
                         .accessibilityLabel("Task name")
+                        // Growing a line can take it under the keyboard: it scrolls back.
+                        .id(renameFieldID)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in keepRenameFieldInView() }
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                         .cardField(theme, rc: rc, outset: true)
                         .focused($isTitleFocused)
                         // The keyboard opens with the field, so one tap is enough.
                         .onAppear { isTitleFocused = true }
                         .onSubmit(commitTitle)
-                        .onChange(of: editedTitle) { _, text in
-                            if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
+                        .onChange(of: editedTitle) { old, text in
+                            if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
                         }
                         // Closing the keyboard (Done, or scrolling) also saves the name.
                         .onChange(of: isTitleFocused) { _, focused in
@@ -186,41 +207,36 @@ struct TaskRowCard: View {
                         }
                 } else {
                     // One tap renames. The whole width up to the icons is the target, not just the letters.
-                    // Done tasks are struck through, like done sub-tasks.
-                    Text(task.title)
+                    titleText
                         .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
-                        .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
-                        .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
                         // All the lines it needs: beside the icons, a row could otherwise get
                         // one line's height and cut the title off ("Plan Mom's birt…").
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture { startEditingTitle() }
+                        // The name stays the label (Voice Control's "tap Groceries"); a folded
+                        // list's count is the value, so VoiceOver hears both.
+                        .accessibilityLabel(task.title)
+                        .accessibilityValue(foldedCountDescription)
                 }
 
                 if isEditingTitle { Spacer(minLength: 0) }
 
-                // Inline icons: add sub-task (checkbox tasks), type and mode, and delete in edit mode
-                if !isPastWeek {
-                    HStack(spacing: 0) {
-                        if task.taskType == .checkbox && !isEditing { addSubtaskButton }
-                        taskOptionsButton
-                        if isEditing {
-                            deleteButton
-                            reorderHandle
-                        }
-                    }
-                    // At the largest text sizes the icons stop growing, leaving the title
-                    // room to wrap at word breaks ("Yog-a" otherwise).
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                }
+                if !isPastWeek && !stacksIcons { rowIcons }
+            }
+
+            // At accessibility text sizes the icons get their own line under the name, which
+            // keeps the whole width: beside them it had a column too narrow for one word
+            // ("Gr / oc / eri / es").
+            if !isPastWeek && stacksIcons {
+                rowIcons.frame(maxWidth: .infinity, alignment: .trailing)
             }
 
             if task.taskType == .goal {
                 goalProgressSection
-            } else {
-                // Checkbox: sub-tasks. List: its items.
+            } else if !isFolded {
+                // Checkbox: sub-tasks. List: its items, unless folded away.
                 ForEach(task.subtasks) { subtask in
                     SubTaskRowCard(
                         subtask: subtask,
@@ -392,6 +408,76 @@ struct TaskRowCard: View {
         }
     }
 
+    /// The row's icons: add sub-task (checkbox tasks) or fold (lists), type and mode, and in
+    /// the card's edit mode delete and the reorder handle.
+    private var rowIcons: some View {
+        HStack(spacing: 0) {
+            if task.taskType == .checkbox && !isEditing { addSubtaskButton }
+            if task.taskType == .list { foldButton }
+            taskOptionsButton
+            if isEditing {
+                deleteButton
+                reorderHandle
+            }
+        }
+    }
+
+    /// The row's icons get their own line under the name (`rowIcons`) where beside it they'd
+    /// leave it too little room: at accessibility text sizes, and in the card's edit mode
+    /// (trash and handle too, four icons on a list) from XL up. At XXXL in edit mode a
+    /// list's name had a 48pt column ("Gro / ceri / es").
+    private var stacksIcons: Bool {
+        dynamicTypeSize.isAccessibilitySize || (isEditing && dynamicTypeSize >= .xLarge)
+    }
+
+    /// The task's name; done tasks are struck through, like done sub-tasks. A folded list
+    /// adds how many of its items are checked ("Groceries  2 of 5"), in the same text, so
+    /// the count wraps with the name instead of taking width from it.
+    private var titleText: Text {
+        let title = Text(task.title)
+            .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.textPrimary(theme, rc: rc))
+            .strikethrough(task.isCompleted && !Theme.isRetro(theme), color: Theme.textSecondary(theme, rc: rc))
+        guard isFolded, !task.subtasks.isEmpty else { return title }
+        // Non-breaking spaces: "2 of 5" wraps as one piece.
+        let count = Text("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
+            .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+            .monospacedDigit()
+            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+        return Text("\(title)  \(count)")
+    }
+
+    /// A folded list's count in words ("2 of 5 items checked"); empty otherwise.
+    private var foldedCountDescription: String {
+        guard isFolded, !task.subtasks.isEmpty else { return "" }
+        let total = task.subtasks.count
+        return "\(task.subtasks.filter(\.isCompleted).count) of \(total) \(total == 1 ? "item" : "items") checked"
+    }
+
+    /// A list's chevron, just before its type and mode: pointing down while the items show,
+    /// forward while they're folded away (`chevron.forward` turns with the reading direction).
+    private var foldButton: some View {
+        Button(action: toggleFold) {
+            rowIcon(task.isListFolded ? "chevron.forward" : "chevron.down", color: Theme.textSecondary(theme, rc: rc))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(task.isListFolded ? "Expand list" : "Collapse list")
+        .accessibilityValue(task.title)
+        .accessibilityIdentifier("Fold \(task.title)")
+    }
+
+    /// Folding takes the Add Item field with the items: what was typed is added first (as
+    /// when the card's edit mode starts), and an item being renamed saves as its row goes.
+    private func toggleFold() {
+        let folding = !task.isListFolded
+        if folding {
+            addSubtask(keepTyping: false)
+            isAddingSubtask = false
+        }
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+            store.setListFolded(categoryID: categoryID, taskID: task.id, folded: folding)
+        }
+    }
+
     private var addSubtaskButton: some View {
         Button(action: startAddingSubtask) {
             rowIcon("plus", color: Theme.textSecondary(theme, rc: rc))
@@ -472,7 +558,7 @@ struct TaskRowCard: View {
 
     private func rowIcon(_ systemName: String, color: Color) -> some View {
         Image(systemName: systemName)
-            .font(.expandedCard(size: rowIconSize))
+            .font(.expandedCardControl(size: rowIconSize))
             .foregroundStyle(color)
             .frame(width: expandedCardControl(36), height: expandedCardControl(36))
             .contentShape(Rectangle())
@@ -880,16 +966,12 @@ struct TaskRowCard: View {
     /// Return (a line break) adds the sub-task or item and keeps the keyboard for the next;
     /// Return in an empty field closes it. Pasted lines each become one.
     private func submitTypedSubtask(_ text: String) {
-        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
-        let line = String(text[..<lineBreak])
-        let rest = String(text[text.index(after: lineBreak)...])
-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
-            newSubtaskTitle = rest
-            if rest.isEmpty { isSubtaskFieldFocused = false }
-            return
-        }
-        // One change to the field's text; the line stays if it couldn't be added.
-        newSubtaskTitle = addSubtask(line) ? rest : line + rest
+        guard let typed = TypedLines(text) else { return }
+        // Every finished line at once (pasted lines too): the field's change isn't reported
+        // again for each line it's left with. One change to the field's text.
+        let kept = typed.lines.filter { !addSubtask($0) }
+        newSubtaskTitle = typed.leftover(keeping: kept)
+        if typed.lines.isEmpty && typed.rest.isEmpty { isSubtaskFieldFocused = false }
     }
 
     /// `typed`: a line already taken out of the field (Return), instead of the field's text.
@@ -907,6 +989,18 @@ struct TaskRowCard: View {
         if typed == nil { newSubtaskTitle = "" }
         if keepTyping { isSubtaskFieldFocused = true }
         return true
+    }
+
+    private var renameFieldID: String { "rename-\(task.id)" }
+
+    /// A rename field that wraps onto another line while it has the keyboard is scrolled
+    /// back into view, clear of the keyboard and its Done button, as Add task is after an
+    /// add: iOS keeps only the caret in view, and the field grew down under the keyboard.
+    private func keepRenameFieldInView() {
+        guard isTitleFocused, let gridScroll else { return }
+        DispatchQueue.main.async {
+            withAnimation(.snappy(duration: 0.2)) { gridScroll.scrollTo(renameFieldID) }
+        }
     }
 
     private func startEditingTitle() {
@@ -1200,14 +1294,44 @@ private struct GoalBarStyle: ProgressViewStyle {
 /// The rename fields wrap (`axis: .vertical`), so Return types a line break instead of
 /// submitting: a line break means Return, and the name is saved without it.
 enum RenameField {
-    /// The name to save when `text` holds a line break (Return, or pasted lines, joined
-    /// with spaces); nil while there's none.
-    static func submitted(_ text: String) -> String? {
-        guard text.contains(where: \.isNewline) else { return nil }
-        return text.split(whereSeparator: \.isNewline)
+    /// The name to save when `text` (the field's text; `old`, what it held just before)
+    /// has a line break or a tab, which in a rename field mean Return (Tab on a hardware
+    /// keyboard: done too). One typed wherever the cursor was saves the name without it, so
+    /// a Return in the middle of a word adds no space. Pasted lines are joined with
+    /// spaces. Nil while there's neither.
+    static func submitted(_ text: String, was old: String) -> String? {
+        let ends = { (character: Character) in character.isNewline || character == "\t" }
+        guard text.contains(where: ends) else { return nil }
+        if text.count == old.count + 1, let typed = text.firstIndex(where: ends) {
+            var without = text
+            without.remove(at: typed)
+            if without == old { return old }
+        }
+        return text.split(whereSeparator: ends)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+}
+
+/// What an add field (Add task, sub-task, item) holds once it has a line break: the
+/// finished lines to add (blank ones dropped) and what's after the last break, still being
+/// typed. Nil without a line break.
+struct TypedLines: Equatable {
+    let lines: [String]
+    let rest: String
+
+    init?(_ text: String) {
+        guard text.contains(where: \.isNewline) else { return nil }
+        var pieces = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        rest = pieces.removeLast()
+        lines = pieces.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    /// The field's new text: lines that couldn't be added (the week changed under them)
+    /// stay, joined with spaces so they aren't tried again at once, before the rest.
+    func leftover(keeping kept: [String]) -> String {
+        (kept + [rest]).filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 
@@ -1359,6 +1483,7 @@ struct SubTaskRowCard: View {
     @State private var isEditingTitle = false
     @State private var editedTitle = ""
     @FocusState private var isTitleFocused: Bool
+    @Environment(\.cardGridScroll) private var gridScroll
 
     /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
     private static let touchHeight: CGFloat = 32
@@ -1400,13 +1525,21 @@ struct SubTaskRowCard: View {
                     .lineLimit(1...8)
                     .accessibilityIdentifier(isListItem ? "Item" : "Sub-task")
                     .accessibilityLabel(isListItem ? "Item" : "Sub-task")
+                    // Growing a line can take it under the keyboard: it scrolls back.
+                    .id("rename-\(subtask.id)")
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                        guard isTitleFocused, let gridScroll else { return }
+                        DispatchQueue.main.async {
+                            withAnimation(.snappy(duration: 0.2)) { gridScroll.scrollTo("rename-\(subtask.id)") }
+                        }
+                    }
                     .font(Theme.isRetro(theme) ? .expandedCard(size: 14, design: .monospaced) : .expandedCard(size: 14))
                     .cardField(theme, rc: rc, outset: true)
                     .focused($isTitleFocused)
                     .onAppear { isTitleFocused = true }
                     .onSubmit(commitTitle)
-                    .onChange(of: editedTitle) { _, text in
-                        if let name = RenameField.submitted(text) { editedTitle = name; commitTitle() }
+                    .onChange(of: editedTitle) { old, text in
+                        if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
                     }
                     // Closing the keyboard (Done, or scrolling) also saves the name.
                     .onChange(of: isTitleFocused) { _, focused in
@@ -1435,6 +1568,10 @@ struct SubTaskRowCard: View {
         // Leaving edit mode removes the field before it loses focus: save the name now.
         .onChange(of: isEditing) { _, editing in
             if !editing && isEditingTitle { commitTitle() }
+        }
+        // So does folding its list away: the row goes, field and all.
+        .onDisappear {
+            if isEditingTitle { commitTitle() }
         }
     }
 
@@ -1956,16 +2093,12 @@ struct AddTaskRowCard: View {
     /// for the next task; Return in an empty field closes the keyboard. Pasted lines each
     /// become a task. While Smart Add is still working, nothing is added and the words stay.
     private func submitTyped(_ text: String) {
-        guard let lineBreak = text.firstIndex(where: \.isNewline) else { return }
-        let line = String(text[..<lineBreak])
-        let rest = String(text[text.index(after: lineBreak)...])
-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else {
-            newTitle = rest
-            if rest.isEmpty { isFocused = false }
-            return
-        }
-        // One change to the field's text, so keys typed right after Return aren't lost.
-        newTitle = addTask(line, keepTyping: true) ? rest : line + rest
+        guard let typed = TypedLines(text) else { return }
+        // Every finished line at once (pasted lines too). One change to the field's text, so
+        // keys typed right after Return aren't lost.
+        let kept = typed.lines.filter { !addTask($0, keepTyping: true) }
+        newTitle = typed.leftover(keeping: kept)
+        if typed.lines.isEmpty && typed.rest.isEmpty { isFocused = false }
     }
 
     /// Adds exactly what was typed, with the type and mode last picked (Smart Add is the

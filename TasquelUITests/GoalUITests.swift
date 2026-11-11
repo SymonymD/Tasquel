@@ -160,6 +160,55 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Mark Groceries incomplete"].waitForExistence(timeout: 2), "checking every item checks the list")
     }
 
+    /// Folding a list: its chevron hides the items and the Add Item row (adding what was typed
+    /// there first) and shows how many are checked; the list stays folded after a relaunch, and
+    /// the chevron opens it again.
+    @MainActor
+    func testFoldingAList() throws {
+        let arguments = ["-isolatedDataID", "fold-\(UUID().uuidString)"]
+        let app = launchFresh(arguments)
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Bugs")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
+        app.buttons["List"].firstMatch.tap()
+        app.buttons["Add Task"].tap()
+
+        let item = app.textFields["Add item"]
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        item.typeText("Crash\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        item.typeText("Typo")  // typed, not added yet
+
+        let fold = app.buttons["Fold Bugs"]
+        XCTAssertTrue(fold.exists, "a list has a chevron")
+        XCTAssertEqual(fold.label, "Collapse list", "a new list starts open")
+        fold.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "value == %@", "0 of 2 items checked")).firstMatch.waitForExistence(timeout: 2),
+                      "what was typed is added, and the folded list shows its count")
+        XCTAssertFalse(app.staticTexts["Crash"].exists, "the items are folded away")
+        XCTAssertFalse(app.textFields["Add item"].exists, "and so is Add Item")
+        XCTAssertEqual(fold.label, "Expand list")
+
+        // Same storage again (open cards aren't remembered, so open Errands again).
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "value == %@", "0 of 2 items checked")).firstMatch.waitForExistence(timeout: 3), "still folded after a relaunch")
+        XCTAssertFalse(app.staticTexts["Crash"].exists)
+
+        app.buttons["Fold Bugs"].tap()
+        XCTAssertTrue(app.staticTexts["Crash"].waitForExistence(timeout: 2), "the chevron opens it again")
+        XCTAssertTrue(app.staticTexts["Typo"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "value == %@", "0 of 2 items checked")).firstMatch.exists, "an open list shows no count")
+    }
+
     /// Help opens and shows every section (it once indexed past its last section and crashed).
     @MainActor
     func testHelpOpens() throws {

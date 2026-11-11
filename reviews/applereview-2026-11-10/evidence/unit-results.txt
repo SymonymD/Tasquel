@@ -1,0 +1,56 @@
+REVIEW: rename after TWO off -> ["Stretch"]
+✘ Test "A copy renamed while This week only is on keeps its name after it's turned off" recorded an issue at ReviewCodeTests.swift:64:9: Expectation failed: (card(store, "Trip")?.tasks.map(\.title) → ["Stretch"]) == ["Yoga"]
+✘ Test "A copy renamed while This week only is on keeps its name after it's turned off" failed after 0.033 seconds with 1 issue.
+REVIEW: list items after TWO off -> ["Passport"]
+✘ Test "Items added to a repeating list while This week only is on survive adding a repeating task" recorded an issue at ReviewCodeTests.swift:88:9: Expectation failed: (items → ["Passport"]) == ["Passport", "Sunscreen"]
+✘ Test "Items added to a repeating list while This week only is on survive adding a repeating task" failed after 0.136 seconds with 1 issue.
+REVIEW: goal progress after TWO off -> nil
+✘ Test "Progress on a carried goal while This week only is on survives turning it off" recorded an issue at ReviewCodeTests.swift:110:9: Expectation failed: (progress → nil) == (6 → 6.0)
+✘ Test "Progress on a carried goal while This week only is on survives turning it off" failed after 0.036 seconds with 1 issue.
+✔ Test "Untouched copies follow their task again once This week only is off" passed after 0.011 seconds.
+✔ Test "Turning it on in this week takes untouched copies out of a saved next week; off brings them back" passed after 0.020 seconds.
+✘ Suite ReviewCodeThisWeekOnlyEditTests failed after 0.240 seconds with 3 issues.
+REVIEW: fold after undo -> Optional(false)
+✘ Test "Undoing a delete doesn't unfold a list folded after the delete" recorded an issue at ReviewCodeTests.swift:179:9: Expectation failed: (folded → false) == true
+✘ Test "Undoing a delete doesn't unfold a list folded after the delete" failed after 0.015 seconds with 1 issue.
+✔ Test "A fold reaches untouched copies in saved later weeks, over an unsaved week, not edited ones" passed after 0.011 seconds.
+✔ Test "Folding isn't an edit: the copy keeps following, and a past week can't be folded" passed after 0.008 seconds.
+✔ Test "checklist.json from 1.0.2 (no new fields) loads, and the new fields round-trip" passed after 0.020 seconds.
+✘ Suite ReviewCodeFoldTests failed after 0.057 seconds with 1 issue.
+✔ Test "The week's saved day doesn't move when the device's time zone changes" passed after 0.006 seconds.
+✔ Test "Session phrasings beyond the documented ones get the right total, step and days" passed after 0.072 seconds.
+REVIEW: smartAdd 'Gym 3 times 45 min each' -> title='Gym each' type=goal mode=oneTime target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Gym 3 times a week, 45 min each' -> title='Gym , each' type=goal mode=repeating target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'gym 3x 45 min per session' -> title='Gym per session' type=goal mode=oneTime target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Swim 45 min 3x/week' -> title='Swim' type=goal mode=repeating target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Swim 2 km 3x/week' -> title='Swim' type=goal mode=repeating target=Optional(6.0) step=Optional(2.0) days=Optional(3) unit='km' items=[]
+REVIEW: smartAdd 'Study 2 hours for 3 sessions' -> title='Study for' type=goal mode=oneTime target=Optional(360.0) step=Optional(120.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Run 4 times a week 30 min' -> title='Run' type=goal mode=repeating target=Optional(120.0) step=Optional(30.0) days=Optional(4) unit='' items=[]
+REVIEW: smartAdd 'Pomodoro 4x 25 min' -> title='Pomodoro' type=goal mode=oneTime target=Optional(100.0) step=Optional(25.0) days=Optional(4) unit='' items=[]
+REVIEW: smartAdd 'Take 2 pills 3 times' -> title='Take' type=goal mode=oneTime target=Optional(6.0) step=Optional(2.0) days=Optional(3) unit='pills' items=[]
+REVIEW: smartAdd 'Bench press 3 sets of 10 reps' -> title='Bench press 10 reps' type=goal mode=oneTime target=Optional(3.0) step=nil days=nil unit='sets' items=[]
+REVIEW: smartAdd 'Walk dog 2 times 20 min a day' -> title='Walk dog' type=goal mode=repeating target=Optional(140.0) step=Optional(20.0) days=Optional(7) unit='' items=[]
+REVIEW: smartAdd 'Piano 30 min 5 days a week' -> title='Piano' type=goal mode=repeating target=Optional(150.0) step=Optional(30.0) days=Optional(5) unit='' items=[]
+REVIEW: smartAdd 'Tennis twice 1 hour' -> title='Tennis' type=goal mode=oneTime target=Optional(120.0) step=Optional(60.0) days=Optional(2) unit='' items=[]
+REVIEW: smartAdd 'Read 20 pages 3 times a week' -> title='Read' type=goal mode=repeating target=Optional(60.0) step=Optional(20.0) days=Optional(3) unit='pages' items=[]
+REVIEW: smartAdd 'Yoga 3 classes of 60 min' -> title='Yoga' type=goal mode=oneTime target=Optional(180.0) step=Optional(60.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Call mom 10 min' -> title='Call mom' type=goal mode=oneTime target=Optional(10.0) step=nil days=nil unit='' items=[]
+REVIEW: smartAdd 'Gym 8 times 45 min' -> title='Gym' type=goal mode=oneTime target=Optional(45.0) step=nil days=nil unit='' items=[]
+REVIEW: smartAdd '3 x 10 min stretches' -> title='Stretches' type=goal mode=oneTime target=Optional(30.0) step=Optional(10.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Gym 3 times 45 min tomorrow' -> title='Gym' type=goal mode=oneTime target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+REVIEW: smartAdd 'Groceries: milk, eggs' -> title='Groceries' type=list mode=oneTime target=nil step=nil days=nil unit='' items=["milk", "eggs"]
+REVIEW: smartAdd 'Packing list' -> title='Packing list' type=checkbox mode=oneTime target=nil step=nil days=nil unit='' items=[]
+REVIEW: smartAdd 'Gym three 45-minute workouts a week' -> title='Gym' type=goal mode=oneTime target=Optional(135.0) step=Optional(45.0) days=Optional(3) unit='' items=[]
+✔ Test "Probe: what the rules make of session phrasings" passed after 0.129 seconds.
+✔ Test "A short task passes a tall one only at the tall one's middle, both ways, and lands at the end" passed after 0.001 seconds.
+✔ Test "Auto-scroll: no speed in the middle, full speed past either edge" passed after 0.001 seconds.
+✔ Test "Moving a task saves the new order, and next week's sync keeps the user's order" passed after 0.008 seconds.
+✔ Test "Folding a list is saved, isn't an edit, and keeps a delete's Undo" passed after 0.007 seconds.
+✔ Test "Only lists fold; a task that becomes a list starts open, and old files load lists open" passed after 0.008 seconds.
+✔ Test "A folded list is still folded next week, carried over or repeating" passed after 0.006 seconds.
+✔ Test "Folding a list folds next week's saved copy; a fold changed there stays" passed after 0.009 seconds.
+✔ Test "Changing a task to carry over turns This week only off" passed after 0.006 seconds.
+✔ Test "Turning This week only on makes its tasks one-time and takes it out of next week" passed after 0.007 seconds.
+✔ Test "A task synced into a later week's This week only card is one-time there until it's off" passed after 0.007 seconds.
+✔ Test smartAddSessionLookalikes() passed after 0.023 seconds.
+✘ Test run with 200 tests in 29 suites failed after 2.466 seconds with 4 issues.
