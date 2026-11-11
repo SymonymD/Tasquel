@@ -226,6 +226,20 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
         return (goalProgress ?? 0) >= target - 1e-9
     }
 
+    /// How much of the task is done, 0...1, for its card's ring: all of it once checked; for a
+    /// goal, its progress as a share of its target (1 of 3 is a third); for a list or a task
+    /// with sub-tasks, the share of them checked (2 of 5 is two fifths); else none.
+    var doneShare: Double {
+        if isCompleted { return 1 }
+        if taskType == .goal {
+            guard let target = goalTarget, target > 0,
+                  let share = goalProgress.map({ $0 / target }), share.isFinite else { return 0 }
+            return min(max(share, 0), 1)
+        }
+        guard !subtasks.isEmpty else { return 0 }
+        return Double(subtasks.filter(\.isCompleted).count) / Double(subtasks.count)
+    }
+
     /// What the goal's + and − add: its `goalStep` when set (the editor's Step), else a
     /// day's share of the target (`automaticStep`, over its Days).
     var goalStepOrAutomatic: Double {
@@ -290,6 +304,11 @@ struct Category: Codable, Identifiable, Equatable {
 
     var completedCount: Int { tasks.filter(\.isCompleted).count }
     var totalCount: Int { tasks.count }
+    /// How much of the card is done, 0...1, for its ring: each task counts for an equal part,
+    /// and a goal, list or task with sub-tasks on its way fills part of its own (`doneShare`).
+    var doneFraction: Double {
+        tasks.isEmpty ? 0 : tasks.map(\.doneShare).reduce(0, +) / Double(tasks.count)
+    }
 }
 
 extension Category {

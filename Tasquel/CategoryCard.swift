@@ -276,8 +276,12 @@ struct CategoryGridCard: View {
     private var completionIcon: some View {
         let total = category.totalCount
         let completed = category.completedCount
-        // Nothing done yet is neutral, not red: every week starts there.
-        let color: Color = total == 0 || completed == 0 ? (Theme.isRetro(theme) ? Theme.textSecondary(theme, rc: rc) : .gray)
+        // A goal's progress, or a list's checked items, fill part of the ring before the task is done.
+        let fraction = category.doneFraction
+        // Nothing done yet is neutral, not red: every week starts there. The retro count
+        // shows whole tasks, so its color goes by them.
+        let started = Theme.isRetro(theme) ? completed > 0 : fraction > 0
+        let color: Color = total == 0 || !started ? (Theme.isRetro(theme) ? Theme.textSecondary(theme, rc: rc) : .gray)
             : completed == total ? Theme.completionAll(theme, rc: rc)
             : Theme.completionPartial(theme)
         return Group {
@@ -286,7 +290,7 @@ struct CategoryGridCard: View {
                     .font(.system(.caption, design: .monospaced).bold())
                     .hiddenFromVoiceOver()  // the card's label and completion line give the count
             } else {
-                CompletionRing(fraction: total == 0 ? 0 : Double(completed) / Double(total), color: color)
+                CompletionRing(fraction: fraction, color: color)
                     .frame(width: isExpanded ? expandedPieSize : collapsedPieSize,
                            height: isExpanded ? expandedPieSize : collapsedPieSize)
                     .hiddenFromVoiceOver()  // the card's label and completion line give the count

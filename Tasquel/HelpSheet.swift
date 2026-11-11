@@ -16,7 +16,7 @@ struct HelpSheet: View {
             ("capsule", "Days of the Week", "The pills under the week's name are its days. Days gone by are green, and today shows its date."),
             ("calendar.day.timeline.left", "Week Start", "Weeks start on Monday. Choose Sunday in Settings ▸ Week."),
             ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings. The calendar button between the week arrows turns green; tap it to see the week's events. Swipe the events left or right to change week, and your cards move with them. Tap an event to see that day in Calendar. Choose which calendars to include in Settings; events stay on your device."),
-            ("square.grid.2x2", "Category Cards", "Tap a card to open it; tap its name or the close button to close it. The ring shows how much of the card is done. Hold and drag a closed card to move it."),
+            ("square.grid.2x2", "Category Cards", "Tap a card to open it; tap its name or the close button to close it. The ring shows how much of the card is done: goals, lists and sub-tasks fill their part as you go. Hold and drag a closed card to move it."),
             ("arrow.down.right.and.arrow.up.left", "Close All Cards", "Pull the cards down from the top, like refreshing a page, and let go to close every open card. The button at the top right also opens or closes them all."),
             ("arrow.up.arrow.down", "Sort Cards", "In Settings ▸ Categories, Sort Cards can put recently or least recently edited cards first. Sorted cards rearrange only when you open Tasquel, change week or close every card, and can't be dragged. Choose Manual to move them yourself."),
         ]),

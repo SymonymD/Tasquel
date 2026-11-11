@@ -1419,6 +1419,68 @@ struct GoalNumberTests {
     }
 }
 
+// MARK: - Card Ring
+
+struct CardRingTests {
+    @Test("A goal on its way fills its part of the card's ring: 1 of 3 is a third of that task")
+    func goalProgressFillsTheRing() {
+        let store = makeIsolatedStore(clock: TestClock(2099, 3, 4))
+        let categoryID = store.selectedWeek!.categories[0].id
+        let goalID = store.addTask(categoryID: categoryID, title: "Read", type: .goal)!
+        store.setGoalTarget(categoryID: categoryID, taskID: goalID, target: 3)
+        store.updateGoalProgress(categoryID: categoryID, taskID: goalID, progress: 1)
+        #expect(abs(store.selectedWeek!.categories[0].doneFraction - 1.0 / 3) < 1e-9)
+        #expect(store.selectedWeek!.categories[0].completedCount == 0, "the goal isn't done yet")
+
+        // Two tasks: each is half the ring, so the goal's third is a sixth of it.
+        let callID = store.addTask(categoryID: categoryID, title: "Call Mom")!
+        #expect(abs(store.selectedWeek!.categories[0].doneFraction - 1.0 / 6) < 1e-9)
+        store.toggleTask(categoryID: categoryID, taskID: callID)
+        #expect(abs(store.selectedWeek!.categories[0].doneFraction - 2.0 / 3) < 1e-9)
+
+        // Past the target the goal counts as all done, never more.
+        store.updateGoalProgress(categoryID: categoryID, taskID: goalID, progress: 5)
+        #expect(store.selectedWeek!.categories[0].doneFraction == 1)
+    }
+
+    @Test("A list or a task with sub-tasks fills its part by the share checked: 2 of 5 is two fifths")
+    func checkedItemsFillTheRing() {
+        let store = makeIsolatedStore(clock: TestClock(2099, 3, 4))
+        let categoryID = store.selectedWeek!.categories[0].id
+        let listID = store.addTask(categoryID: categoryID, title: "Groceries", type: .list)!
+        for item in ["Milk", "Eggs", "Bread", "Rice", "Tea"] {
+            _ = store.addSubtask(categoryID: categoryID, taskID: listID, title: item)
+        }
+        let items = store.selectedWeek!.categories[0].tasks[0].subtasks
+        store.toggleSubtask(categoryID: categoryID, taskID: listID, subtaskID: items[0].id)
+        store.toggleSubtask(categoryID: categoryID, taskID: listID, subtaskID: items[1].id)
+        #expect(abs(store.selectedWeek!.categories[0].doneFraction - 2.0 / 5) < 1e-9)
+        #expect(store.selectedWeek!.categories[0].completedCount == 0, "the list isn't done yet")
+
+        // Beside an unchecked task, the list is half the ring.
+        _ = store.addTask(categoryID: categoryID, title: "Call Mom")
+        #expect(abs(store.selectedWeek!.categories[0].doneFraction - 1.0 / 5) < 1e-9)
+    }
+
+    @Test("Each kind of task's share: goals by target, items by checks, the rest only when checked")
+    func doneShares() {
+        #expect(ChecklistTask(title: "Read", taskType: .goal, goalProgress: 2).doneShare == 0, "no target")
+        #expect(ChecklistTask(title: "Read", taskType: .goal, goalTarget: 4, goalProgress: 1).doneShare == 0.25)
+        let list = ChecklistTask(title: "Groceries", subtasks: [SubTask(title: "Milk", isCompleted: true),
+                                                                SubTask(title: "Eggs")],
+                                 taskType: .list)
+        #expect(list.doneShare == 0.5)
+        let withSubtasks = ChecklistTask(title: "Taxes", subtasks: [SubTask(title: "Forms", isCompleted: true),
+                                                                    SubTask(title: "File"), SubTask(title: "Pay"),
+                                                                    SubTask(title: "Save")])
+        #expect(withSubtasks.doneShare == 0.25)
+        #expect(ChecklistTask(title: "Groceries", taskType: .list).doneShare == 0, "an empty list")
+        #expect(ChecklistTask(title: "Call").doneShare == 0)
+        #expect(ChecklistTask(title: "Call", isCompleted: true).doneShare == 1)
+        #expect(Category(name: "Empty", symbol: "star").doneFraction == 0)
+    }
+}
+
 // MARK: - App Info
 
 struct AppInfoTests {
