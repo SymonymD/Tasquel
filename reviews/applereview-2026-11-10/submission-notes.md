@@ -1,18 +1,17 @@
-# Tasquel 1.0.3: App Store Connect text (draft)
+# Tasquel 1.0.3 (11): App Store Connect text
 
-A draft to paste into App Store Connect yourself. It states only what the code and this review confirmed. If a fix changes any of it, I'll update it before you submit.
+Paste into App Store Connect yourself. It states only what the code and this review confirmed.
 
 ## What's New in This Version
 
 - Fold long lists: tap the arrow beside a list to fold its items away. A folded list shows how many items are checked, and it stays folded next week.
 - Reorder tasks by dragging: in a card's edit mode, drag a task by its handle. The other tasks make room, and the screen scrolls when you drag near the top or bottom.
-- This week only now remembers your tasks: turning it off puts each carry-over and repeating task back the way it was.
+- This week only now remembers your tasks: turning it off puts each carry-over and repeating task back the way it was, and keeps any changes you made in the meantime.
 - Smart Add understands sessions: "Gym 3 times 45 min" becomes a 135-minute goal that counts 45 minutes a tap.
-- Long names now wrap onto more lines while you rename a task, sub-task or list item.
-- Smart Add no longer adds a list's own name as one of its items.
-- At the largest text sizes, a task's buttons move under its name so the name stays readable.
+- Long names show in full: list items and sub-tasks wrap onto as many lines as they need, and so does the field when you rename one.
 - Pasting several lines into a list or a card adds each line as its own item or task.
-- Fixes: a delete can still be undone after renaming something, edits made in a This week only card are kept when it's turned off, and on iPad the Tasquel logo stays clear of the window controls.
+- At the largest text sizes, a task's buttons move under its name so the name stays readable.
+- Fixes: a delete can still be undone after you rename something, Smart Add no longer adds a list's own name as one of its items, and on iPad the Tasquel logo stays clear of the window controls.
 
 ## Notes for the Reviewer (App Review Information ▸ Notes)
 
