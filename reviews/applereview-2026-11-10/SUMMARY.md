@@ -44,7 +44,7 @@ You picked findings 1–7, plus 9, 10, 12, 13, 14, 15, 18, 19, 21 and 23.
 
 **Not fixed:**
 - **21, Escape:** neither `onKeyPress` nor a hidden cancel-shortcut button reached the wrapping rename field in the simulator. I took that code back out, so it's open for 1.1.
-- **13 and 15, the fold rules:** these turned out to be design questions, not bugs, and are waiting for your answer.
+- **13 and 15, the fold rules:** these were design questions, not bugs. You chose one fold per list: folding a list in any week sets it from that week on, so 13 works as designed, and so does 15's fold part. 15's order part, where next week's own tasks move after This week only goes on and straight off (as in 1.0.2), is left for later.
 
 **Regression check after the fixes:**
 - **Full suites:** 191 of 191 unit tests passed, and 73 of 73 UI tests. `testFoldingAList` timed out once under load; run alone, it passed.
@@ -233,6 +233,7 @@ You picked findings 1–7, plus 9, 10, 12, 13, 14, 15, 18, 19, 21 and 23.
 23. **Right to left: a folded list's chevron points right instead of left** (Edge). It matters only once there's a right-to-left language; my mirroring is applied twice.
 
 ## Questioned, left as designed
+- **13, one fold per list:** folding a list this week also sets next week's copy, even one folded there before. This is your choice from 2026-11-10.
 - **Smart Add without the model leaves stray words:** "Gym , each", "Gym per session", "Study for" (Code). These come from the simulator's rules-only Smart Add. With Apple Intelligence the model writes the title, so it's on the phone checklist rather than a finding.
 - **Smart Add's highlight fade changes the store inside an animation after a pause** (`TaskRowCard.swift:331`; Code). The spec's own rule says not to do this. Nothing visibly went wrong in any run, but it's the same pattern as 1.0.1's "Added … but card shows 0/0" bug. Worth a look at some point.
 - **Reorder animations ignore Reduce Motion** (Accessibility): the 3% lift and the sliding. It's a direct-manipulation drag, so it may be fine. Your call after trying it.
