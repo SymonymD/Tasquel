@@ -715,6 +715,9 @@ enum AppearanceMode: String, Codable, CaseIterable {
     case system
     case light
     case dark
+    /// Spring, summer, fall or winter colors by today's date (`Season`), light or dark as
+    /// the phone is set.
+    case seasonal
     case retro
 
     var label: String {
@@ -722,6 +725,7 @@ enum AppearanceMode: String, Codable, CaseIterable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
+        case .seasonal: "Seasonal"
         case .retro: "Retro"
         }
     }
@@ -731,6 +735,7 @@ enum AppearanceMode: String, Codable, CaseIterable {
         case .system: "circle.lefthalf.filled"
         case .light: "sun.max"
         case .dark: "moon"
+        case .seasonal: Season.current.symbol
         case .retro: "terminal"
         }
     }

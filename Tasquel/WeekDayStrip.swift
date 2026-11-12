@@ -82,13 +82,13 @@ struct WeekDayStrip: View {
         let isSelected = selectedWeekday == weekday
         let accent = Theme.accent(theme, rc: rc)
         // Save Goal's green: a soft fill inside a full-color border.
-        let done = Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : Color.green
+        let done = Theme.dotComplete(theme, rc: rc)  // green, or the season's
         return Group {
             if isSelected {
                 // The picked day: filled in, with its name ("Thu", today's date on today).
                 Text(isToday ? Self.ordinal(day.day) : Weekday.name(weekday))
                     .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced).bold() : .caption2.bold())
-                    .foregroundStyle(Theme.isRetro(theme) ? .black : .white)
+                    .foregroundStyle(Theme.onAccent(theme))
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 7)

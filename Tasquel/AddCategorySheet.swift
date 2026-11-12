@@ -46,8 +46,8 @@ struct AddCategorySheet: View {
             // Room below the last row, so it isn't lost under the sheet's rounded bottom edge.
             .contentMargins(.bottom, 24, for: .scrollContent)
             // The app's own dark background in Dark and Retro (Retro was plain grey).
-            .scrollContentBackground(Theme.isCustomDark(store.appearanceMode) ? .hidden : .automatic)
-            .background(Theme.isCustomDark(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
+            .scrollContentBackground(Theme.hasOwnBackground(store.appearanceMode) ? .hidden : .automatic)
+            .background(Theme.hasOwnBackground(store.appearanceMode) ? Theme.background(store.appearanceMode) : Color.clear)
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

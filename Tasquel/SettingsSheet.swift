@@ -65,6 +65,8 @@ struct SettingsSheet: View {
                         SheetDoneButton { dismiss() }
                     }
                 }
+                // Retro: just the green word, no glass capsule behind it.
+                .sharedBackgroundVisibility(retro ? .hidden : .automatic)
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
             .sheet(isPresented: $showTour) {
@@ -84,7 +86,7 @@ struct SettingsSheet: View {
 
     // MARK: - Standard (System/Light/Dark) Settings
 
-    private var darkCardBg: Color? { Theme.isDark(theme) ? Theme.cardFill(theme) : nil }
+    private var darkCardBg: Color? { Theme.hasOwnBackground(theme) && !Theme.isRetro(theme) ? Theme.cardFill(theme) : nil }
 
     private var standardSettings: some View {
         List {
@@ -175,8 +177,8 @@ struct SettingsSheet: View {
             }
             .listRowBackground(darkCardBg)
         }
-        .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
-        .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
+        .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
+        .background(Theme.hasOwnBackground(theme) ? Theme.background(theme) : Color.clear)
     }
 
     // MARK: - Retro Settings
@@ -259,6 +261,7 @@ struct SettingsSheet: View {
     /// Opens in Safari.
     private func retroLink(_ title: String, to url: URL) -> some View {
         Link(destination: url) { retroLinkLabel(title) }
+            .buttonStyle(.plain)  // no gray fill (iOS 26's default)
     }
 
     /// A retro link's text, a full 44pt tall and tappable across the row.
@@ -306,6 +309,11 @@ struct SettingsSheet: View {
                     } else {
                         // Color.primary, not .primary: that takes the button's blue tint.
                         Label(mode.label, systemImage: mode.symbol).foregroundStyle(Color.primary)
+                        if mode == .seasonal {
+                            // Which season it is now ("Fall"). Color.secondary: `.secondary` took
+                            // the button's blue tint.
+                            Text(Season.current.label).foregroundStyle(Color.secondary)
+                        }
                     }
                     Spacer()
                     if store.appearanceMode == mode {
@@ -314,7 +322,7 @@ struct SettingsSheet: View {
                                 .font(.system(.subheadline, design: .monospaced).bold())
                                 .foregroundStyle(Theme.accent(theme, rc: rc))
                         } else {
-                            Image(systemName: "checkmark").foregroundStyle(.blue)
+                            Image(systemName: "checkmark").foregroundStyle(Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : .blue)
                         }
                     }
                 }
@@ -322,8 +330,10 @@ struct SettingsSheet: View {
                 .frame(minHeight: retro ? 44 : nil)
                 .contentShape(Rectangle())
             }
+            // Retro's layout isn't a List: there the default button style gave each a gray fill.
+            .modifier(PlainButtonInRetro(isRetro: retro))
             // In words, not "> RETRO, [*]"; the chosen one is selected in every theme.
-            .accessibilityLabel(mode.label)
+            .accessibilityLabel(mode == .seasonal ? "Seasonal, now \(Season.current.label)" : mode.label)
             .accessibilityAddTraits(store.appearanceMode == mode ? .isSelected : [])
         }
     }
@@ -340,7 +350,7 @@ struct SettingsSheet: View {
                 Label("Expiration Reminders", systemImage: "bell.badge")
             }
         }
-        .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+        .tint(retro || Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
         .task { notificationsDenied = await ExpiryNotifications.shared.isDenied() }
     }
 
@@ -361,7 +371,7 @@ struct SettingsSheet: View {
                     Label("Match App Icon to Theme", systemImage: "app.badge")
                 }
             }
-            .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+            .tint(retro || Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
             .onChange(of: iconMatchesTheme) { _, matching in
                 AppIconSwitcher.update(for: store.appearanceMode, matchingTheme: matching)
             }
@@ -407,11 +417,11 @@ struct SettingsSheet: View {
             HStack {
                 Text("> Sort Cards").font(Theme.bodyFont(theme))
                     .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                    .accessibilityHidden(true)  // the menu says it
                 Spacer()
-                sortMenu.labelsHidden()
+                retroSortMenu
             }
             .frame(minHeight: 44)
-            .accessibilityElement(children: .combine)
         } else {
             sortMenu
         }
@@ -426,7 +436,32 @@ struct SettingsSheet: View {
             Label("Sort Cards", systemImage: "arrow.up.arrow.down")
         }
         .pickerStyle(.menu)
-        .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+        .tint(retro || Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
+    }
+
+    /// Retro's: the chosen order in green with up/down arrows, no gray capsule (a menu
+    /// picker's look); the same choices open from it.
+    private var retroSortMenu: some View {
+        Menu {
+            Picker("Sort Cards", selection: Binding(get: { store.categorySort }, set: { store.setCategorySort($0) })) {
+                ForEach(CategorySortOrder.allCases, id: \.self) { order in
+                    Text(order.label).tag(order)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(store.categorySort.label.uppercased())
+                Image(systemName: "chevron.up.chevron.down").font(.caption2.bold())
+            }
+            .font(.system(.subheadline, design: .monospaced).bold())
+            .foregroundStyle(Theme.accent(theme, rc: rc))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Sort Cards")
+        .accessibilityValue(store.categorySort.label)
     }
 
     /// Sunday or Monday. Changing it moves saved weeks by a day so tasks stay with their week.
@@ -438,16 +473,54 @@ struct SettingsSheet: View {
                 Label("Week Starts On", systemImage: "calendar.day.timeline.left")
             }
             Spacer()
-            Picker("Week Starts On", selection: Binding(
-                get: { store.weekStartsOnSunday },
-                set: { store.setWeekStartsOnSunday($0) }
-            )) {
-                Text(retro ? "SUN" : "Sunday").tag(true)
-                Text(retro ? "MON" : "Monday").tag(false)
+            if retro {
+                // Not the segmented control, whose gray doesn't suit Retro: the chosen day
+                // outlined in green.
+                HStack(spacing: 6) {
+                    retroWeekStartOption("SUN", sunday: true)
+                    retroWeekStartOption("MON", sunday: false)
+                }
+            } else {
+                Picker("Week Starts On", selection: Binding(
+                    get: { store.weekStartsOnSunday },
+                    set: { store.setWeekStartsOnSunday($0) }
+                )) {
+                    Text("Sunday").tag(true)
+                    Text("Monday").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .fixedSize()
-            .labelsHidden()
         }
+    }
+
+    private func retroWeekStartOption(_ title: String, sunday: Bool) -> some View {
+        let isChosen = store.weekStartsOnSunday == sunday
+        return Button { store.setWeekStartsOnSunday(sunday) } label: {
+            Text(title)
+                .font(.system(.subheadline, design: .monospaced).bold())
+                .foregroundStyle(isChosen ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 32)
+                .overlay {
+                    if isChosen { RoundedRectangle(cornerRadius: 2).stroke(Theme.accent(theme, rc: rc), lineWidth: 1.5) }
+                }
+                .contentShape(Rectangle())
+                .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(sunday ? "Sunday" : "Monday")
+        .accessibilityAddTraits(isChosen ? .isSelected : [])
+    }
+}
+
+/// A plain button (or link) in Retro, whose Settings aren't a List (iOS 26's default style
+/// gave its buttons a gray fill); the standard List keeps its rows' look.
+struct PlainButtonInRetro: ViewModifier {
+    let isRetro: Bool
+
+    func body(content: Content) -> some View {
+        if isRetro { content.buttonStyle(.plain) } else { content }
     }
 }

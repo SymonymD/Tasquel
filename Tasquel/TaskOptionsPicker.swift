@@ -63,6 +63,7 @@ struct TaskOptionsPicker: View {
         // popover: in landscape on iPad it pushed the first rows off the top.
         .ignoresSafeArea(.keyboard)
         .presentationCompactAdaptation(.popover)
+        .modifier(RetroPopoverBackground(theme: theme))
         .confirmationDialog("Change to \(pendingType?.label ?? "")?", isPresented: Binding(
             get: { pendingType != nil },
             set: { if !$0 { pendingType = nil } }
@@ -108,13 +109,28 @@ struct TaskOptionsPicker: View {
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .fixedSize(horizontal: false, vertical: true)
             if let action = onAdd ?? onDone {
-                Button(action: action) {
-                    Text(onAdd != nil ? "Add Task" : "Done")
-                        .font(Theme.isRetro(theme) ? .system(.headline, design: .monospaced) : .headline)
-                        .frame(maxWidth: .infinity)
+                if Theme.isRetro(theme) {
+                    // No fill in Retro: on the bright accent, the filled button's words vanished.
+                    Button(action: action) {
+                        Text(onAdd != nil ? "[ADD_TASK]" : "[DONE]")
+                            .font(.system(.headline, design: .monospaced))
+                            .foregroundStyle(Theme.accent(theme, rc: rc))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .overlay { RoundedRectangle(cornerRadius: 2).stroke(Theme.accent(theme, rc: rc), lineWidth: 1.5) }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(onAdd != nil ? "Add Task" : "Done")
+                } else {
+                    Button(action: action) {
+                        Text(onAdd != nil ? "Add Task" : "Done")
+                            .font(.headline)
+                            .foregroundStyle(Theme.onAccent(theme))  // dark on a light accent (Seasonal at night)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accent(theme, rc: rc))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accent(theme, rc: rc))
             }
         }
     }

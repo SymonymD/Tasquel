@@ -14,6 +14,7 @@ struct HelpSheet: View {
         ("Weekly Checklist", [
             ("calendar", "Navigate Weeks", "Swipe left or right on your cards, or use the arrows at the bottom. To jump to any week, tap the calendar button between the arrows, then Weeks, and pick a week. To come back to this week, tap the Tasquel logo at the top left, or This Week in the calendar. Future weeks can be filled in ahead of time. Past weeks are view only, as the line under the week says. Tasquel opens on the current week."),
             ("capsule", "Days of the Week", "The pills under the week's name are its days. Days gone by are green, and today shows its date. Tap one to see that day's tasks; tap it again, or Show All, to see every task."),
+            ("leaf", "Seasonal Look", "Settings ▸ Appearance ▸ Seasonal dresses Tasquel for spring, summer, fall or winter, and changes with the season (south of the equator, the other way round). Each season has a light and a dark look that follows your phone's setting."),
             ("calendar.day.timeline.left", "Week Start", "Weeks start on Monday. Choose Sunday in Settings ▸ Week."),
             ("calendar.badge.clock", "Calendar Events", "Turn on Show Calendar Events in Settings. The calendar button between the week arrows turns green; tap it to see the week's events. Swipe the events left or right to change week, and your cards move with them. Tap an event to see that day in Calendar. Choose which calendars to include in Settings; events stay on your device."),
             ("square.grid.2x2", "Category Cards", "Tap a card to open it; tap its name or the close button to close it. The ring shows how much of the card is done: goals, lists and sub-tasks fill their part as you go. Hold and drag a closed card to move it."),
@@ -81,7 +82,7 @@ struct HelpSheet: View {
         .preferredColorScheme(store?.colorScheme)
     }
 
-    private var darkHelpBg: Color? { Theme.isDark(theme) ? Theme.cardFill(theme) : nil }
+    private var darkHelpBg: Color? { Theme.hasOwnBackground(theme) && !Theme.isRetro(theme) ? Theme.cardFill(theme) : nil }
 
     @ViewBuilder
     private func helpSection(_ index: Int) -> some View {
@@ -98,8 +99,8 @@ struct HelpSheet: View {
         List {
             ForEach(helpSections.indices, id: \.self) { helpSection($0) }
         }
-        .scrollContentBackground(Theme.isDark(theme) ? .hidden : .automatic)
-        .background(Theme.isDark(theme) ? Theme.background(theme) : Color.clear)
+        .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
+        .background(Theme.hasOwnBackground(theme) ? Theme.background(theme) : Color.clear)
     }
 
     private var retroHelp: some View {

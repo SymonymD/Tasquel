@@ -71,6 +71,7 @@ struct ExpiryPicker: View {
         .padding(14)
         .frame(minWidth: 300, maxWidth: 360)
         .presentationCompactAdaptation(.popover)
+        .modifier(RetroPopoverBackground(theme: theme))
         .onChange(of: wholeWeek) { _, week in
             // A week is picked by its last day.
             if week, let picked { self.picked = lastDayOfWeek(containing: picked) }
@@ -243,7 +244,7 @@ struct ExpiryPicker: View {
         let key = DayKey(day, in: calendar)
         let isInMonth = calendar.isDate(day, equalTo: month, toGranularity: .month)
         let isToday = key == today
-        let color: Color = isPicked ? (Theme.isRetro(theme) ? .black : .white)
+        let color: Color = isPicked ? Theme.onAccent(theme)
             : key < earliest ? Theme.textTertiary(theme, rc: rc).opacity(0.5)
             : isToday ? accent
             : isInMonth ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc)

@@ -25,7 +25,7 @@ final class CardStateUITests: XCTestCase {
         let workTop = app.buttons["Close Work"].frame.minY
 
         app.buttons["Settings"].tap()
-        app.buttons["Saved Categories"].tap()
+        app.settingsButton("Saved Categories").tap()
         let name = app.textFields.matching(NSPredicate(format: "value == %@", "Work")).firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 3))
         name.tap()

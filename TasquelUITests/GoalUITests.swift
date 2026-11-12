@@ -371,7 +371,7 @@ final class GoalUITests: XCTestCase {
         }
         pickDay("Party", "Friday")
         pickDay("Gym", "Saturday")
-        XCTAssertEqual(app.staticTexts["Party"].value as? String, "Friday")
+        XCTAssertTrue(["Friday", "today"].contains(app.staticTexts["Party"].value as? String ?? ""), "\"Friday\" (\"today\" on a Friday)")
         XCTAssertLessThan(app.staticTexts["Party"].frame.minY, app.staticTexts["Gym"].frame.minY, "Friday before Saturday")
         XCTAssertLessThan(app.staticTexts["Gym"].frame.minY, app.staticTexts["Bank"].frame.minY, "days before no day")
 
@@ -484,8 +484,8 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         let help = app.buttons["How to Use Tasquel"]
-        XCTAssertTrue(app.buttons["Saved Categories"].waitForExistence(timeout: 3))
-        while !help.isHittable { app.swipeUp() }
+        XCTAssertTrue(app.buttons["System"].waitForExistence(timeout: 3), "Settings is open")
+        _ = app.settingsButton("How to Use Tasquel")
         help.tap()
         XCTAssertTrue(app.staticTexts["Navigate Weeks"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.state, .runningForeground)

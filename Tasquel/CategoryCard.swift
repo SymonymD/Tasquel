@@ -184,7 +184,7 @@ struct CategoryGridCard: View {
                         Button { onToggleEdit() } label: {
                             Image(systemName: isEditingTasks ? "checkmark.circle.fill" : "square.and.pencil")
                                 .font(.system(size: expandedPieSize))
-                                .foregroundStyle(isEditingTasks ? .green : Theme.textSecondary(theme, rc: rc))
+                                .foregroundStyle(isEditingTasks ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                                 .touchTarget()
                         }
                         .buttonStyle(.plain)
@@ -618,7 +618,7 @@ private struct ExpandedCategoryContent: View {
                         } else {
                             Image(systemName: "arrow.down.right.and.arrow.up.left")
                                 .font(.expandedCard(size: 20))
-                                .foregroundStyle(Theme.isCustomDark(theme) ? .white : Color(.secondaryLabel))
+                                .foregroundStyle(Theme.isCustomDark(theme) ? .white : Theme.isSeasonal(theme) ? Theme.textSecondary(theme, rc: rc) : Color(.secondaryLabel))
                         }
                     }
                     .touchTarget()

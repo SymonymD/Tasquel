@@ -101,7 +101,7 @@ final class ThisWeekOnlyUITests: XCTestCase {
     func testThisWeekOnlyCategoryIsSaved() throws {
         addThisWeekOnlyCategory("Trip")
         app.buttons["Settings"].tap()
-        app.buttons["Saved Categories"].tap()
+        app.settingsButton("Saved Categories").tap()
         let saved = app.textFields.matching(NSPredicate(format: "value == %@", "Trip")).firstMatch
         XCTAssertTrue(saved.waitForExistence(timeout: 3), "Trip is in Saved Categories")
     }

@@ -61,6 +61,36 @@ func expandedCardControl(_ length: CGFloat) -> CGFloat {
     min(expandedCardScaled(length), length * expandedCardScale * 1.6)
 }
 
+/// Draws a task's name with its day label (the text marked `Pulses`) faded by `strength`:
+/// animated back and forth, the label pulses on its day without the name being laid out
+/// again. Everything else is drawn as it is.
+struct DayPulseRenderer: TextRenderer, Animatable {
+    /// Marks the day label's text; `isOn` on the task's day.
+    struct Pulses: TextAttribute {
+        let isOn: Bool
+    }
+
+    var strength: Double
+    var animatableData: Double {
+        get { strength }
+        set { strength = newValue }
+    }
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout {
+            for run in line {
+                if run[Pulses.self]?.isOn == true {
+                    var faded = context
+                    faded.opacity = 1 - 0.65 * strength
+                    faded.draw(run)
+                } else {
+                    context.draw(run)
+                }
+            }
+        }
+    }
+}
+
 /// An expiring task's checkbox: a gray ring, thicker than a plain outline, with the share
 /// of its days gone by drawn over it in green, like a card's ring.
 struct ExpiryCheckRing: View {
@@ -158,6 +188,8 @@ struct TaskRowCard: View {
     /// The clock, pin, trash and handle are in the row: from the card's edit mode starting
     /// until they've gathered back onto the handle after it ends (`rowIcons`).
     @State private var showsEditIcons = false
+    /// The day label's pulse (0…1, animated back and forth) while it's the task's day.
+    @State private var dayPulse = 0.0
     /// Which of them (clock 0 … handle 3) are out in their places; the others are stacked on
     /// the handle, hidden.
     @State private var spreadEditIcons: Set<Int> = []
@@ -289,6 +321,9 @@ struct TaskRowCard: View {
                         // One tap renames. The whole width up to the icons is the target, not just the letters.
                         titleText
                             .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+                            // Fades only the day's letters on its day (`DayPulseRenderer`).
+                            .textRenderer(DayPulseRenderer(strength: dayPulse))
+                            .onChange(of: isDueToday, initial: true) { _, due in pulseDay(due) }
                             // All the lines it needs: beside the icons, a row could otherwise get
                             // one line's height and cut the title off ("Plan Mom's birt…").
                             .fixedSize(horizontal: false, vertical: true)
@@ -637,7 +672,7 @@ struct TaskRowCard: View {
         if isFolded, !task.subtasks.isEmpty {
             words.append("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
         }
-        if let day = task.dayOfWeek { words.append(Weekday.name(day) + (isLate ? "\u{00A0}·\u{00A0}late" : "")) }
+        if let day = task.dayOfWeek { words.append((isTaskDay ? "Today" : Weekday.name(day)) + (isLate ? "\u{00A0}·\u{00A0}late" : "")) }
         return words
     }
 
@@ -669,21 +704,47 @@ struct TaskRowCard: View {
         return text
     }
 
+    /// Today is its day (only in the current week): its label says Today.
+    private var isTaskDay: Bool {
+        guard let weekStart, !isPastWeek else { return false }
+        return task.day(inWeekStarting: weekStart, firstWeekday: store.firstWeekday) == store.currentDay
+    }
+
+    /// Today is its day and it isn't done: the label is green and pulses.
+    private var isDueToday: Bool { isTaskDay && !task.isCompleted }
+
+    /// On its day the day label pulses, gently and slowly, until it's done or the day is
+    /// over (the user asked, 2026-11-12). Reduce Motion: it doesn't; nor in UI tests and demo
+    /// data, where an animation that never ends keeps XCUITest waiting for the app to settle.
+    private func pulseDay(_ due: Bool) {
+        if due && !reduceMotion && !ChecklistStore.launchesWithThrowawayData {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { dayPulse = 1 }
+        } else {
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { dayPulse = 0 }
+        }
+    }
+
     /// Its day's gone by and it isn't done (only in the current week).
     private var isLate: Bool {
         guard let weekStart, !isPastWeek else { return false }
         return task.isLate(inWeekStarting: weekStart, firstWeekday: store.firstWeekday, today: store.currentDay)
     }
 
-    /// "Thu" after the name, for a task with a day; "Tue · late" in orange once that day has
-    /// gone by unfinished. Caption-sized, never struck through.
+    /// "Thu" after the name, for a task with a day; on its day "Today", green and pulsing
+    /// until it's done (the user's choice, 2026-11-12); "Tue · late" in orange once that day
+    /// has gone by unfinished. Caption-sized, never struck through.
     private var dayMark: Text? {
         guard let day = task.dayOfWeek else { return nil }
         let retro = Theme.isRetro(theme)
-        let name = retro ? Weekday.name(day).uppercased() : Weekday.name(day)
-        return Text(verbatim: isLate ? (retro ? "[\(name) LATE]" : "\(name)\u{00A0}·\u{00A0}late") : (retro ? "[\(name)]" : name))
-            .font(.expandedCard(.caption1, design: retro ? .monospaced : .default))
-            .foregroundStyle(isLate ? Theme.late(theme) : Theme.textSecondary(theme, rc: rc))
+        let name = isTaskDay ? "Today" : Weekday.name(day)
+        let shown = retro ? name.uppercased() : name
+        let color = isLate ? Theme.late(theme) : isDueToday ? Theme.expirySet(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)
+        return Text(verbatim: isLate ? (retro ? "[\(shown) LATE]" : "\(shown)\u{00A0}·\u{00A0}late") : (retro ? "[\(shown)]" : shown))
+            .font(.expandedCard(.caption1, weight: isDueToday ? .semibold : .regular, design: retro ? .monospaced : .default))
+            .foregroundStyle(color)
+            .customAttribute(DayPulseRenderer.Pulses(isOn: isDueToday))
     }
 
     /// Past weeks are view only: nothing there can be fixed, so nothing is marked.
@@ -691,7 +752,7 @@ struct TaskRowCard: View {
 
     /// What VoiceOver hears after the name: a folded list's count, and "duplicate".
     private var titleValue: String {
-        let day = task.dayOfWeek.map { Weekday.name($0, short: false) + (isLate ? ", late" : "") } ?? ""
+        let day = task.dayOfWeek.map { isTaskDay ? "today" : Weekday.name($0, short: false) + (isLate ? ", late" : "") } ?? ""
         return [day, foldedCountDescription, showsDuplicate ? "duplicate" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
@@ -1139,7 +1200,7 @@ struct TaskRowCard: View {
                     .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
                     .accessibilityLabel("Cancel editing goal")
                 Button(action: saveEditedGoal) {
-                    OptionButtonLabel(title: "Save Goal", symbol: "checkmark", color: .green, isHighlighted: true,
+                    OptionButtonLabel(title: "Save Goal", symbol: "checkmark", color: Theme.dotComplete(theme, rc: rc), isHighlighted: true,
                                       theme: theme, rc: rc, isEnabled: canSaveEditedGoal)
                 }
                 .buttonStyle(.plain)
@@ -1266,7 +1327,7 @@ struct TaskRowCard: View {
             .padding(.horizontal, 14).padding(.vertical, 7)
             .background(Theme.accent(theme, rc: rc), in: Capsule())
             // Retro's accent is a bright phosphor color: dark text stays readable on it.
-            .foregroundStyle(Theme.isRetro(theme) ? .black : .white)
+            .foregroundStyle(Theme.onAccent(theme))
     }
 
     private var goalFieldFont: Font {

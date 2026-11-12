@@ -51,12 +51,18 @@ enum Theme {
     static func isRetro(_ m: AppearanceMode) -> Bool { m == .retro }
     static func isDark(_ m: AppearanceMode) -> Bool { m == .dark }
     static func isCustomDark(_ m: AppearanceMode) -> Bool { m == .dark || m == .retro }
+    static func isSeasonal(_ m: AppearanceMode) -> Bool { m == .seasonal }
+    /// Lists and sheets drawn on the theme's own colors, not the system's grouped grays.
+    static func hasOwnBackground(_ m: AppearanceMode) -> Bool { isCustomDark(m) || isSeasonal(m) }
+    /// Today's season's colors (Seasonal appearance).
+    private static var season: SeasonPalette { Season.current.palette }
 
     // Core backgrounds
     static func background(_ m: AppearanceMode) -> Color {
         switch m {
         case .retro: .black
         case .dark: Color(red: 0, green: 0, blue: 20.0/255)
+        case .seasonal: season.bgBottom.color
         case .system, .light: Color(.systemBackground)
         }
     }
@@ -64,6 +70,7 @@ enum Theme {
         switch m {
         case .retro: Color(white: 0.06)
         case .dark: Color(red: 55.0/255, green: 55.0/255, blue: 84.0/255)
+        case .seasonal: season.card.color
         case .system, .light: Color(.secondarySystemGroupedBackground)
         }
     }
@@ -71,22 +78,23 @@ enum Theme {
         switch m {
         case .retro: Color(white: 0.1)
         case .dark: Color(white: 33.0/255, opacity: 0.2)
+        case .seasonal: season.capsule.color
         case .system, .light: Color(.systemGray5)
         }
     }
 
     // Task dot colors — retro uses the phosphor bright color
     static func dotComplete(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
-        isRetro(m) ? retroPalette(rc).bright : .green
+        isSeasonal(m) ? season.done.color : isRetro(m) ? retroPalette(rc).bright : .green
     }
     static func dotIncomplete(_ m: AppearanceMode) -> Color {
-        isRetro(m) ? retroRed : .red
+        isSeasonal(m) ? season.missed.color : isRetro(m) ? retroRed : .red
     }
 
     // Completion icon colors
-    static func completionAll(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).bright : .green }
-    static func completionPartial(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : .orange }
-    static func completionNone(_ m: AppearanceMode) -> Color { isRetro(m) ? retroRed : .red }
+    static func completionAll(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { dotComplete(m, rc: rc) }
+    static func completionPartial(_ m: AppearanceMode) -> Color { isSeasonal(m) ? season.partial.color : isRetro(m) ? .yellow : .orange }
+    static func completionNone(_ m: AppearanceMode) -> Color { dotIncomplete(m) }
 
     /// Orange that keeps 4:1 on a card: deeper in light mode (system orange is about 2:1 on white).
     private static let strongOrange = Color(UIColor {
@@ -103,15 +111,30 @@ enum Theme {
     /// An expiring task's ring (the days gone by) and its clock in a card's edit mode: green,
     /// deeper in light mode so it keeps 4:1 on a card.
     static func expirySet(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
-        isRetro(m) ? retroPalette(rc).bright
+        if isSeasonal(m) { return season.done.color }
+        return isRetro(m) ? retroPalette(rc).bright
             : Color(UIColor { $0.userInterfaceStyle == .dark ? .systemGreen : UIColor(red: 0.12, green: 0.52, blue: 0.2, alpha: 1) })
     }
 
     // Accent
-    static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).bright : .blue }
+    static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        isSeasonal(m) ? season.accent.color : isRetro(m) ? retroPalette(rc).bright : .blue
+    }
+    /// Words and icons on a filled accent (a button, a picked day): dark where the accent is
+    /// light (Retro, Seasonal at night), else white.
+    static func onAccent(_ m: AppearanceMode) -> Color {
+        isSeasonal(m) ? season.onAccent.color : isRetro(m) ? .black : .white
+    }
     /// Each task type and mode has its own color; retro keeps its single phosphor color.
     static func taskType(_ type: TaskType, _ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         if isRetro(m) { return retroPalette(rc).bright }
+        if isSeasonal(m) {
+            switch type {
+            case .checkbox: return season.checkbox.color
+            case .goal: return season.goal.color
+            case .list: return season.list.color
+            }
+        }
         switch type {
         case .checkbox: return .blue
         case .goal: return .purple
@@ -121,6 +144,13 @@ enum Theme {
 
     static func taskMode(_ mode: TaskMode, _ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         if isRetro(m) { return retroPalette(rc).bright }
+        if isSeasonal(m) {
+            switch mode {
+            case .oneTime: return season.oneTime.color
+            case .carryOver: return season.carry.color
+            case .repeating: return season.repeating.color
+            }
+        }
         switch mode {
         case .oneTime: return .gray
         case .carryOver: return .orange
@@ -135,6 +165,7 @@ enum Theme {
         switch m {
         case .retro: retroPalette(rc).bright
         case .dark: .white
+        case .seasonal: season.text1.color
         case .system, .light: Color(.label)
         }
     }
@@ -142,6 +173,7 @@ enum Theme {
         switch m {
         case .retro: retroPalette(rc).dim
         case .dark: .white.opacity(0.6)
+        case .seasonal: season.text2.color
         case .system, .light: Color(.secondaryLabel)
         }
     }
@@ -149,6 +181,7 @@ enum Theme {
         switch m {
         case .retro: retroPalette(rc).faint
         case .dark: .white.opacity(0.35)
+        case .seasonal: season.text3.color
         case .system, .light: Color(.tertiaryLabel)
         }
     }
@@ -159,11 +192,14 @@ enum Theme {
         switch m {
         case .retro: retroPalette(rc).glow.opacity(0.3)
         case .dark: .black.opacity(0.3)
+        case .seasonal: season.shadowColor
         case .system, .light: .black.opacity(0.08)
         }
     }
-    static func cardBorder(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).dim : .clear }
-    static func cardBorderWidth(_ m: AppearanceMode) -> CGFloat { isRetro(m) ? 1 : 0 }
+    static func cardBorder(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        isSeasonal(m) ? season.border.color : isRetro(m) ? retroPalette(rc).dim : .clear
+    }
+    static func cardBorderWidth(_ m: AppearanceMode) -> CGFloat { isRetro(m) || isSeasonal(m) ? 1 : 0 }
 
     // Font
     static func bodyFont(_ m: AppearanceMode) -> Font { isRetro(m) ? .system(.subheadline, design: .monospaced) : .subheadline }
@@ -218,3 +254,17 @@ struct SheetDoneButton: View {
     }
 }
 
+
+/// In Retro, a popover (the type/mode/day picker, the expiration calendar) on Retro's own
+/// black rather than the system's gray glass; other themes keep the glass.
+struct RetroPopoverBackground: ViewModifier {
+    let theme: AppearanceMode
+
+    func body(content: Content) -> some View {
+        if Theme.isRetro(theme) {
+            content.presentationBackground(Theme.background(theme))
+        } else {
+            content
+        }
+    }
+}

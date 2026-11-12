@@ -1885,6 +1885,84 @@ struct TaskDayTests {
     }
 }
 
+// MARK: - Seasons
+
+struct SeasonTests {
+    private func date(_ month: Int, _ day: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        return calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 12))!
+    }
+
+    private func season(_ month: Int, _ day: Int, region: String = "US") -> Season {
+        Season.of(date(month, day), timeZone: TimeZone(identifier: "America/New_York")!, region: Locale.Region(region))
+    }
+
+    @Test("Seasons change on their usual start dates")
+    func startDates() {
+        #expect(season(3, 19) == .winter)
+        #expect(season(3, 20) == .spring)
+        #expect(season(6, 20) == .spring)
+        #expect(season(6, 21) == .summer)
+        #expect(season(9, 21) == .summer)
+        #expect(season(9, 22) == .fall)
+        #expect(season(12, 20) == .fall)
+        #expect(season(12, 21) == .winter)
+        #expect(season(1, 1) == .winter)
+    }
+
+    @Test("South of the equator the seasons are the other way round")
+    func southernHemisphere() {
+        #expect(season(1, 1, region: "AU") == .summer)
+        #expect(season(7, 1, region: "AU") == .winter)
+        #expect(season(10, 1, region: "AR") == .spring)
+        #expect(season(4, 1, region: "NZ") == .fall)
+        #expect(season(1, 1, region: "GB") == .winter)
+    }
+
+    @Test("Every season's colors are readable, light and dark")
+    func contrast() {
+        func luminance(_ hex: UInt32) -> Double {
+            let channel = { (shift: UInt32) -> Double in
+                let c = Double((hex >> shift) & 0xFF) / 255
+                return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+        }
+        func ratio(_ a: UInt32, _ b: UInt32) -> Double {
+            let (x, y) = (luminance(a), luminance(b))
+            return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+        }
+        for season in Season.allCases {
+            let p = season.palette
+            for dark in [false, true] {
+                let pick = { (tone: SeasonPalette.Tone) in dark ? tone.dark : tone.light }
+                let card = pick(p.card)
+                let mode = "\(season) \(dark ? "dark" : "light")"
+                #expect(ratio(pick(p.text1), card) >= 7, "\(mode): text")
+                #expect(ratio(pick(p.text2), card) >= 4.5, "\(mode): secondary text")
+                #expect(ratio(pick(p.accent), card) >= 4.5, "\(mode): accent")
+                #expect(ratio(pick(p.onAccent), pick(p.accent)) >= 4.5, "\(mode): words on the accent")
+                for (name, tone) in [("done", p.done), ("partial", p.partial), ("missed", p.missed), ("checkbox", p.checkbox),
+                                     ("goal", p.goal), ("list", p.list), ("one-time", p.oneTime), ("carry-over", p.carry),
+                                     ("repeating", p.repeating)] {
+                    #expect(ratio(pick(tone), card) >= 3, "\(mode): \(name)")
+                }
+            }
+        }
+    }
+
+    @Test("Seasonal is saved and loaded, and follows the phone's light or dark setting")
+    func savedChoice() throws {
+        let decoded = try JSONDecoder().decode(AppearanceMode.self, from: Data("\"seasonal\"".utf8))
+        #expect(decoded == .seasonal)
+        let store = makeIsolatedStore()
+        store.setAppearance(.seasonal)
+        #expect(store.colorScheme == nil)
+        #expect(Theme.isSeasonal(store.appearanceMode) && Theme.hasOwnBackground(store.appearanceMode))
+    }
+}
+
 // MARK: - App Info
 
 struct AppInfoTests {

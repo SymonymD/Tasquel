@@ -17,6 +17,18 @@ extension XCUIApplication {
         return field
     }
 
+    /// A row in Settings, scrolled into view first: the list builds only the rows on screen,
+    /// and one more Appearance row (Seasonal) put Saved Categories below an iPhone's first screen.
+    func settingsButton(_ label: String) -> XCUIElement {
+        let button = buttons[label]
+        _ = buttons["System"].waitForExistence(timeout: 3)  // Settings is open
+        let list = collectionViews.firstMatch.exists ? collectionViews.firstMatch : self
+        for _ in 0..<6 where !(button.exists && button.isHittable) {
+            list.swipeUp(velocity: .slow)
+        }
+        return button
+    }
+
     /// Starts a card's own edit mode and waits for its task icons (clock, pin, trash, handle)
     /// to run out to their places: until then they're stacked on the handle and hidden, and
     /// a tap on one misses (an invisible button takes no taps).

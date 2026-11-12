@@ -31,7 +31,7 @@ final class EmojiPickerUITests: XCTestCase {
     func testChooseEmojiForSavedCategory() throws {
         let app = launch()
         app.buttons["Settings"].tap()
-        app.buttons["Saved Categories"].tap()
+        app.settingsButton("Saved Categories").tap()
         let icon = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Icon:")).firstMatch
         XCTAssertTrue(icon.waitForExistence(timeout: 3))
         icon.tap()
@@ -100,7 +100,7 @@ final class EmojiPickerUITests: XCTestCase {
         let app = launch()
         let barFrame = app.buttons["Settings"].frame
         app.buttons["Settings"].tap()
-        app.buttons["Saved Categories"].tap()
+        app.settingsButton("Saved Categories").tap()
         app.buttons["New Saved Category"].tap()
         // The rows behind have name fields too: the editor's is the one with the keyboard.
         let name = app.textFields.matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch

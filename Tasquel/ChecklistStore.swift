@@ -96,7 +96,7 @@ final class ChecklistStore {
 
     var colorScheme: ColorScheme? {
         switch appearanceMode {
-        case .system: nil
+        case .system, .seasonal: nil  // Seasonal has light and dark palettes
         case .light: .light
         case .dark, .retro: .dark
         }

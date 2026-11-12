@@ -43,6 +43,7 @@ struct CalendarSettingsRows: View {
                         }
                     }
                     .font(retro ? Theme.bodyFont(theme) : .body)
+                    .modifier(PlainButtonInRetro(isRetro: retro))
                 }
             }
         case .authorized where store.calendarEventsEnabled:
@@ -60,7 +61,10 @@ struct CalendarSettingsRows: View {
                         .font(retro ? Theme.captionFont(theme) : .body)
                         .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 }
+                .frame(minHeight: retro ? 44 : nil)
+                .contentShape(Rectangle())
             }
+            .modifier(PlainButtonInRetro(isRetro: retro))
         default:
             EmptyView()
         }
@@ -121,14 +125,14 @@ struct CalendarPicker: View {
                         .accessibilityAddTraits(selected.contains(info.id) ? .isSelected : [])
                     }
                 }
-                .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
+                .listRowBackground(Theme.hasOwnBackground(theme) ? Theme.cardFill(theme) : nil)
             }
             Section {} footer: {
                 Text("At least one calendar stays selected. To hide events, turn off Show Calendar Events.")
             }
         }
-        .scrollContentBackground(Theme.isCustomDark(theme) ? .hidden : .automatic)
-        .background(Theme.isCustomDark(theme) ? Theme.background(theme) : Color.clear)
+        .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
+        .background(Theme.hasOwnBackground(theme) ? Theme.background(theme) : Color.clear)
         .navigationTitle(retro ? "> CALENDARS_" : "Calendars")
         .navigationBarTitleDisplayMode(.inline)
         .task { await calendar.loadCalendars() }

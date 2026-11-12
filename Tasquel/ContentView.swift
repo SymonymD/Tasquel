@@ -63,6 +63,9 @@ struct ContentView: View {
     /// When the app last went to the background, to decide whether reopening it
     /// should jump back to the current week.
     @State private var backgroundedAt: Date?
+    /// Bumped to wiggle a card (by category ID): a card with a task for today, as the app opens.
+    @State private var wiggleTicks: [UUID: Int] = [:]
+    @State private var wiggleSequence: Task<Void, Never>?
     /// Today (the store's clock), for the day strip and the calendar. Updated when the day
     /// changes while the app is open.
     @State private var today = Date()
@@ -106,7 +109,11 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Theme.background(theme).ignoresSafeArea()
+            if Theme.isSeasonal(theme) {
+                SeasonalBackdrop(season: Season.current)
+            } else {
+                Theme.background(theme).ignoresSafeArea()
+            }
 
             VStack(spacing: 12) {
                 if let error = store.persistenceError {
@@ -266,6 +273,8 @@ struct ContentView: View {
             currentWeekStart = store.weekStartDay(containing: today)
             if store.persistenceError == nil && store.shouldShowWelcome {
                 showOnboarding = true
+            } else {
+                wiggleCardsWithTodaysTasks()
             }
         }
         .task {
@@ -290,6 +299,7 @@ struct ContentView: View {
             today = store.currentDate
             returnToCurrentWeekIfAway()
             currentWeekStart = store.weekStartDay(containing: today)
+            if wasAway { wiggleCardsWithTodaysTasks() }
             // Calendars may have changed (or access revoked) while away. Not after Control
             // Center or the icon-change alert: reloading made an open events panel flash.
             // (Changes while the app is open arrive through EventKit's notification.)
@@ -360,6 +370,29 @@ struct ContentView: View {
             store.navigateToDate(today)
         } else if !store.isPastWeek(week) {
             store.navigateToDate(store.selectedDate)
+        }
+    }
+
+    /// Opening the app (at launch, or back from a real trip away) on a day some tasks are
+    /// for: each card in this week holding one that isn't done wiggles once, 0.5s, one after
+    /// another in the grid's order, top to bottom (the user asked, 2026-11-12). Not in Edit,
+    /// with Reduce Motion, or with throwaway data (UI tests, demo).
+    private func wiggleCardsWithTodaysTasks() {
+        wiggleSequence?.cancel()
+        guard !reduceMotion, !isEditing, !ChecklistStore.launchesWithThrowawayData,
+              let week = store.selectedWeek, store.isCurrentWeek(week) else { return }
+        let day = store.currentDay
+        let ids = gridEntries(for: week).map(\.category).filter { category in
+            category.tasks.contains { !$0.isCompleted && $0.day(inWeekStarting: week.startDay, firstWeekday: store.firstWeekday) == day }
+        }.map(\.id)
+        guard !ids.isEmpty else { return }
+        wiggleSequence = Task {
+            try? await Task.sleep(for: .seconds(0.6))  // once the screen has settled
+            for id in ids {
+                guard !Task.isCancelled else { return }
+                wiggleTicks[id, default: 0] += 1
+                try? await Task.sleep(for: .seconds(0.55))  // its 0.5s wiggle, then the next
+            }
         }
     }
 
@@ -842,9 +875,7 @@ struct ContentView: View {
                     Button {
                         withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
                     } label: {
-                        let color: Color = isEditing
-                            ? (Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green)
-                            : Theme.textSecondary(theme, rc: rc)
+                        let color: Color = isEditing ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)
                         editLabel(editing: isEditing)
                             .foregroundStyle(color)
                             .background {
@@ -855,8 +886,8 @@ struct ContentView: View {
                                 }
                             }
                             .modifier(BarBackground(shape: Capsule(), theme: theme, rc: rc,
-                                                    tint: isEditing ? .green.opacity(0.25) : nil, isRetroBoxed: false))
-                            .overlay { if isEditing && !Theme.isRetro(theme) { Capsule().stroke(.green, lineWidth: 1.5) } }
+                                                    tint: isEditing ? Theme.dotComplete(theme, rc: rc).opacity(0.25) : nil, isRetroBoxed: false))
+                            .overlay { if isEditing && !Theme.isRetro(theme) { Capsule().stroke(Theme.dotComplete(theme, rc: rc), lineWidth: 1.5) } }
                             .frame(height: Self.barButtonSize)
                             .contentShape(Rectangle())
                     }
@@ -1050,6 +1081,11 @@ struct ContentView: View {
                             // The dragged card leaves a gap where it will land; a lifted copy
                             // follows the finger (see the overlay below).
                             .opacity(cardDrag?.key == entry.id ? 0 : 1)
+                            // As the app opens, a card with a task for today wiggles once. (By its own
+                            // count only: other weeks' cards have other IDs. Zeroed while its page was
+                            // off to the side, the count changed twice on a swipe there and back, and
+                            // each change wiggled it again.)
+                            .modifier(CardWiggle(trigger: wiggleTicks[entry.category.id] ?? 0, isExpanded: isExpanded))
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
                                 cardFrameStore.frames[week.startDay, default: [:]][entry.id] = frame
                             }
@@ -1507,7 +1543,7 @@ struct ContentView: View {
     }
 
     private var eventsGreen: Color {
-        Theme.isRetro(theme) ? Theme.dotComplete(theme, rc: rc) : .green
+        Theme.dotComplete(theme, rc: rc)  // green, or the season's
     }
 
     private var eventsLoadKey: EventsLoadKey? {
@@ -1858,6 +1894,28 @@ private struct WindowSizeReader: UIViewRepresentable {
             let onChange = onChange
             // Not during the layout pass that noticed it.
             DispatchQueue.main.async { onChange(size) }
+        }
+    }
+}
+
+/// One slight wiggle, 0.5s, each time `trigger` changes (a card with a task for today, as
+/// the app opens; `wiggleCardsWithTodaysTasks`). An open card, being bigger, turns less.
+private struct CardWiggle: ViewModifier {
+    let trigger: Int
+    let isExpanded: Bool
+
+    func body(content: Content) -> some View {
+        let angle = isExpanded ? 0.6 : 2.0
+        content.keyframeAnimator(initialValue: 0.0, trigger: trigger) { view, degrees in
+            view.rotationEffect(.degrees(degrees))
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(angle, duration: 0.08)
+                CubicKeyframe(-angle, duration: 0.12)
+                CubicKeyframe(angle * 0.6, duration: 0.1)
+                CubicKeyframe(-angle * 0.3, duration: 0.1)
+                CubicKeyframe(0, duration: 0.1)
+            }
         }
     }
 }

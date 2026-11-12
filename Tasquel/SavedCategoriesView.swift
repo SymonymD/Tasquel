@@ -59,7 +59,7 @@ struct SavedCategoriesView: View {
                         }
                 }
                 .onMove { store.moveSavedCategories(fromOffsets: $0, toOffset: $1) }
-                .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
+                .listRowBackground(Theme.hasOwnBackground(theme) ? Theme.cardFill(theme) : nil)
 
                 Button {
                     editing = TemplateDraft(id: nil, name: "", symbol: "folder")
@@ -68,15 +68,15 @@ struct SavedCategoriesView: View {
                         .font(retro ? Theme.bodyFont(theme) : .body)
                         .foregroundStyle(Theme.accent(theme, rc: rc))
                 }
-                .listRowBackground(Theme.isCustomDark(theme) ? Theme.cardFill(theme) : nil)
+                .listRowBackground(Theme.hasOwnBackground(theme) ? Theme.cardFill(theme) : nil)
             } footer: {
                 Text("Tap a name to rename it, or an icon to change it. Tap the pencil to remove or reorder. These are offered in Add Category. A new name or icon also applies to the category's card this week and in later weeks.")
             }
         }
         .emojiPickerHost()
         .environment(\.editMode, $editMode)
-        .scrollContentBackground(Theme.isCustomDark(theme) ? .hidden : .automatic)
-        .background(Theme.isCustomDark(theme) ? Theme.background(theme) : Color.clear)
+        .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
+        .background(Theme.hasOwnBackground(theme) ? Theme.background(theme) : Color.clear)
         .navigationTitle(retro ? "> SAVED_CATEGORIES" : "Saved Categories")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
