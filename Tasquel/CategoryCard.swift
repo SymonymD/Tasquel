@@ -469,10 +469,20 @@ private struct CollapsedCategoryContent: View {
     private var rc: RetroColor { store.retroColor }
     /// Tasks listed on a closed card; any more are counted below them.
     private static let previewCount = 5
+    @Environment(\.taskDayFilter) private var dayFilter
+
+    /// In the card's order; with a day picked in the day strip, that day's and those with no day.
+    private var shownTasks: [ChecklistTask] { category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 3) {
+                if let dayFilter, !category.tasks.isEmpty, shownTasks.isEmpty {
+                    Text(Theme.isRetro(theme) ? "nothing_on_\(Weekday.name(dayFilter).lowercased())"
+                                              : "Nothing for \(Weekday.name(dayFilter, short: false))")
+                        .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
+                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                }
                 // An empty card says what to do rather than looking blank.
                 if category.tasks.isEmpty {
                     let quiet = isPastWeek || isEditing
@@ -482,7 +492,7 @@ private struct CollapsedCategoryContent: View {
                         .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                         .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 }
-                ForEach(category.orderedTasks.prefix(Self.previewCount)) { task in
+                ForEach(shownTasks.prefix(Self.previewCount)) { task in
                     HStack(spacing: 6) {
                         if Theme.isRetro(theme) {
                             Text(task.isCompleted ? "[x]" : "[ ]")
@@ -500,8 +510,8 @@ private struct CollapsedCategoryContent: View {
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc)).lineLimit(1)
                     }
                 }
-                if category.tasks.count > Self.previewCount {
-                    Text(Theme.isRetro(theme) ? "+\(category.tasks.count - Self.previewCount)_more" : "+\(category.tasks.count - Self.previewCount) more")
+                if shownTasks.count > Self.previewCount {
+                    Text(Theme.isRetro(theme) ? "+\(shownTasks.count - Self.previewCount)_more" : "+\(shownTasks.count - Self.previewCount) more")
                         .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                         .foregroundStyle(Theme.textTertiary(theme, rc: rc))
                 }
@@ -539,6 +549,7 @@ private struct ExpandedCategoryContent: View {
 
     /// The task being moved by its handle (the card's edit mode), if any.
     @State private var reorder: TaskReorder?
+    @Environment(\.taskDayFilter) private var dayFilter
     /// Each task row's frame in the task list (laid out, without a reorder's offsets).
     @State private var rowFrames: [UUID: CGRect] = [:]
     /// Scrolls the grid while a lifted task is held near the top or bottom.
@@ -551,9 +562,10 @@ private struct ExpandedCategoryContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: taskSpacing) {
-            // Pinned tasks first (`orderedTasks`).
+            // Pinned first, then by day (`orderedTasks`); with a day picked in the day strip,
+            // that day's and those with no day.
             let duplicates = category.duplicateTaskIDs
-            ForEach(category.orderedTasks) { task in
+            ForEach(category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter)) { task in
                 let isLifted = reorder?.taskID == task.id
                 TaskRowCard(
                     task: task,
@@ -837,6 +849,11 @@ extension EnvironmentValues {
     /// Whether the card holding a view is open. An open card's contents stay in place
     /// (hidden) while it's closed, so a field there mustn't take the keyboard then.
     @Entry var isCardOpen = true
+    /// The day picked in the week's day strip (1 Sunday … 7 Saturday): cards show that day's
+    /// tasks and the ones with no day, and tasks added get that day. Nil: every task.
+    @Entry var taskDayFilter: Int? = nil
+    /// The first day of the week a card's page shows (neighbor pages are drawn while paging).
+    @Entry var cardWeekStart: DayKey? = nil
     /// Scrolls the week's grid of cards, so a field can bring itself wholly into view.
     @Entry var cardGridScroll: ScrollViewProxy? = nil
     /// The bottom bar's height from the window's bottom (0 while the keyboard is up), so a

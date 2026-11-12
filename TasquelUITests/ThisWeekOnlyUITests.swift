@@ -26,7 +26,7 @@ final class ThisWeekOnlyUITests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 3))
         card.tap()
 
-        app.buttons["Edit Trip"].tap()
+        app.editCard("Trip")
         let toggle = app.switches["This week only"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         XCTAssertEqual(toggle.value as? String, "1")
@@ -64,14 +64,16 @@ final class ThisWeekOnlyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Task options: Checkbox, Carry Over"].waitForExistence(timeout: 3))
         app.buttons["keyboard.chevron.compact.down"].tap()
 
-        app.buttons["Edit Work"].tap()
+        app.editCard("Work")
         let toggle = app.switches["This week only"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         XCTAssertEqual(toggle.value as? String, "0")
         XCTAssertTrue(app.staticTexts["Turning this on makes its carry-over and repeating tasks one-time."].exists)
         toggle.switches.firstMatch.tap()
-        XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].waitForExistence(timeout: 3))
         XCTAssertEqual(toggle.value as? String, "1")
+        // The type and mode show outside edit mode (the clock takes their place in it).
+        app.buttons["Done editing Work"].tap()
+        XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].waitForExistence(timeout: 3))
     }
 
     /// An existing task's picker has a Done button that closes it.

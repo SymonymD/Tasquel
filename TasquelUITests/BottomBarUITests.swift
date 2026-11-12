@@ -50,9 +50,8 @@ final class BottomBarUITests: XCTestCase {
     private func undoGap(in app: XCUIApplication, task: String) -> CGFloat {
         let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
         if errands.exists { errands.tap() }
-        let edit = app.buttons["Edit Errands"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 3))
-        edit.tap()
+        XCTAssertTrue(app.buttons["Edit Errands"].waitForExistence(timeout: 3))
+        app.editCard("Errands")  // waits for the task icons to run out to their places
         app.buttons["Delete \(task)"].tap()
         let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Deleted")).firstMatch
         XCTAssertTrue(message.waitForExistence(timeout: 3))

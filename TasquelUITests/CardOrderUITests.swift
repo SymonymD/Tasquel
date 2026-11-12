@@ -114,7 +114,7 @@ final class CardOrderUITests: XCTestCase {
         field.typeText("Donations\n")
         field.typeText("Groceries\n")
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
         let pinGroceries = app.buttons["Pin Groceries"]
         XCTAssertTrue(pinGroceries.waitForExistence(timeout: 3))
         pinGroceries.tap()

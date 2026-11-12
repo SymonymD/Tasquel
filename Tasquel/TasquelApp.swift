@@ -14,9 +14,17 @@ struct TasquelApp: App {
     @State private var store = ChecklistStore.makeDefault()
     @State private var calendarService = CalendarService.makeDefault()
 
+    init() {
+        ExpiryNotifications.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(store: store, calendarService: calendarService)
+                // The pending reminders follow the tasks: set, changed, checked off, deleted.
+                .onChange(of: store.expiryReminders, initial: true) { _, reminders in
+                    ExpiryNotifications.shared.update(reminders)
+                }
         }
     }
 }

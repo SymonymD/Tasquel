@@ -21,6 +21,8 @@ struct ParsedTask: Equatable {
     var goalDays: Int?
     /// A list's items.
     var items: [String] = []
+    /// The one weekday the words name ("on Friday", "every Monday"), 1 Sunday … 7 Saturday.
+    var day: Int?
 }
 
 /// Turns typed words into a task. Nil when the words can't be worked out, in which case
@@ -47,6 +49,7 @@ extension ChecklistStore {
         let title = parsed.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, weekStart == nil || selectedWeek?.startDay == weekStart else { return nil }
         var task = ChecklistTask(title: title, mode: parsed.mode, taskType: parsed.type)
+        task.dayOfWeek = parsed.day.flatMap { (1...7).contains($0) ? $0 : nil }
         switch parsed.type {
         case .goal:
             // The unit is kept even without an amount, ready for the target to be typed.
@@ -87,6 +90,8 @@ enum TaskTextHints {
     static func refine(_ parsed: ParsedTask, from text: String) -> ParsedTask {
         var task = parsed
         let lower = text.lowercased()
+        // "Call Mom on Friday", "Gym every Monday": the task is for that day.
+        if task.day == nil { task.day = weekdayNamed(lower) }
         var matched = true
         if let mode = scheduleMode(lower) ?? scheduleMode(withoutAmount(lower)) {
             task.mode = mode
@@ -358,6 +363,27 @@ enum TaskTextHints {
         #"\b(this|just this)\s+week\s+only\b"#,
         #"\bjust\s+this\s+week\b"#,
     ]
+
+    /// The one weekday the words name, as the calendar numbers them (1 Sunday … 7 Saturday):
+    /// a day in full anywhere ("Friday team lunch", "on Mondays"), a short one after on,
+    /// every, each or this ("every Sat"; alone, "sun" and "sat" are often other words).
+    /// Nil for none, or for several ("Mon, Wed, Fri" is a goal of 3 instead).
+    static func weekdayNamed(_ text: String) -> Int? {
+        let full = ["sunday": 1, "monday": 2, "tuesday": 3, "wednesday": 4, "thursday": 5, "friday": 6, "saturday": 7]
+        let short = ["sun": 1, "mon": 2, "tue": 3, "tues": 3, "wed": 4, "thu": 5, "thur": 5, "thurs": 5, "fri": 6, "sat": 7]
+        var found: Set<Int> = []
+        if let pattern = try? NSRegularExpression(pattern: #"\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)s?\b"#) {
+            for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                if let range = Range(match.range(at: 1), in: text), let day = full[String(text[range])] { found.insert(day) }
+            }
+        }
+        if let pattern = try? NSRegularExpression(pattern: #"\b(?:on|every|each|this)\s+(sun|mon|tues|tue|wed|thurs|thur|thu|fri|sat)\b"#) {
+            for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                if let range = Range(match.range(at: 1), in: text), let day = short[String(text[range])] { found.insert(day) }
+            }
+        }
+        return found.count == 1 ? found.first : nil
+    }
 
     /// A day of this week: "today", "tonight", "tomorrow", "this weekend", "this Friday",
     /// "on Friday" (but "on Fridays" repeats). Weaker than the other rules: "run daily

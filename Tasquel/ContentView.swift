@@ -12,6 +12,9 @@ struct ContentView: View {
     @State private var categoryDisplayOrder: [CategoryLayoutKey] = []
     @State private var lastToggledCategory: CategoryLayoutKey?
     @State private var isEditing = false
+    /// The day picked in the day strip (1 Sunday … 7 Saturday): cards show that day's tasks
+    /// and the ones without a day. Tapped again, every task shows. Kept across weeks.
+    @State private var dayFilter: Int?
     /// The card being held and dragged to a new place (see Card Dragging).
     @State private var cardDrag: CardDrag?
     /// The order shown while a card is dragged; saved when it's dropped.
@@ -144,6 +147,8 @@ struct ContentView: View {
                         // it becomes current; only the new off-screen neighbor is built.
                         ForEach(pagerPages(current: week)) { page in
                             weekContent(page.week)
+                                .environment(\.cardWeekStart, page.week.startDay)
+                                .environment(\.taskDayFilter, dayFilter)
                                 .offset(x: CGFloat(page.slot) * weekPageWidth)
                                 // Neighbor pages are only for show while paging.
                                 .allowsHitTesting(page.slot == 0)
@@ -907,7 +912,13 @@ struct ContentView: View {
         VStack(spacing: 12) {
             weekTitleRow
             WeekDayStrip(weekStart: (arrivingWeek ?? week).startDay, today: DayKey(today, in: store.calendar),
-                         todayDate: today, theme: theme, rc: rc)
+                         todayDate: today, theme: theme, rc: rc,
+                         selectedWeekday: dayFilter, firstWeekday: store.firstWeekday,
+                         onSelect: { weekday in
+                             withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                                 dayFilter = dayFilter == weekday ? nil : weekday
+                             }
+                         })
                 // Capped: at the largest accessibility sizes the seven pills came to ~675pt
                 // and stretched the whole screen past both edges, the bar's Settings and
                 // Edit off it. (Here, not inside: its @ScaledMetric sizes read this

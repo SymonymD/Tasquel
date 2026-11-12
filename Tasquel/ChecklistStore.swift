@@ -67,6 +67,8 @@ final class ChecklistStore {
     /// Calendar integration: show events in the bottom bar, and which calendars to include
     /// (nil until the first time it's turned on, when a default selection is made).
     var calendarEventsEnabled = false
+    /// Settings ▸ Expiration Reminders: a notification the day before a task's last day.
+    var remindsBeforeExpiry = true
     /// Weeks start on Monday unless the user chooses Sunday.
     var weekStartsOnSunday = false
     var selectedCalendarIDs: [String]?
@@ -128,6 +130,17 @@ final class ChecklistStore {
         loadAndPrepare()
     }
 
+    /// Launched with throwaway data (UI tests, screenshots: `-isolatedData`, `-isolatedDataID`,
+    /// `-demoData`; Debug builds only): no notification permission prompt, no reminders.
+    static var launchesWithThrowawayData: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-isolatedData") || arguments.contains("-isolatedDataID") || launchesWithDemoData
+        #else
+        return false
+        #endif
+    }
+
     /// The app's store, or one backed by throwaway storage when UI tests pass
     /// `-isolatedData`, so they never touch the simulator's real data.
     /// `-isolatedDataID <name>` reuses the same throwaway storage across launches.
@@ -169,6 +182,7 @@ final class ChecklistStore {
         let currentWeek = ensureWeekExists(for: now())
         migrateStartersIfNeeded(into: currentWeek)
         syncWithPreviousWeek(for: now())
+        removeExpiredTasks()
     }
 
     /// The saved weeks say which day weeks start on: they always move with the setting, so
@@ -337,6 +351,7 @@ final class ChecklistStore {
         /// A raw string, so a value from a newer version reads as Manual instead of
         /// making the whole settings file unreadable.
         var categorySort: String?
+        var remindsBeforeExpiry: Bool?
     }
 
     func loadSettings() {
@@ -358,6 +373,7 @@ final class ChecklistStore {
             offeredStarterNames = settings.offeredStarterNames
             removedSavedCategoryNames = settings.removedSavedCategoryNames ?? []
             categorySort = settings.categorySort.flatMap(CategorySortOrder.init(rawValue:)) ?? .manual
+            remindsBeforeExpiry = settings.remindsBeforeExpiry ?? true
             settingsLoadError = nil
         } catch {
             settingsLoadError = "Your settings could not be opened. The file has not been changed."
@@ -378,7 +394,8 @@ final class ChecklistStore {
                 weekStartsOnSunday: weekStartsOnSunday,
                 offeredStarterNames: offeredStarterNames,
                 removedSavedCategoryNames: removedSavedCategoryNames,
-                categorySort: categorySort.rawValue
+                categorySort: categorySort.rawValue,
+                remindsBeforeExpiry: remindsBeforeExpiry
             )
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsURL, options: .atomic)
@@ -497,6 +514,11 @@ final class ChecklistStore {
         ensureWeekExists(for: now())
         // A saved future week may have just become current.
         syncWithPreviousWeek(for: now())
+    }
+
+    func setRemindsBeforeExpiry(_ reminds: Bool) {
+        remindsBeforeExpiry = reminds
+        saveSettings()
     }
 
     func setCalendarEventsEnabled(_ enabled: Bool) {
@@ -625,7 +647,7 @@ final class ChecklistStore {
     private func makeWeek(startingOn monday: DayKey) -> Week {
         var newWeek = Week(startDay: monday)
         if let previousWeek = mostRecentWeekBefore(monday) {
-            newWeek.categories = rollForwardCategories(from: previousWeek)
+            newWeek.categories = rollForwardCategories(from: previousWeek, cutoff: expiryCutoff(forWeekStarting: monday))
         } else {
             // First ever week: seed from saved category templates
             newWeek.categories = savedCategories.map {
@@ -645,8 +667,11 @@ final class ChecklistStore {
         if !isPastWeek(week), let source = mostRecentWeekBefore(monday) {
             if let dismissed = extendedDismissals(of: week, from: source) { week.dismissedCarryOvers = dismissed }
             let isFuture = isFutureWeek(week) && week.didFinalSync != true
-            if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source, addsCategories: true) }
-            _ = Self.syncCarryOverTasks(into: &week, from: source, followsSource: isFuture)
+            let cutoff = expiryCutoff(for: week)
+            if isFuture { _ = Self.syncRecurringTasks(into: &week, from: source, addsCategories: true, cutoff: cutoff) }
+            _ = Self.syncCarryOverTasks(into: &week, from: source, followsSource: isFuture, cutoff: cutoff)
+            // As `removeExpiredTasks` does for saved weeks.
+            for ci in week.categories.indices { week.categories[ci].tasks.removeAll { $0.isExpired(before: cutoff) } }
         }
         if stored == nil, let last = lastPreviews[monday], !weeks.contains(where: { $0.id == last.id }) {
             Self.reuseIDs(of: last, in: &week)
@@ -690,13 +715,13 @@ final class ChecklistStore {
             .max { $0.startDay < $1.startDay }
     }
 
-    private func rollForwardCategories(from source: Week) -> [Category] {
+    private func rollForwardCategories(from source: Week, cutoff: DayKey) -> [Category] {
         source.categories.filter { !$0.isThisWeekOnly }.map { category in
             var newCategory = Category(name: category.name, symbol: category.symbol)
             newCategory.isPinned = category.isPinned
             // In the same order as this week. Repeating tasks always come back (reset);
-            // carry-over tasks only if unfinished; one-time tasks never.
-            newCategory.tasks = category.tasks.compactMap { task in
+            // carry-over tasks only if unfinished; one-time tasks never; none past its last day.
+            newCategory.tasks = category.tasks.filter { !$0.isExpired(before: cutoff) }.compactMap { task in
                 switch task.mode {
                 case .repeating: Self.resetRecurringTask(task)
                 case .carryOver: task.isCompleted ? nil : Self.carriedCopy(of: task)
@@ -719,6 +744,8 @@ final class ChecklistStore {
         selectedDate = midweek(weekStartDay(containing: date))
         if let week = selectedWeek, isCurrentWeek(week) { ensureWeekExists(for: date) }
         syncWithPreviousWeek(for: date)
+        // (Also after midnight: ContentView comes back here on a new day.)
+        removeExpiredTasks()
     }
 
     /// Brings the current or a future week up to date with the most recent week before
@@ -744,10 +771,11 @@ final class ChecklistStore {
         // still reach it. Only once: after that the week is the user's own.
         let isFinalSync = !isFuture && weeks[wi].didFinalSync == false
         let follows = isFuture || isFinalSync
+        let cutoff = expiryCutoff(for: weeks[wi])
         if follows {
-            changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek, addsCategories: isFuture)
+            changed = Self.syncRecurringTasks(into: &weeks[wi], from: sourceWeek, addsCategories: isFuture, cutoff: cutoff)
         }
-        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek, followsSource: follows) { changed = true }
+        if Self.syncCarryOverTasks(into: &weeks[wi], from: sourceWeek, followsSource: follows, cutoff: cutoff) { changed = true }
         if isFinalSync {
             weeks[wi].didFinalSync = true
             changed = true
@@ -800,12 +828,124 @@ final class ChecklistStore {
         for wi in skipped {
             if let source = mostRecentWeekBefore(weeks[wi].startDay) {
                 if let dismissed = extendedDismissals(of: weeks[wi], from: source) { weeks[wi].dismissedCarryOvers = dismissed }
-                _ = Self.syncRecurringTasks(into: &weeks[wi], from: source, addsCategories: false)
-                _ = Self.syncCarryOverTasks(into: &weeks[wi], from: source, followsSource: true)
+                let cutoff = expiryCutoff(for: weeks[wi])
+                _ = Self.syncRecurringTasks(into: &weeks[wi], from: source, addsCategories: false, cutoff: cutoff)
+                _ = Self.syncCarryOverTasks(into: &weeks[wi], from: source, followsSource: true, cutoff: cutoff)
             }
             weeks[wi].didFinalSync = true
         }
         save(keepsUndo: true)
+    }
+
+    // MARK: - Days
+
+    /// Gives the task a day of the week (1 Sunday … 7 Saturday), or with nil takes it away.
+    /// An edit, like a new mode; later weeks' untouched copies take it when they next sync.
+    func setTaskDay(categoryID: UUID, taskID: UUID, day: Int?) {
+        let day = day.flatMap { (1...7).contains($0) ? $0 : nil }
+        guard viewedTask(categoryID, taskID)?.dayOfWeek != day,
+              let wi = editableSelectedWeekIndex(),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].dayOfWeek = day
+        markEdited(wi, ci, ti)
+        noteEdit(categoryID)
+        save()
+    }
+
+    // MARK: - Expiration
+
+    /// Today, as the store's clock and calendar see it.
+    var currentDay: DayKey { today }
+
+    /// A task whose last day is before this is gone from `week`: the week's first day, or
+    /// today in the current week (a task is there through its last day). A past week's is
+    /// its own first day: they keep what they had (history).
+    private func expiryCutoff(for week: Week) -> DayKey {
+        isPastWeek(week) ? week.startDay : max(week.startDay, today)
+    }
+
+    private func expiryCutoff(forWeekStarting start: DayKey) -> DayKey {
+        start.adding(days: 7) <= today ? start : max(start, today)
+    }
+
+    /// Takes tasks past their last day out of the current and later saved weeks (the day
+    /// after their date they're gone; see `ChecklistTask.expiresOn`). Past weeks keep them.
+    /// Like sync, it keeps a delete's Undo.
+    func removeExpiredTasks() {
+        var changed = false
+        for wi in weeks.indices where !isPastWeek(weeks[wi]) {
+            let cutoff = expiryCutoff(for: weeks[wi])
+            for ci in weeks[wi].categories.indices where weeks[wi].categories[ci].tasks.contains(where: { $0.isExpired(before: cutoff) }) {
+                weeks[wi].categories[ci].tasks.removeAll { $0.isExpired(before: cutoff) }
+                changed = true
+            }
+        }
+        if changed { save(keepsUndo: true) }
+    }
+
+    /// Sets the task's last day (`expiresOn`; `wholeWeek` when a week was picked, its last
+    /// day), or with nil takes the expiration away. The day it's set on is kept for the
+    /// checkbox's ring. An edit, like a new mode; later weeks' untouched copies take it
+    /// when they next sync, and leave once it has passed.
+    func setTaskExpiry(categoryID: UUID, taskID: UUID, lastDay: DayKey?, wholeWeek: Bool = false) {
+        let wholeWeek = lastDay != nil && wholeWeek
+        guard let task = viewedTask(categoryID, taskID),
+              task.expiresOn != lastDay || task.expiresWithWeek != wholeWeek,
+              let wi = editableSelectedWeekIndex(),
+              let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
+              let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        weeks[wi].categories[ci].tasks[ti].expiresOn = lastDay
+        weeks[wi].categories[ci].tasks[ti].expirySetOn = lastDay == nil ? nil : today
+        weeks[wi].categories[ci].tasks[ti].expiresWithWeek = wholeWeek
+        markEdited(wi, ci, ti)
+        noteEdit(categoryID)
+        save()
+        removeExpiredTasks()
+    }
+
+    /// The reminders due, the day before each expiring task's last day at 9 AM (none with
+    /// Expiration Reminders off, none whose time has passed). One per task and date, however
+    /// many weeks have a copy; the copy in the week the reminder falls in decides, or, if that
+    /// week isn't saved yet, the latest one before it: a task checked off there gets none,
+    /// unless it repeats (it comes back unchecked) or it's a carry-over still unchecked (it
+    /// comes along). A one-time task gets one only while unchecked in its own week.
+    var expiryReminders: [ExpiryReminder] {
+        guard remindsBeforeExpiry else { return [] }
+        var occurrences: [String: [(start: DayKey, task: ChecklistTask, category: String)]] = [:]
+        var order: [String] = []
+        for week in weeks where !isPastWeek(week) {
+            let cutoff = expiryCutoff(for: week)
+            for category in week.categories {
+                for task in category.tasks where task.expiresOn != nil && !task.isExpired(before: cutoff) {
+                    let key = "\(category.name)|\(task.title)|\(task.expiresOn!)"
+                    if occurrences[key] == nil { order.append(key) }
+                    occurrences[key, default: []].append((week.startDay, task, category.name))
+                }
+            }
+        }
+        let gregorian = Calendar.weekDates(in: calendar.timeZone)
+        let now = now()
+        return order.compactMap { key in
+            guard let found = occurrences[key], let last = found.first?.task.expiresOn else { return nil }
+            let day = last.adding(days: -1)
+            guard let time = gregorian.date(bySettingHour: ExpiryReminder.hour, minute: 0, second: 0, of: day.date(in: calendar)),
+                  time > now else { return nil }
+            let deciding = found.filter { $0.start <= day }.max { $0.start < $1.start } ?? found.min { $0.start < $1.start }!
+            let laterWeek = day >= deciding.start.adding(days: 7)
+            let comesThen = !laterWeek ? !deciding.task.isCompleted
+                : deciding.task.syncMode == .repeating || (deciding.task.syncMode == .carryOver && !deciding.task.isCompleted)
+            guard comesThen else { return nil }
+            let date = last.date(in: calendar).formatted(.dateTime.weekday(.wide).month(.wide).day())
+            return ExpiryReminder(id: key, title: "\(deciding.task.title) expires tomorrow",
+                                  body: "\(date) is its last day in \(deciding.category).", day: day)
+        }
+    }
+
+    /// The first day a task in the viewed week can be given as its last: today, or the
+    /// week's first day in a later week.
+    var earliestExpiry: DayKey {
+        max(today, selectedWeek?.startDay ?? today)
     }
 
     /// Adds `source`'s unfinished carry-over tasks that `week` is missing, skipping ones
@@ -814,7 +954,7 @@ final class ChecklistStore {
     /// source: they pick up its new unchecked items, and go away once it's finished or
     /// no longer carries over. Copies the user changed in `week` are left alone.
     /// Returns whether anything changed.
-    private static func syncCarryOverTasks(into week: inout Week, from source: Week, followsSource: Bool) -> Bool {
+    private static func syncCarryOverTasks(into week: inout Week, from source: Week, followsSource: Bool, cutoff: DayKey) -> Bool {
         var changed = false
         let dismissed = Set(week.dismissedCarryOvers ?? [])
         for sourceCategory in source.categories where !sourceCategory.isThisWeekOnly {
@@ -858,7 +998,7 @@ final class ChecklistStore {
 
             for task in sourceCategory.tasks
             where task.mode == .carryOver && !task.isCompleted && !dismissed.contains(task.id)
-                && task.carriedFrom.map(dismissed.contains) != true {
+                && task.carriedFrom.map(dismissed.contains) != true && !task.isExpired(before: cutoff) {
                 // Also present when this week's copy links to what the source itself was
                 // carried from (it was made before the week in between existed).
                 // Its copy may be in another card too: this one was renamed and a new card
@@ -904,6 +1044,7 @@ final class ChecklistStore {
         newTask.goalDays = task.goalDays
         newTask.isListFolded = task.isListFolded
         newTask.isPinned = task.isPinned
+        newTask.takeExpiry(from: task)
         newTask.carriedFrom = task.id
         return newTask
     }
@@ -921,6 +1062,7 @@ final class ChecklistStore {
         copy.goalUnitKind = task.goalUnitKind
         copy.goalStep = task.goalStep
         copy.goalDays = task.goalDays
+        copy.takeExpiry(from: task)
         let checked = Set(task.subtasks.filter(\.isCompleted).map(\.title))
         copy.subtasks.removeAll { checked.contains($0.title) }
         let present = Set(copy.subtasks.map(\.title))
@@ -936,7 +1078,7 @@ final class ChecklistStore {
     /// skipping ones the user deleted from `week`. With `addsCategories`, missing
     /// categories are added too (not in a current week, whose deletions are the user's).
     /// Returns whether anything changed.
-    private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week, addsCategories: Bool) -> Bool {
+    private static func syncRecurringTasks(into week: inout Week, from sourceWeek: Week, addsCategories: Bool, cutoff: DayKey) -> Bool {
         var changed = false
         let dismissedTitles = Set(week.dismissedRepeating ?? [])
         let dismissedIDs = Set(week.dismissedCarryOvers ?? [])
@@ -955,7 +1097,7 @@ final class ChecklistStore {
                 // Category missing from future week — add it (with any recurring tasks)
                 var newCat = Category(name: sourceCategory.name, symbol: sourceCategory.symbol)
                 newCat.isPinned = sourceCategory.isPinned
-                newCat.tasks = recurringTasks.filter { !isDismissed($0) }.map { resetRecurringTask($0) }
+                newCat.tasks = recurringTasks.filter { !isDismissed($0) && !$0.isExpired(before: cutoff) }.map { resetRecurringTask($0) }
                 week.categories.append(newCat)
                 changed = true
                 continue
@@ -995,7 +1137,7 @@ final class ChecklistStore {
                 }
             }
 
-            for task in recurringTasks where !isDismissed(task) {
+            for task in recurringTasks where !isDismissed(task) && !task.isExpired(before: cutoff) {
                 // A copy the user edited keeps its old link: it still counts as this task's
                 // copy, in any card (this one may be a new card with a renamed one's old name).
                 guard !week.categories.contains(where: { $0.tasks.contains {
@@ -1022,6 +1164,7 @@ final class ChecklistStore {
         copy.goalUnitKind = task.goalUnitKind
         copy.goalStep = task.goalStep
         copy.goalDays = task.goalDays
+        copy.takeExpiry(from: task)
         if task.taskType != .goal { copy.goalProgress = nil }
         if task.taskType == .list {
             let sourceTitles = Set(task.subtasks.map(\.title))
@@ -1059,6 +1202,7 @@ final class ChecklistStore {
         newTask.goalDays = task.goalDays
         newTask.isListFolded = task.isListFolded
         newTask.isPinned = task.isPinned
+        newTask.takeExpiry(from: task)
         newTask.repeatsFrom = task.id
         return newTask
     }
@@ -1325,8 +1469,9 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let from = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }),
               let to = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == targetID }),
-              // Pinned tasks move among themselves, the others among theirs.
-              weeks[wi].categories[ci].tasks[from].isPinned == weeks[wi].categories[ci].tasks[to].isPinned else { return }
+              // Among the tasks pinned like it with the same day (`reorderGroup`).
+              weeks[wi].categories[ci].tasks[from].isPinned == weeks[wi].categories[ci].tasks[to].isPinned,
+              weeks[wi].categories[ci].tasks[from].dayOfWeek == weeks[wi].categories[ci].tasks[to].dayOfWeek else { return }
         weeks[wi].categories[ci].tasks.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
         // Syncing with the week before must not put the old order back.
         let name = weeks[wi].categories[ci].name

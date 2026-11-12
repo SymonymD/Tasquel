@@ -38,6 +38,11 @@ extension ChecklistStore {
         guard let wi = weeks.firstIndex(where: { $0.id == current.id }) else { return }
         for ci in weeks[wi].categories.indices {
             weeks[wi].categories[ci].tasks = Self.demoTasks(for: weeks[wi].categories[ci].name)
+            // Mom's birthday is in four days, set two days ago: its checkbox's ring is 3 of 7 days in.
+            for ti in weeks[wi].categories[ci].tasks.indices where weeks[wi].categories[ci].tasks[ti].title == "Plan Mom's birthday" {
+                weeks[wi].categories[ci].tasks[ti].expiresOn = currentDay.adding(days: 4)
+                weeks[wi].categories[ci].tasks[ti].expirySetOn = currentDay.adding(days: -2)
+            }
         }
         // `-demoFirstCard <name>` puts that card first, so it opens at the top.
         if let index = arguments.firstIndex(of: "-demoFirstCard"), arguments.indices.contains(index + 1),

@@ -26,6 +26,8 @@ struct SettingsSheet: View {
     var systemColorScheme: ColorScheme? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
+    /// Notifications are off for Tasquel in iOS Settings (Expiration Reminders says so).
+    @State private var notificationsDenied = false
     @State private var showTour = false
     @AppStorage(AppIconSwitcher.matchesThemeKey) private var iconMatchesTheme = true
 
@@ -99,6 +101,14 @@ struct SettingsSheet: View {
             .listRowBackground(darkCardBg)
             Section("Week") {
                 weekStartRow
+            }
+            .listRowBackground(darkCardBg)
+            Section {
+                expiryRemindersToggle
+            } header: {
+                Text("Reminders")
+            } footer: {
+                Text(expiryRemindersFooter)
             }
             .listRowBackground(darkCardBg)
             Section {
@@ -183,6 +193,12 @@ struct SettingsSheet: View {
                 }
                 retroSection("WEEK") {
                     weekStartRow
+                }
+                retroSection("REMINDERS") {
+                    expiryRemindersToggle
+                    Text(expiryRemindersFooter)
+                        .font(Theme.captionFont(theme))
+                        .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 }
                 retroSection("CATEGORIES") {
                     NavigationLink {
@@ -310,6 +326,28 @@ struct SettingsSheet: View {
             .accessibilityLabel(mode.label)
             .accessibilityAddTraits(store.appearanceMode == mode ? .isSelected : [])
         }
+    }
+
+    /// A notification the day before an expiring task's last day.
+    private var expiryRemindersToggle: some View {
+        Toggle(isOn: Binding(get: { store.remindsBeforeExpiry }, set: { on in
+            store.setRemindsBeforeExpiry(on)
+            if on { ExpiryNotifications.shared.requestPermissionIfNeeded() }
+        })) {
+            if retro {
+                Text("> Expiration Reminders").font(Theme.bodyFont(theme))
+            } else {
+                Label("Expiration Reminders", systemImage: "bell.badge")
+            }
+        }
+        .tint(retro ? Theme.accent(theme, rc: rc) : nil)
+        .task { notificationsDenied = await ExpiryNotifications.shared.isDenied() }
+    }
+
+    private var expiryRemindersFooter: String {
+        let what = "A notification at 9 AM the day before a task's last day (set with the clock in a card's edit mode)."
+        return notificationsDenied && store.remindsBeforeExpiry
+            ? what + " Notifications are off for Tasquel: turn them on in the Settings app." : what
     }
 
     /// Whether the home-screen icon turns retro with the Retro theme.

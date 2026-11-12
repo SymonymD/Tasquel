@@ -42,6 +42,11 @@ struct TaskOptionsPicker: View {
     var onDone: (() -> Void)? = nil
     /// The task's card is for this week only: a mode that comes back next week turns that off.
     var isThisWeekOnlyCategory = false
+    /// The day it's for (1 Sunday … 7 Saturday, nil any day); `onSelectDay` shows the Day row.
+    var day: Int? = nil
+    var onSelectDay: ((Int?) -> Void)? = nil
+    /// The weekday weeks start on, for the row's order.
+    var firstWeekday = 2
 
     @State private var pendingType: TaskType?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -97,6 +102,7 @@ struct TaskOptionsPicker: View {
                     }
                 }
             }
+            if let onSelectDay { dayRow(onSelectDay) }
             Text(hint)
                 .font(Theme.isRetro(theme) ? .system(.footnote, design: .monospaced) : .footnote)
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
@@ -123,6 +129,42 @@ struct TaskOptionsPicker: View {
         case .repeating: "Comes back every week, and so does this card"
         case .oneTime: mode.hint
         }
+    }
+
+    /// Any, then the days in the week's order, one letter each (two rows at accessibility
+    /// sizes). VoiceOver hears each day's full name.
+    private func dayRow(_ select: @escaping (Int?) -> Void) -> some View {
+        column("Day") {
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: dynamicTypeSize.isAccessibilitySize ? 4 : 8)
+            LazyVGrid(columns: columns, spacing: 4) {
+                dayButton(Theme.isRetro(theme) ? "ANY" : "Any", label: "Any day", isSelected: day == nil) { select(nil) }
+                ForEach(Weekday.ordered(firstWeekday: firstWeekday), id: \.self) { weekday in
+                    dayButton(Weekday.letter(weekday), label: Weekday.name(weekday, short: false),
+                              isSelected: day == weekday) { select(weekday) }
+                }
+            }
+        }
+    }
+
+    private func dayButton(_ text: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        let accent = Theme.accent(theme, rc: rc)
+        let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 8)
+        return Button(action: action) {
+            Text(text)
+                .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
+                .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .background {
+                    shape.fill(isSelected ? accent.opacity(0.18) : Color.clear)
+                    shape.stroke(isSelected ? accent : Theme.textTertiary(theme, rc: rc).opacity(0.4), lineWidth: isSelected ? 1.5 : 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func selectType(_ option: TaskType) {

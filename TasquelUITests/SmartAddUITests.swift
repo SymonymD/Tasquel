@@ -266,7 +266,7 @@ final class SmartAddUITests: XCTestCase {
     func testEditingCardWhileWorking() throws {
         typeInFitness("run 3x per week")
         app.buttons["Smart Add"].tap()
-        app.buttons["Edit Fitness"].tap()
+        app.editCard("Fitness")
         XCTAssertTrue(app.buttons["Done editing Fitness"].waitForExistence(timeout: 2))
         sleep(4)  // Smart Add (2s here) finishes while the card is in edit mode
         app.buttons["Done editing Fitness"].tap()
@@ -283,7 +283,7 @@ final class SmartAddUITests: XCTestCase {
         app.buttons["Smart Add"].tap()
         let undo = app.buttons["Undo Smart Add"]
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
-        app.buttons["Edit Fitness"].tap()
+        app.editCard("Fitness")
         XCTAssertTrue(undo.waitForNonExistence(timeout: 2), "hidden in edit mode")
         app.buttons["Delete Run"].tap()
         XCTAssertTrue(app.buttons["Undo delete"].firstMatch.waitForExistence(timeout: 2), "the delete's own Undo")
@@ -298,7 +298,7 @@ final class SmartAddUITests: XCTestCase {
     @MainActor
     func testEditingCardAddsTypedTask() throws {
         typeInFitness("Buy new shoes")
-        app.buttons["Edit Fitness"].tap()
+        app.editCard("Fitness")
         XCTAssertTrue(app.buttons["Done editing Fitness"].waitForExistence(timeout: 2))
         app.buttons["Done editing Fitness"].tap()
         XCTAssertTrue(app.staticTexts["Buy new shoes"].waitForExistence(timeout: 3), "the typed task was added")

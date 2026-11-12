@@ -61,6 +61,28 @@ func expandedCardControl(_ length: CGFloat) -> CGFloat {
     min(expandedCardScaled(length), length * expandedCardScale * 1.6)
 }
 
+/// An expiring task's checkbox: a gray ring, thicker than a plain outline, with the share
+/// of its days gone by drawn over it in green, like a card's ring.
+struct ExpiryCheckRing: View {
+    let progress: Double
+    let color: Color
+    let track: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            let lineWidth = max(2, proxy.size.width * 0.16)
+            ZStack {
+                Circle().stroke(track.opacity(0.45), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .padding(lineWidth / 2)
+        }
+    }
+}
+
 extension Text {
     /// "⧉ Duplicate" after a task's or item's name whose name another one in its card (or
     /// list) has; Retro "[DUP]". Caption-sized, in orange that keeps 4:1, never struck through.
@@ -131,6 +153,14 @@ struct TaskRowCard: View {
     /// An item or sub-task just added with the same name as another of this task's: a note
     /// above the field says so for a few seconds, with Undo.
     @State private var duplicateNote: DuplicateItemNote?
+    /// The clock's calendar (the card's edit mode), for the task's expiration.
+    @State private var showExpiry = false
+    /// The clock, pin, trash and handle are in the row: from the card's edit mode starting
+    /// until they've gathered back onto the handle after it ends (`rowIcons`).
+    @State private var showsEditIcons = false
+    /// Which of them (clock 0 … handle 3) are out in their places; the others are stacked on
+    /// the handle, hidden.
+    @State private var spreadEditIcons: Set<Int> = []
     @State private var goalKindSelection: GoalUnitKind = .quantity
     @State private var goalTargetInput = GoalAmountInput()
     @State private var goalUnitText = ""
@@ -159,6 +189,8 @@ struct TaskRowCard: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.cardGridScroll) private var gridScroll
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.cardWeekStart) private var weekStart
     /// A list with its items folded away. Past weeks show everything: they're view only,
     /// and a folded list there couldn't be opened to see what was in it.
     private var isFolded: Bool { task.isFolded && !isPastWeek }
@@ -173,99 +205,108 @@ struct TaskRowCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                // Completion indicator
-                Group {
-                    if task.taskType == .goal {
-                        goalIndicator
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(task.title) progress")
-                            .accessibilityValue(TaskAccessibility.goalValue(task))
-                            .accessibilityActions { moveActions }
-                    } else {
-                        Button {
-                            guard !isPastWeek else { return }
-                            withAnimation(.snappy(duration: 0.2)) {
-                                store.toggleTask(categoryID: categoryID, taskID: task.id)
-                            }
-                        } label: {
-                            Group {
-                                if Theme.isRetro(theme) {
-                                    Text(task.isCompleted ? "[x]" : "[ ]")
-                                        .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-                                } else {
-                                    Circle()
-                                        .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
-                                        .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
-                                        .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+            // The name, and its icons beside it or on their own line under it (`stacksIcons`).
+            // One layout that switches, so the icons stay the same views either way: rebuilt
+            // under the name as edit mode started, they skipped their transitions and just
+            // appeared.
+            nameAndIconsLayout {
+                HStack(spacing: 10) {
+                    // Completion indicator
+                    Group {
+                        if task.taskType == .goal {
+                            goalIndicator
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(task.title) progress")
+                                .accessibilityValue(TaskAccessibility.goalValue(task))
+                                .accessibilityActions { moveActions }
+                        } else {
+                            Button {
+                                guard !isPastWeek else { return }
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    store.toggleTask(categoryID: categoryID, taskID: task.id)
                                 }
+                            } label: {
+                                Group {
+                                    if Theme.isRetro(theme) {
+                                        Text(task.isCompleted ? "[x]" : "[ ]")
+                                            .font(.expandedCard(.subheadline, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                                    } else {
+                                        if !task.isCompleted, let progress = task.expiryProgress(on: store.currentDay) {
+                                            // An expiring task's outline is a ring, like a card's: gray, filling
+                                            // green as its days go by (the day it was set is day 1).
+                                            ExpiryCheckRing(progress: progress, color: Theme.expirySet(theme, rc: rc),
+                                                            track: Theme.textSecondary(theme, rc: rc))
+                                                .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                                        } else {
+                                            Circle()
+                                                .fill(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Color.clear)
+                                                .overlay(Circle().stroke(task.isCompleted ? Theme.dotComplete(theme, rc: rc) : Theme.textSecondary(theme, rc: rc), lineWidth: 1.5))
+                                                .frame(width: expandedCardControl(18), height: expandedCardControl(18))
+                                        }
+                                    }
+                                }
+                                .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
+                                .touchTarget()
                             }
-                            .modifier(PastWeekDimming(isPastWeek: isPastWeek, theme: theme))
-                            .touchTarget()
+                            .buttonStyle(CheckboxButtonStyle())
+                            .disabled(isPastWeek)
+                            .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
+                            .accessibilityValue(expiryDescription)
+                            .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
+                            .accessibilityActions { moveActions }
                         }
-                        .buttonStyle(CheckboxButtonStyle())
-                        .disabled(isPastWeek)
-                        .accessibilityLabel(TaskAccessibility.checkboxLabel(task.title, isCompleted: task.isCompleted))
-                        .accessibilityAddTraits(task.isCompleted ? .isSelected : [])
-                        .accessibilityActions { moveActions }
                     }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
+
+                    // Title
+                    if isEditingTitle {
+                        // Wraps like the name it replaces, so every part of a long name can be
+                        // reached (on one line the start scrolled out of view). Return saves.
+                        TextField("Task name", text: $editedTitle, axis: .vertical)
+                            .lineLimit(1...8)
+                            .fixedSize(horizontal: false, vertical: true)
+                            // (A wrapping field is a text view: it doesn't take its name from the title.)
+                            .accessibilityIdentifier("Task name")
+                            .accessibilityLabel("Task name")
+                            // Growing a line can take it under the keyboard: it scrolls back.
+                            .id(renameFieldID)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in keepRenameFieldInView() }
+                            .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+                            .cardField(theme, rc: rc, outset: true)
+                            .focused($isTitleFocused)
+                            // The keyboard opens with the field, so one tap is enough.
+                            .onAppear { isTitleFocused = true }
+                            .onSubmit { commitTitle(returnPressed: true) }
+                            .onChange(of: editedTitle) { old, text in
+                                if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle(returnPressed: true) }
+                            }
+                            // Closing the keyboard (Done, or scrolling) also saves the name.
+                            .onChange(of: isTitleFocused) { _, focused in
+                                if !focused && isEditingTitle { commitTitle() }
+                            }
+                    } else {
+                        // One tap renames. The whole width up to the icons is the target, not just the letters.
+                        titleText
+                            .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
+                            // All the lines it needs: beside the icons, a row could otherwise get
+                            // one line's height and cut the title off ("Plan Mom's birt…").
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { startEditingTitle() }
+                            // The name stays the label (Voice Control's "tap Groceries"); a folded
+                            // list's count is the value, so VoiceOver hears both.
+                            .accessibilityLabel(task.title)
+                            .accessibilityValue(titleValue)
+                    }
+
+                    if isEditingTitle { Spacer(minLength: 0) }
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
 
-                // Title
-                if isEditingTitle {
-                    // Wraps like the name it replaces, so every part of a long name can be
-                    // reached (on one line the start scrolled out of view). Return saves.
-                    TextField("Task name", text: $editedTitle, axis: .vertical)
-                        .lineLimit(1...8)
-                        .fixedSize(horizontal: false, vertical: true)
-                        // (A wrapping field is a text view: it doesn't take its name from the title.)
-                        .accessibilityIdentifier("Task name")
-                        .accessibilityLabel("Task name")
-                        // Growing a line can take it under the keyboard: it scrolls back.
-                        .id(renameFieldID)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in keepRenameFieldInView() }
-                        .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
-                        .cardField(theme, rc: rc, outset: true)
-                        .focused($isTitleFocused)
-                        // The keyboard opens with the field, so one tap is enough.
-                        .onAppear { isTitleFocused = true }
-                        .onSubmit(commitTitle)
-                        .onChange(of: editedTitle) { old, text in
-                            if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
-                        }
-                        // Closing the keyboard (Done, or scrolling) also saves the name.
-                        .onChange(of: isTitleFocused) { _, focused in
-                            if !focused && isEditingTitle { commitTitle() }
-                        }
-                } else {
-                    // One tap renames. The whole width up to the icons is the target, not just the letters.
-                    titleText
-                        .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
-                        // All the lines it needs: beside the icons, a row could otherwise get
-                        // one line's height and cut the title off ("Plan Mom's birt…").
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { startEditingTitle() }
-                        // The name stays the label (Voice Control's "tap Groceries"); a folded
-                        // list's count is the value, so VoiceOver hears both.
-                        .accessibilityLabel(task.title)
-                        .accessibilityValue(titleValue)
-                }
-
-                if isEditingTitle { Spacer(minLength: 0) }
-
-                if !isPastWeek && !stacksIcons { rowIcons }
+                if !isPastWeek { rowIcons }
             }
-
-            // Where beside the icons the name's widest word wouldn't fit (and at accessibility
-            // text sizes), they get their own line under it, which keeps the whole width (see
-            // `stacksIcons`): beside them it had a column too narrow for one word ("Gr / oc / eri / es").
-            if !isPastWeek && stacksIcons {
-                rowIcons.frame(maxWidth: .infinity, alignment: .trailing)
-            }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: stacksIcons)
 
             if task.taskType == .goal {
                 goalProgressSection
@@ -466,25 +507,113 @@ struct TaskRowCard: View {
                 },
                 onSelectMode: { store.updateTaskMode(categoryID: categoryID, taskID: task.id, mode: $0) },
                 onDone: { showOptions = false },
-                isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
+                isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true,
+                day: task.dayOfWeek,
+                onSelectDay: { day in
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                        store.setTaskDay(categoryID: categoryID, taskID: task.id, day: day)
+                    }
+                },
+                firstWeekday: store.firstWeekday
             )
         }
     }
 
     /// The row's icons: add sub-task (checkbox tasks) or fold (lists), type and mode, and in
-    /// the card's edit mode pin, delete and the reorder handle.
+    /// the card's edit mode the clock (instead of type and mode), pin, delete and the
+    /// reorder handle.
     private var rowIcons: some View {
         HStack(spacing: 0) {
-            if task.taskType == .checkbox && !isEditing { addSubtaskButton }
+            if task.taskType == .checkbox && !showsEditIcons { addSubtaskButton.transition(outsideEditIconTransition) }
             if task.taskType == .list { foldButton }
-            taskOptionsButton
-            if isEditing {
-                pinButton
-                deleteButton
-                reorderHandle
+            // In the card's edit mode the clock (the task's expiration) takes the type and
+            // mode's place; those change outside it.
+            if !showsEditIcons { taskOptionsButton.transition(outsideEditIconTransition) }
+            if showsEditIcons {
+                HStack(spacing: 0) {
+                    editIcon(0, expiryButton)
+                    editIcon(1, pinButton)
+                    editIcon(2, deleteButton)
+                    editIcon(3, reorderHandle)
+                }
+                // Added stacked and hidden: they run out to their places.
+                .onAppear { runOutEditIcons() }
+                .onDisappear { spreadEditIcons = [] }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { iconsWidth = $0 }
+        .onChange(of: isEditing, initial: true) { _, editing in
+            if editing {
+                // Back into edit mode while they were gathering: out they go again.
+                if showsEditIcons { runOutEditIcons() } else { showsEditIcons = true }
+            } else if showsEditIcons {
+                // They gather back onto the handle and go; then type and mode grow back.
+                withAnimation(iconsGather) { spreadEditIcons = [] } completion: {
+                    if !isEditing { showsEditIcons = false }
+                }
+            }
+        }
+    }
+
+    /// As the card's edit mode starts, type and mode (and a checkbox's +) shrink away first;
+    /// meanwhile the clock, pin, trash and handle are added stacked on the handle and hidden,
+    /// and once type and mode are gone they run out to their places (`iconRunOut`). Leaving
+    /// edit mode they gather back onto the handle and fade (`iconsGather`), and only then go,
+    /// with type and mode growing back. Reduce Motion: they fade. (Moved by state, not by a
+    /// transition: an offset transition here only faded, the icons appearing in their places.)
+    private static let iconSwapOut = 0.14
+
+    /// Once type and mode are gone, each on a quick spring with two bounces (0.5: 0.25 was
+    /// too little, 0.4 bounced once, 0.55 on shorter periods was jittery), so it runs past its place and settles back, as if they ran in and skidded to a stop (the
+    /// user's words): the clock first, the one with the farthest to go, then the pin and the
+    /// trash 0.04s apart, each a little quicker, and the handle last. (All together on one
+    /// curve looked mechanical; a 0.25s ease-out was too even; a curve with nearly all its
+    /// movement in the first 50ms looked like no animation.)
+    private func iconRunOut(_ index: Int) -> Animation {
+        guard !reduceMotion else { return .easeInOut(duration: 0.2) }
+        // A bouncier spring settles later, so the periods are shorter: each still settles when
+        // it did at bounce 0.4 with 0.27…0.2s (about 0.64 × period ÷ (1 − bounce)).
+        let periods = [0.23, 0.21, 0.19, 0.17]
+        return .spring(duration: periods[index], bounce: 0.5).delay(Self.iconSwapOut + 0.02 + Double(index) * 0.04)
+    }
+
+    private func runOutEditIcons() {
+        for index in 0..<4 {
+            withAnimation(iconRunOut(index)) { _ = spreadEditIcons.insert(index) }
+        }
+    }
+
+    /// The `index`th edit icon (clock 0 … handle 3): stacked on the handle and hidden until
+    /// it has run out to its place.
+    private func editIcon(_ index: Int, _ icon: some View) -> some View {
+        icon
+            .offset(x: stackedOffset(index))
+            .opacity(spreadEditIcons.contains(index) ? 1 : 0)
+    }
+
+    private var iconsGather: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .easeIn(duration: Self.iconSwapOut)
+    }
+
+    private var outsideEditIconTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity.animation(.easeInOut(duration: 0.2)) }
+        let shrunk = AnyTransition.scale(scale: 0.01).combined(with: .opacity)
+        return .asymmetric(insertion: shrunk.animation(.easeOut(duration: 0.2)),
+                           removal: shrunk.animation(.easeIn(duration: Self.iconSwapOut)))
+    }
+
+    /// How far the `index`th edit icon (clock 0 … handle 3) is from its place while they're
+    /// stacked on the handle.
+    private func stackedOffset(_ index: Int) -> CGFloat {
+        guard !spreadEditIcons.contains(index), !reduceMotion else { return 0 }
+        return CGFloat(3 - index) * expandedCardControl(36) * (layoutDirection == .rightToLeft ? -1 : 1)
+    }
+
+    /// Where beside the icons the name's widest word wouldn't fit (and at accessibility text
+    /// sizes) they get their own line under it, at its trailing end, which keeps the name the
+    /// whole width: beside them it had a column too narrow for one word ("Gr / oc / eri / es").
+    private var nameAndIconsLayout: AnyLayout {
+        stacksIcons ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
     }
 
     /// The row's icons get their own line under the name (`rowIcons`) where beside it they'd
@@ -508,6 +637,7 @@ struct TaskRowCard: View {
         if isFolded, !task.subtasks.isEmpty {
             words.append("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
         }
+        if let day = task.dayOfWeek { words.append(Weekday.name(day) + (isLate ? "\u{00A0}·\u{00A0}late" : "")) }
         return words
     }
 
@@ -534,8 +664,26 @@ struct TaskRowCard: View {
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
             text = Text("\(text)  \(count)")
         }
+        if let dayMark { text = Text("\(text)  \(dayMark)") }
         if showsDuplicate { text = Text("\(text)  \(Text.duplicateMark(theme))") }
         return text
+    }
+
+    /// Its day's gone by and it isn't done (only in the current week).
+    private var isLate: Bool {
+        guard let weekStart, !isPastWeek else { return false }
+        return task.isLate(inWeekStarting: weekStart, firstWeekday: store.firstWeekday, today: store.currentDay)
+    }
+
+    /// "Thu" after the name, for a task with a day; "Tue · late" in orange once that day has
+    /// gone by unfinished. Caption-sized, never struck through.
+    private var dayMark: Text? {
+        guard let day = task.dayOfWeek else { return nil }
+        let retro = Theme.isRetro(theme)
+        let name = retro ? Weekday.name(day).uppercased() : Weekday.name(day)
+        return Text(verbatim: isLate ? (retro ? "[\(name) LATE]" : "\(name)\u{00A0}·\u{00A0}late") : (retro ? "[\(name)]" : name))
+            .font(.expandedCard(.caption1, design: retro ? .monospaced : .default))
+            .foregroundStyle(isLate ? Theme.late(theme) : Theme.textSecondary(theme, rc: rc))
     }
 
     /// Past weeks are view only: nothing there can be fixed, so nothing is marked.
@@ -543,7 +691,8 @@ struct TaskRowCard: View {
 
     /// What VoiceOver hears after the name: a folded list's count, and "duplicate".
     private var titleValue: String {
-        [foldedCountDescription, showsDuplicate ? "duplicate" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        let day = task.dayOfWeek.map { Weekday.name($0, short: false) + (isLate ? ", late" : "") } ?? ""
+        return [day, foldedCountDescription, showsDuplicate ? "duplicate" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     /// A folded list's count in words ("2 of 5 items checked"); empty otherwise.
@@ -646,6 +795,55 @@ struct TaskRowCard: View {
                 if !holding { onHandleRelease?() }
             }
             .hiddenFromVoiceOver()  // VoiceOver uses Move Up / Move Down on the task
+    }
+
+    /// In the card's edit mode: the task's expiration. Gray without one, green with one; it
+    /// opens a small calendar to pick a date or a week, or to remove it.
+    private var expiryButton: some View {
+        let hasExpiry = task.expiresOn != nil
+        return Button { showExpiry = true } label: {
+            rowIcon(hasExpiry ? "clock.fill" : "clock",
+                    color: hasExpiry ? Theme.expirySet(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasExpiry ? "Change expiration of \(task.title)" : "Set expiration for \(task.title)")
+        .accessibilityValue(expiryDescription)
+        .accessibilityIdentifier("Expiration \(task.title)")
+        .popover(isPresented: $showExpiry) {
+            ExpiryPicker(
+                taskTitle: task.title, current: task.expiresOn, currentIsWeek: task.expiresWithWeek,
+                earliest: store.earliestExpiry, today: store.currentDay,
+                firstWeekday: store.weekStartsOnSunday ? 1 : 2, theme: theme, rc: rc,
+                onSet: { day, week in
+                    showExpiry = false
+                    // The first expiration asks whether Tasquel may remind (never at launch).
+                    if store.remindsBeforeExpiry { ExpiryNotifications.shared.requestPermissionIfNeeded() }
+                    withAnimation(.snappy(duration: 0.2)) {
+                        store.setTaskExpiry(categoryID: categoryID, taskID: task.id, lastDay: day, wholeWeek: week)
+                    }
+                },
+                onRemove: {
+                    showExpiry = false
+                    withAnimation(.snappy(duration: 0.2)) {
+                        store.setTaskExpiry(categoryID: categoryID, taskID: task.id, lastDay: nil)
+                    }
+                },
+                onCancel: { showExpiry = false }
+            )
+        }
+    }
+
+    /// "expires today", "expires tomorrow", "expires in 3 days, on Thursday, December 25";
+    /// empty without an expiration.
+    private var expiryDescription: String {
+        guard let end = task.expiresOn else { return "" }
+        let days = store.currentDay.days(to: end)
+        let date = end.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day())
+        switch days {
+        case ..<1: return "expires today"
+        case 1: return "expires tomorrow"
+        default: return "expires in \(days) days, on \(date)"
+        }
     }
 
     /// In the card's edit mode: pins the task to the top of the card, or unpins it. With two
@@ -1180,12 +1378,17 @@ struct TaskRowCard: View {
         isEditingTitle = true
     }
 
-    private func commitTitle() {
+    /// Saves the typed name. Return (or Tab) in a field that was emptied deletes the task,
+    /// with the usual Undo message; ending any other way (the keyboard's Done, a tap
+    /// elsewhere) keeps the name it had.
+    private func commitTitle(returnPressed: Bool = false) {
         let title = editedTitle.trimmingCharacters(in: .whitespaces)
+        isEditingTitle = false
         if !title.isEmpty {
             store.renameTask(categoryID: categoryID, taskID: task.id, newTitle: title)
+        } else if returnPressed {
+            withAnimation(.snappy(duration: 0.2)) { store.deleteTask(categoryID: categoryID, taskID: task.id) }
         }
-        isEditingTitle = false
     }
 
     // MARK: Goal Actions
@@ -1661,12 +1864,18 @@ struct SubTaskRowCard: View {
     /// Full width, but no taller than a sub-task row, so a tap can't reach the next row's checkbox.
     private static let touchHeight: CGFloat = 32
 
-    private func commitTitle() {
+    /// Saves the typed name; Return (or Tab) in a field that was emptied deletes the item,
+    /// with the usual Undo message. Ending any other way keeps the name it had.
+    private func commitTitle(returnPressed: Bool = false) {
         let title = editedTitle.trimmingCharacters(in: .whitespaces)
+        isEditingTitle = false
         if !title.isEmpty {
             store.renameSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id, newTitle: title)
+        } else if returnPressed {
+            withAnimation(.snappy(duration: 0.2)) {
+                store.deleteSubtask(categoryID: categoryID, taskID: taskID, subtaskID: subtask.id)
+            }
         }
-        isEditingTitle = false
     }
 
     var body: some View {
@@ -1713,9 +1922,9 @@ struct SubTaskRowCard: View {
                     .cardField(theme, rc: rc, outset: true)
                     .focused($isTitleFocused)
                     .onAppear { isTitleFocused = true }
-                    .onSubmit(commitTitle)
+                    .onSubmit { commitTitle(returnPressed: true) }
                     .onChange(of: editedTitle) { old, text in
-                        if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle() }
+                        if let name = RenameField.submitted(text, was: old) { editedTitle = name; commitTitle(returnPressed: true) }
                     }
                     // Closing the keyboard (Done, or scrolling) also saves the name.
                     .onChange(of: isTitleFocused) { _, focused in
@@ -1809,6 +2018,12 @@ struct AddTaskRowCard: View {
     @State private var newTitle = ""
     @State private var newType: TaskType = .checkbox
     @State private var newMode: TaskMode = .oneTime
+    /// A day picked in the picker for the card's new tasks (it stays picked, like type and
+    /// mode); `didPickDay` once one (or Any) was. Until then they get the day picked in the
+    /// day strip, if any.
+    @State private var newDay: Int?
+    @State private var didPickDay = false
+    @Environment(\.taskDayFilter) private var dayFilter
     @State private var showOptions = false
     /// The options are about to open on iPad, after the keyboard closes: the field losing
     /// focus meanwhile mustn't add the words (they're what the options are for).
@@ -1892,10 +2107,15 @@ struct AddTaskRowCard: View {
         case .repeating: "repeating"
         }
         if Theme.isRetro(theme) {
-            return "new_" + (mode.map { $0.replacingOccurrences(of: "-", with: "_") + "_" } ?? "") + kind + ">"
+            return "new_" + (mode.map { $0.replacingOccurrences(of: "-", with: "_") + "_" } ?? "") + kind
+                + (addDay.map { "_" + Weekday.name($0).lowercased() } ?? "") + ">"
         }
-        return addPlaceholderSpoken.capitalized  // "Add Task", "Add Repeating Goal"
+        // "Add Task", "Add Repeating Goal", "Add Task for Thu"
+        return ("Add " + (mode.map { $0 + " " } ?? "") + kind).capitalized + (addDay.map { " for \(Weekday.name($0))" } ?? "")
     }
+
+    /// The day the next task added gets: one picked in the picker, else the day strip's.
+    private var addDay: Int? { didPickDay ? newDay : dayFilter }
 
     /// The placeholder in words, for VoiceOver (also in Retro).
     private var addPlaceholderSpoken: String {
@@ -1909,7 +2129,7 @@ struct AddTaskRowCard: View {
         case .carryOver: "carry-over"
         case .repeating: "repeating"
         }
-        return "Add " + (mode.map { $0 + " " } ?? "") + kind
+        return "Add " + (mode.map { $0 + " " } ?? "") + kind + (addDay.map { " for " + Weekday.name($0, short: false) } ?? "")
     }
 
     var body: some View {
@@ -2112,7 +2332,10 @@ struct AddTaskRowCard: View {
                                     addTask(keepTyping: true)
                                 },
                                 onDone: { showOptions = false },
-                                isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
+                                isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true,
+                                day: addDay,
+                                onSelectDay: { newDay = $0; didPickDay = true },
+                                firstWeekday: store.firstWeekday
                             )
                         }
                     }
@@ -2230,6 +2453,8 @@ struct AddTaskRowCard: View {
     private func finishSmartAdd(_ outcome: SmartAddOutcome) {
         var parsed = outcome.parsed
         if pickedMode { parsed.mode = newMode }
+        // A day picked in the picker wins; then the words' ("on Friday"); then the strip's.
+        if didPickDay { parsed.day = newDay } else if parsed.day == nil { parsed.day = dayFilter }
         if pickedType && parsed.type != newType {
             parsed.type = newType
             parsed.items = []
@@ -2311,7 +2536,8 @@ struct AddTaskRowCard: View {
     private func addTask(_ typed: String? = nil, keepTyping: Bool) -> Bool {
         let title = (typed ?? newTitle).trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty, !isParsing else { return false }
-        let task = ParsedTask(title: title, type: newType, mode: newMode)
+        var task = ParsedTask(title: title, type: newType, mode: newMode)
+        task.day = addDay
         let awaitsInput = task.type != .checkbox
         let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         var added: UUID?

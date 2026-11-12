@@ -96,8 +96,16 @@ enum Theme {
     static func pinned(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         isRetro(m) ? retroPalette(rc).bright : strongOrange
     }
+    /// A task's day once it has gone by unfinished ("Tue · late"), like the Duplicate mark.
+    static func late(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : strongOrange }
     /// The Duplicate mark after a task's or item's name (Retro: yellow, like a part-done ring).
     static func duplicate(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : strongOrange }
+    /// An expiring task's ring (the days gone by) and its clock in a card's edit mode: green,
+    /// deeper in light mode so it keeps 4:1 on a card.
+    static func expirySet(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        isRetro(m) ? retroPalette(rc).bright
+            : Color(UIColor { $0.userInterfaceStyle == .dark ? .systemGreen : UIColor(red: 0.12, green: 0.52, blue: 0.2, alpha: 1) })
+    }
 
     // Accent
     static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color { isRetro(m) ? retroPalette(rc).bright : .blue }

@@ -94,7 +94,7 @@ final class CardStateUITests: XCTestCase {
         let subtask = app.textFields["Add sub-task"]
         XCTAssertTrue(subtask.waitForExistence(timeout: 3))
         subtask.typeText("Oat")  // no Return
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
         XCTAssertTrue(app.staticTexts["Oat"].waitForExistence(timeout: 3), "the typed sub-task was added")
         app.buttons["Done editing Errands"].tap()
         XCTAssertFalse(app.textFields.matching(NSPredicate(format: "value == %@", "Oat")).firstMatch.exists,
@@ -111,7 +111,7 @@ final class CardStateUITests: XCTestCase {
         field.tap()
         field.typeText("Report\n")
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["Edit Work"].tap()
+        app.editCard("Work")
         XCTAssertTrue(app.buttons["Done editing Work"].waitForExistence(timeout: 3))
         app.buttons["Next week"].tap()
         sleep(2)
@@ -130,7 +130,7 @@ final class CardStateUITests: XCTestCase {
         field.typeText("Report\n")
         field.typeText("Email\n")  // (the card's last task gone would end its edit mode)
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["Edit Work"].tap()
+        app.editCard("Work")
         app.buttons["Delete Report"].tap()
         app.buttons["Done editing Work"].tap()
 
@@ -163,7 +163,7 @@ final class CardStateUITests: XCTestCase {
         field.typeText("Email\n")
         app.buttons["Done"].firstMatch.tap()
         let week = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label
-        app.buttons["Edit Work"].tap()
+        app.editCard("Work")
         app.buttons["Delete Report"].tap()
         app.buttons["Done editing Work"].tap()
         app.buttons["Next week"].tap()

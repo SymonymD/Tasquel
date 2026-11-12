@@ -191,6 +191,18 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// Pinned to the top of its card (in the card's edit mode, up to `Category.maxPins`).
     /// Not an edit, like a fold, and copies made for later weeks take it with them.
     var isPinned = false
+    /// The task's last day: picked with the clock in its card's edit mode, as a date or as a
+    /// week (its last day). The day after, it's gone from its card, and it never carries over
+    /// or repeats into a week after it; earlier weeks keep it. Nil: it doesn't expire.
+    var expiresOn: DayKey? = nil
+    /// The day the expiration was set, so the checkbox's ring can show how much time is left.
+    var expirySetOn: DayKey? = nil
+    /// The expiration was picked as a whole week (`expiresOn` is that week's last day).
+    var expiresWithWeek = false
+    /// The day of the week it's for, as the calendar's weekday (1 Sunday … 7 Saturday), so
+    /// it stays the same day whichever day weeks start on. Picked in the type and mode
+    /// picker (or from Smart Add's "on Friday"); copies in later weeks keep it. Nil: any day.
+    var dayOfWeek: Int? = nil
 
     /// Whether the list's items are folded away right now (another type keeps the setting
     /// but always shows its sub-tasks).
@@ -295,7 +307,64 @@ extension ChecklistTask {
         modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
         isListFolded = (try? container.decodeIfPresent(Bool.self, forKey: .isListFolded)) ?? false
         isPinned = (try? container.decodeIfPresent(Bool.self, forKey: .isPinned)) ?? false
+        expiresOn = (try? container.decodeIfPresent(DayKey.self, forKey: .expiresOn)) ?? nil
+        expirySetOn = (try? container.decodeIfPresent(DayKey.self, forKey: .expirySetOn)) ?? nil
+        expiresWithWeek = (try? container.decodeIfPresent(Bool.self, forKey: .expiresWithWeek)) ?? false
+        dayOfWeek = (try? container.decodeIfPresent(Int.self, forKey: .dayOfWeek)).flatMap { (1...7).contains($0) ? $0 : nil }
     }
+}
+
+extension ChecklistTask {
+    /// Gone from a week once its last day is before `cutoff`: the week's first day, or
+    /// today in the current week (`ChecklistStore.expiryCutoff`).
+    func isExpired(before cutoff: DayKey) -> Bool { expiresOn.map { $0 < cutoff } ?? false }
+
+    /// How far through its days it is on `today`, 0...1, for the checkbox's ring, the day
+    /// it was set counting as day 1: set on the 11th with the 15th its last day, it's 1 of 5
+    /// (a fifth) on the 11th and all of it on the 15th. Nil without an expiration.
+    func expiryProgress(on today: DayKey) -> Double? {
+        guard let end = expiresOn else { return nil }
+        let start = min(expirySetOn ?? today, end)
+        let total = start.days(to: end) + 1
+        let day = start.days(to: today) + 1
+        return min(max(Double(day) / Double(total), 0), 1)
+    }
+
+    /// Copies (carried over, repeating, or following their source) keep the expiration and
+    /// the day.
+    mutating func takeExpiry(from source: ChecklistTask) {
+        expiresOn = source.expiresOn
+        expirySetOn = source.expirySetOn
+        expiresWithWeek = source.expiresWithWeek
+        dayOfWeek = source.dayOfWeek
+    }
+
+    /// The task's day in the week starting `start` (weeks start on `firstWeekday`, 1 Sunday
+    /// or 2 Monday). Nil without a day.
+    func day(inWeekStarting start: DayKey, firstWeekday: Int) -> DayKey? {
+        dayOfWeek.map { start.adding(days: Weekday.offset($0, firstWeekday: firstWeekday)) }
+    }
+
+    /// Its day has gone by and it isn't done: shown as late. Only in the current week (in a
+    /// past one every day has gone by; a carried copy's day comes round again next week).
+    func isLate(inWeekStarting start: DayKey, firstWeekday: Int, today: DayKey) -> Bool {
+        guard !isCompleted, let day = day(inWeekStarting: start, firstWeekday: firstWeekday) else { return false }
+        return day < today && today < start.adding(days: 7)
+    }
+}
+
+/// A reminder the day before a task's last day, at `hour` (scheduled as a local notification
+/// by `ExpiryNotifications`, the only part that's Apple's).
+struct ExpiryReminder: Equatable {
+    static let hour = 9
+    /// The same for a task and its date in every week, so rescheduling replaces it.
+    let id: String
+    /// "Gifts expires tomorrow"
+    let title: String
+    /// "Thursday, December 25 is its last day in Errands."
+    let body: String
+    /// The day it comes.
+    let day: DayKey
 }
 
 struct Category: Codable, Identifiable, Equatable {
@@ -312,14 +381,34 @@ struct Category: Codable, Identifiable, Equatable {
     /// How many cards a week, and tasks a card, can be pinned.
     static let maxPins = 2
 
-    /// The tasks as the card shows them: pinned ones first, each group in its saved order.
-    /// (Pinning doesn't move a task in `tasks`, so unpinned it goes back to its place.)
-    var orderedTasks: [ChecklistTask] { tasks.filter(\.isPinned) + tasks.filter { !$0.isPinned } }
+    /// The tasks as the card shows them: pinned ones first; then in each of those two groups,
+    /// the ones with a day in the week's order of days, then the ones without, each in its
+    /// saved order. (Pinning or giving a day doesn't move a task in `tasks`, so it goes back
+    /// to its place without.) Weeks start on `firstWeekday` (1 Sunday, 2 Monday).
+    func orderedTasks(firstWeekday: Int) -> [ChecklistTask] {
+        let byDay = { (tasks: [ChecklistTask]) in
+            tasks.enumerated().sorted {
+                let a = $0.element.dayOfWeek.map { Weekday.offset($0, firstWeekday: firstWeekday) } ?? 7
+                let b = $1.element.dayOfWeek.map { Weekday.offset($0, firstWeekday: firstWeekday) } ?? 7
+                return (a, $0.offset) < (b, $1.offset)
+            }.map(\.element)
+        }
+        return byDay(tasks.filter(\.isPinned)) + byDay(tasks.filter { !$0.isPinned })
+    }
 
-    /// The tasks `taskID` can be moved among: the pinned ones if it's pinned, else the rest.
+    /// The tasks as the card shows them (`orderedTasks`); with a day picked in the day strip
+    /// (`day`), only that day's and those with no day.
+    func shownTasks(firstWeekday: Int, day: Int?) -> [ChecklistTask] {
+        let ordered = orderedTasks(firstWeekday: firstWeekday)
+        guard let day else { return ordered }
+        return ordered.filter { $0.dayOfWeek == nil || $0.dayOfWeek == day }
+    }
+
+    /// The tasks `taskID` can be moved among: the ones pinned like it with the same day (or
+    /// none), so a move never goes against the card's order.
     func reorderGroup(for taskID: UUID) -> [ChecklistTask] {
-        let pinned = tasks.first { $0.id == taskID }?.isPinned ?? false
-        return tasks.filter { $0.isPinned == pinned }
+        guard let task = tasks.first(where: { $0.id == taskID }) else { return [] }
+        return tasks.filter { $0.isPinned == task.isPinned && $0.dayOfWeek == task.dayOfWeek }
     }
 
     var pinnedTaskCount: Int { tasks.filter(\.isPinned).count }
@@ -330,6 +419,36 @@ struct Category: Codable, Identifiable, Equatable {
     /// and a goal, list or task with sub-tasks on its way fills part of its own (`doneShare`).
     var doneFraction: Double {
         tasks.isEmpty ? 0 : tasks.map(\.doneShare).reduce(0, +) / Double(tasks.count)
+    }
+}
+
+// MARK: - Weekdays
+
+/// Days of the week as the calendar numbers them: 1 Sunday … 7 Saturday.
+enum Weekday {
+    /// How many days after the week's first day `weekday` is (weeks start on `firstWeekday`).
+    static func offset(_ weekday: Int, firstWeekday: Int) -> Int {
+        ((weekday - firstWeekday) % 7 + 7) % 7
+    }
+
+    /// The seven weekdays in the week's order.
+    static func ordered(firstWeekday: Int) -> [Int] {
+        (0..<7).map { (firstWeekday - 1 + $0) % 7 + 1 }
+    }
+
+    /// "M", "T", in the user's language.
+    static func letter(_ weekday: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = .current
+        return calendar.veryShortWeekdaySymbols[(weekday - 1 + 7) % 7]
+    }
+
+    /// "Mon", "Thursday", in the user's language.
+    static func name(_ weekday: Int, short: Bool = true) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = .current
+        let names = short ? calendar.shortWeekdaySymbols : calendar.weekdaySymbols
+        return names[(weekday - 1 + 7) % 7]
     }
 }
 
@@ -417,6 +536,12 @@ struct DayKey: Hashable, Comparable, Codable, CustomStringConvertible {
     /// Midnight at the start of this day in `calendar`'s time zone.
     func date(in calendar: Calendar) -> Date {
         Calendar.weekDates(in: calendar.timeZone).date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+    }
+
+    /// How many days from this day to `other`: 1 to the next day, negative to an earlier one.
+    func days(to other: DayKey) -> Int {
+        let calendar = Calendar.weekDates(in: TimeZone(identifier: "UTC")!)
+        return calendar.dateComponents([.day], from: date(in: calendar), to: other.date(in: calendar)).day ?? 0
     }
 
     /// The day `days` later (or earlier), by the calendar, not by 24-hour steps.

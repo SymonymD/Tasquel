@@ -17,6 +17,14 @@ extension XCUIApplication {
         return field
     }
 
+    /// Starts a card's own edit mode and waits for its task icons (clock, pin, trash, handle)
+    /// to run out to their places: until then they're stacked on the handle and hidden, and
+    /// a tap on one misses (an invisible button takes no taps).
+    func editCard(_ name: String) {
+        buttons["Edit \(name)"].tap()
+        Thread.sleep(forTimeInterval: 0.6)
+    }
+
     /// A card's Add task row, open (the field) or not (its +): the card is open and can be
     /// added to.
     var addTaskRow: XCUIElement {

@@ -180,7 +180,7 @@ final class GoalUITests: XCTestCase {
             XCTAssertTrue(name.waitForExistence(timeout: 3))
             sleep(1)
             let oneLine = name.frame.height
-            app.buttons["Edit Errands"].tap()
+            app.editCard("Errands")
             XCTAssertTrue(app.buttons["Pin Groceries"].waitForExistence(timeout: 3))
             sleep(1)
             XCTAssertLessThan(name.frame.height, oneLine * 1.5, "Groceries stays on one line (\(size ?? "default size"))")
@@ -228,6 +228,159 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["“Crash” is already in Bugs"].waitForNonExistence(timeout: 3))
         XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Crash")).count, 1)
         XCTAssertEqual(marked.count, 0)
+    }
+
+    /// Clearing a name and pressing Return deletes the task or item, with Undo; closing the
+    /// keyboard with Done instead keeps the name.
+    @MainActor
+    func testClearingANameAndReturnDeletes() throws {
+        let app = launchFresh(["-isolatedDataID", "clear-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Pharmacy\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Bank\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Bugs")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options")).firstMatch.tap()
+        app.buttons["List"].firstMatch.tap()
+        app.buttons["Add Task"].tap()
+        let item = app.textFields["Add item"]
+        XCTAssertTrue(item.waitForExistence(timeout: 3))
+        item.typeText("Crash\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        item.typeText("Typo\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+
+        app.staticTexts["Pharmacy"].tap()
+        let nameField = app.textFields["Task name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 2))
+        nameField.clearAndType("\n")
+        XCTAssertTrue(app.staticTexts["Pharmacy"].waitForNonExistence(timeout: 2), "the task is deleted")
+        XCTAssertTrue(app.staticTexts["Bank"].exists, "the others stay")
+        let undo = app.buttons["Undo delete"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2), "with the usual Undo")
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["Pharmacy"].waitForExistence(timeout: 2), "Undo brings it back")
+
+        app.staticTexts["Crash"].tap()
+        let itemField = app.textFields["Item"]
+        XCTAssertTrue(itemField.waitForExistence(timeout: 2))
+        itemField.clearAndType("\n")
+        XCTAssertTrue(app.staticTexts["Crash"].waitForNonExistence(timeout: 2), "the item is deleted")
+        XCTAssertTrue(app.staticTexts["Typo"].exists)
+
+        // Emptied, then the keyboard's Done: nothing is deleted, the name stays.
+        app.staticTexts["Bank"].tap()
+        XCTAssertTrue(nameField.waitForExistence(timeout: 2))
+        nameField.clearAndType("")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Bank"].waitForExistence(timeout: 2), "Done keeps the name")
+    }
+
+    /// In a card's edit mode the clock takes the type and mode's place: it sets a task's
+    /// last day (a date or a week), shows it, and takes it away again.
+    @MainActor
+    func testExpirationFromTheClock() throws {
+        let app = launchFresh(["-isolatedDataID", "expiry-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Gifts\n")
+        app.buttons["Done"].firstMatch.tap()
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:")).firstMatch
+        XCTAssertTrue(options.waitForExistence(timeout: 3))
+
+        app.editCard("Errands")
+        let clock = app.buttons["Expiration Gifts"]
+        XCTAssertTrue(clock.waitForExistence(timeout: 3))
+        XCTAssertFalse(options.exists, "the clock takes the type and mode's place")
+        XCTAssertEqual(clock.label, "Set expiration for Gifts")
+
+        // A date: today, its last day.
+        clock.tap()
+        XCTAssertTrue(app.staticTexts["Expires"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Set"].isEnabled, "nothing picked yet")
+        app.buttons[Date().formatted(.dateTime.weekday(.wide).month(.wide).day())].tap()
+        app.buttons["Set"].tap()
+        XCTAssertTrue(app.staticTexts["Expires"].waitForNonExistence(timeout: 3))
+        XCTAssertEqual(clock.label, "Change expiration of Gifts")
+        XCTAssertEqual(clock.value as? String, "expires today")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@ AND value == %@", "Complete Gifts", "expires today")).firstMatch.exists,
+                      "the checkbox says so too")
+
+        // Removed again.
+        clock.tap()
+        app.buttons["Remove expiration"].tap()
+        XCTAssertTrue(app.staticTexts["Expires"].waitForNonExistence(timeout: 3))
+        XCTAssertEqual(clock.label, "Set expiration for Gifts")
+
+        // A week: this one, its last day.
+        clock.tap()
+        app.buttons["Week"].tap()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2  // weeks start on Monday
+        let weekStart = calendar.dateInterval(of: .weekOfYear, for: Date())!.start
+        app.buttons["Week of \(weekStart.formatted(.dateTime.month(.wide).day()))"].tap()
+        app.buttons["Set"].tap()
+        XCTAssertTrue(app.staticTexts["Expires"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue((clock.value as? String)?.hasPrefix("expires") == true)
+
+        app.buttons["Done editing Errands"].tap()
+        XCTAssertTrue(options.waitForExistence(timeout: 3), "type and mode are back outside edit mode")
+    }
+
+    /// A task's day, picked in its type and mode picker, shows after its name and sorts it;
+    /// tapping a day in the strip at the top shows only that day's tasks (and those with no
+    /// day), and Show All brings the rest back.
+    @MainActor
+    func testTaskDayAndDayFilter() throws {
+        let app = launchFresh(["-isolatedDataID", "days-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Gym\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Party\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Bank\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+
+        func pickDay(_ title: String, _ day: String) {
+            let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:"))
+            let row = app.staticTexts[title].frame
+            let button = options.allElementsBoundByIndex.min { abs($0.frame.midY - row.midY) < abs($1.frame.midY - row.midY) }!
+            button.tap()
+            XCTAssertTrue(app.staticTexts["DAY"].waitForExistence(timeout: 3), "the picker has a Day row")
+            app.buttons[day].tap()
+            app.buttons["Done"].firstMatch.tap()
+            XCTAssertTrue(app.staticTexts["DAY"].waitForNonExistence(timeout: 3))
+            sleep(1)
+        }
+        pickDay("Party", "Friday")
+        pickDay("Gym", "Saturday")
+        XCTAssertEqual(app.staticTexts["Party"].value as? String, "Friday")
+        XCTAssertLessThan(app.staticTexts["Party"].frame.minY, app.staticTexts["Gym"].frame.minY, "Friday before Saturday")
+        XCTAssertLessThan(app.staticTexts["Gym"].frame.minY, app.staticTexts["Bank"].frame.minY, "days before no day")
+
+        app.buttons["Day Friday"].tap()
+        XCTAssertTrue(app.staticTexts["Gym"].waitForNonExistence(timeout: 3), "Saturday's task is hidden")
+        XCTAssertTrue(app.staticTexts["Party"].exists, "Friday's shows")
+        XCTAssertTrue(app.staticTexts["Bank"].exists, "and so does one with no day")
+        app.buttons["Show All"].tap()
+        XCTAssertTrue(app.staticTexts["Gym"].waitForExistence(timeout: 3), "Show All brings it back")
     }
 
     @MainActor
@@ -352,7 +505,7 @@ final class GoalUITests: XCTestCase {
         addTask.typeText("Return library books\n")
         app.buttons["Done"].firstMatch.tap()
 
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
         XCTAssertFalse(addTask.exists, "no adding while editing")
         app.buttons["Delete Return library books"].tap()
 
@@ -377,7 +530,7 @@ final class GoalUITests: XCTestCase {
             usleep(400_000)
         }
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
 
         let alpha = app.buttons["Complete Alpha"]
         let charlie = app.buttons["Complete Charlie"]
@@ -421,7 +574,7 @@ final class GoalUITests: XCTestCase {
             usleep(400_000)
         }
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
 
         let first = app.buttons["Complete Task 1"]
         let last = app.buttons["Complete Task 16"]
@@ -521,7 +674,7 @@ final class GoalUITests: XCTestCase {
         app.textFields["Add sub-task"].typeText("Refill\n")
         app.buttons["Done"].tap()
 
-        app.buttons["Edit Errands"].tap()
+        app.editCard("Errands")
         XCTAssertFalse(app.addTaskRow.exists, "no adding tasks in edit mode")
         XCTAssertFalse(app.buttons["Add sub-task to Pharmacy"].exists, "no adding sub-tasks in edit mode")
         let deleteTask = app.buttons["Delete Pharmacy"]

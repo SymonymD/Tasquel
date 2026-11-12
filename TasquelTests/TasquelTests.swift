@@ -1503,7 +1503,7 @@ struct PinTests {
     }
 
     private func shown(_ store: ChecklistStore) -> [String] {
-        store.selectedWeek!.categories[0].orderedTasks.map(\.title)
+        store.selectedWeek!.categories[0].orderedTasks(firstWeekday: 2).map(\.title)
     }
 
     @Test("Up to two tasks pin to the top of their card; unpinned, a task goes back to its place")
@@ -1650,6 +1650,238 @@ struct DuplicateTests {
         #expect(store.lastDelete == nil, "no Deleted … · Undo")
         #expect(store.selectedWeek?.categories[0].tasks[0].subtasks.map(\.title) == ["Milk"])
         #expect(store.selectedWeek?.categories[0].tasks[0].isCompleted == true, "done again, as before")
+    }
+}
+
+// MARK: - Expiration
+
+struct ExpiryTests {
+    /// A day in the week of Monday, March 2, 2099 (the 4th is a Wednesday).
+    private func day(_ number: Int) -> DayKey { DayKey(year: 2099, month: 3, day: number) }
+
+    @Test("The checkbox ring fills as the days go by, the day it's set counting as day 1")
+    func progress() {
+        var task = ChecklistTask(title: "Gifts")
+        task.expiresOn = day(15)
+        task.expirySetOn = day(11)
+        #expect(task.expiryProgress(on: day(11)) == 0.2, "5 days: the first is a fifth")
+        #expect(task.expiryProgress(on: day(13)) == 0.6)
+        #expect(task.expiryProgress(on: day(15)) == 1, "full on its last day")
+        task.expiresOn = day(4)
+        task.expirySetOn = day(4)
+        #expect(task.expiryProgress(on: day(4)) == 1, "set on its last day")
+        #expect(ChecklistTask(title: "Call").expiryProgress(on: day(4)) == nil)
+        #expect(day(4).days(to: day(7)) == 3 && day(7).days(to: day(4)) == -3)
+    }
+
+    @Test("A task is there through its last day and gone the day after")
+    func goneTheDayAfter() {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let id = store.addTask(categoryID: categoryID, title: "Gifts")!
+        store.setTaskExpiry(categoryID: categoryID, taskID: id, lastDay: day(5))
+        let task = store.selectedWeek!.categories[0].tasks[0]
+        #expect(task.expiresOn == day(5) && task.expirySetOn == day(4) && !task.expiresWithWeek)
+
+        clock.now = clock.calendar.date(byAdding: .day, value: 1, to: clock.now)!  // its last day
+        store.navigateToDate(clock.now)
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Gifts"])
+        clock.now = clock.calendar.date(byAdding: .day, value: 1, to: clock.now)!  // the day after
+        store.navigateToDate(clock.now)
+        #expect(store.selectedWeek!.categories[0].tasks.isEmpty, "gone the day after its last day")
+    }
+
+    @Test("It never carries over or repeats into a week after its last day; copies keep the date; past weeks keep it")
+    func notIntoLaterWeeks() {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let gifts = store.addTask(categoryID: categoryID, title: "Gifts")!
+        let gym = store.addTask(categoryID: categoryID, title: "Gym", mode: .repeating)!
+        let taxes = store.addTask(categoryID: categoryID, title: "Taxes")!
+        store.setTaskExpiry(categoryID: categoryID, taskID: gifts, lastDay: day(8), wholeWeek: true)  // this week
+        store.setTaskExpiry(categoryID: categoryID, taskID: gym, lastDay: day(8))
+        store.setTaskExpiry(categoryID: categoryID, taskID: taxes, lastDay: day(12))
+        #expect(store.selectedWeek!.categories[0].tasks[0].expiresWithWeek)
+
+        let next = store.ensureWeekExists(for: clock.weeks(1, from: clock.now))
+        #expect(next.categories[0].tasks.map(\.title) == ["Taxes"])
+        #expect(next.categories[0].tasks[0].expiresOn == day(12), "the copy keeps the date")
+
+        clock.now = clock.weeks(1, from: clock.now)
+        store.navigateToDate(clock.now)
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Taxes"])
+        let lastWeek = store.weeks.first { $0.startDay == day(2) }!
+        #expect(lastWeek.categories[0].tasks.map(\.title) == ["Gifts", "Gym", "Taxes"], "last week keeps its history")
+    }
+
+    @Test("A later saved week's untouched copy takes a date set after it was saved, and leaves once it's past")
+    func savedLaterWeekFollows() {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let gifts = store.addTask(categoryID: categoryID, title: "Gifts")!
+        let nextMonday = clock.weeks(1, from: clock.now)
+        store.navigateToDate(nextMonday)
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Saved")
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Gifts", "Saved"])
+        #expect(store.earliestExpiry == day(9), "in a later week, from its first day")
+
+        store.navigateToDate(clock.now)
+        #expect(store.earliestExpiry == day(4), "this week, from today")
+        store.setTaskExpiry(categoryID: categoryID, taskID: gifts, lastDay: day(6))
+        store.navigateToDate(nextMonday)
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Saved"], "next week's copy is gone")
+    }
+
+    @Test("A reminder at 9 AM the day before the last day: unchecked tasks still to come, and repeating ones")
+    func reminders() {
+        let clock = TestClock(2099, 3, 4)  // Wednesday, noon
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let name = store.selectedWeek!.categories[0].name
+        func add(_ title: String, _ mode: TaskMode = .carryOver, lastDay: Int, checked: Bool = false) {
+            let id = store.addTask(categoryID: categoryID, title: title, mode: mode)!
+            store.setTaskExpiry(categoryID: categoryID, taskID: id, lastDay: day(lastDay))
+            if checked { store.toggleTask(categoryID: categoryID, taskID: id) }
+        }
+        add("Gifts", lastDay: 6)                                 // Thursday the 5th
+        add("Bank", lastDay: 5)                                  // this morning: already past
+        add("Done", lastDay: 7, checked: true)                   // checked off
+        add("Trip", .repeating, lastDay: 11, checked: true)      // comes back unchecked next week
+        add("Memo", .oneTime, lastDay: 8)                        // Saturday the 7th
+        add("Report", lastDay: 10, checked: true)                // finished: doesn't carry on
+        let reminders = store.expiryReminders
+        #expect(reminders.map(\.title) == ["Gifts expires tomorrow", "Trip expires tomorrow", "Memo expires tomorrow"])
+        #expect(reminders.map(\.day) == [day(5), day(10), day(7)])
+        #expect(reminders[0].body.hasSuffix("is its last day in \(name)."))
+        #expect(Set(reminders.map(\.id)).count == 3)
+    }
+
+    @Test("One reminder per task however many weeks have a copy; none with Expiration Reminders off")
+    func oneReminderPerTask() {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let plan = store.addTask(categoryID: categoryID, title: "Plan")!
+        store.setTaskExpiry(categoryID: categoryID, taskID: plan, lastDay: day(12))
+        store.navigateToDate(clock.weeks(1, from: clock.now))
+        store.addTask(categoryID: store.selectedWeek!.categories[0].id, title: "Saved")
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Plan", "Saved"], "next week is saved, with its copy")
+        #expect(store.expiryReminders.map(\.title) == ["Plan expires tomorrow"])
+        #expect(store.expiryReminders.first?.day == day(11))
+
+        store.setRemindsBeforeExpiry(false)
+        #expect(store.expiryReminders.isEmpty)
+    }
+
+    @Test("Removing the expiration keeps the task; files from before expirations load without one")
+    func removeAndOldFiles() throws {
+        let store = makeIsolatedStore(clock: TestClock(2099, 3, 4))
+        let categoryID = store.selectedWeek!.categories[0].id
+        let id = store.addTask(categoryID: categoryID, title: "Gifts")!
+        store.setTaskExpiry(categoryID: categoryID, taskID: id, lastDay: day(20))
+        store.setTaskExpiry(categoryID: categoryID, taskID: id, lastDay: nil)
+        let task = try #require(store.selectedWeek?.categories[0].tasks.first)
+        #expect(task.expiresOn == nil && task.expirySetOn == nil && !task.expiresWithWeek)
+
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(task)) as? [String: Any])
+        for key in ["expiresOn", "expirySetOn", "expiresWithWeek"] { json[key] = nil }
+        let old = try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.expiresOn == nil && !old.expiresWithWeek)
+    }
+}
+
+// MARK: - Days
+
+struct TaskDayTests {
+    private func day(_ number: Int) -> DayKey { DayKey(year: 2099, month: 3, day: number) }  // Mon 2 … Sun 8
+
+    /// Errands: Return (no day), Party (Fri), Gym (Mon), Brunch (Sun), and Call pinned (Wed).
+    private func makeErrands() -> (ChecklistStore, Tasquel.Category) {
+        var tasks = [("Return", nil), ("Party", 6), ("Gym", 2), ("Brunch", 1), ("Call", 4)].map { title, day -> ChecklistTask in
+            var task = ChecklistTask(title: title)
+            task.dayOfWeek = day
+            return task
+        }
+        tasks[4].isPinned = true
+        let category = Tasquel.Category(name: "Errands", symbol: "cart", tasks: tasks)
+        let store = makeIsolatedStore(clock: TestClock(2099, 3, 4))
+        store.weeks = [Week(startDay: day(2), categories: [category])]
+        store.selectedDate = TestClock(2099, 3, 4).now
+        return (store, category)
+    }
+
+    @Test("Tasks with a day come in the week's order of days, after the pinned and before those with none")
+    func order() {
+        let (_, category) = makeErrands()
+        #expect(category.orderedTasks(firstWeekday: 2).map(\.title) == ["Call", "Gym", "Party", "Brunch", "Return"])
+        #expect(category.orderedTasks(firstWeekday: 1).map(\.title) == ["Call", "Brunch", "Gym", "Party", "Return"], "weeks from Sunday")
+        #expect(category.tasks.map(\.title) == ["Return", "Party", "Gym", "Brunch", "Call"], "the saved order doesn't change")
+        #expect(category.shownTasks(firstWeekday: 2, day: 6).map(\.title) == ["Party", "Return"], "Friday's and those with no day")
+        #expect(category.shownTasks(firstWeekday: 2, day: nil).count == 5)
+    }
+
+    @Test("A task moves only among those with its day; giving it a day is an edit that copies keep")
+    func movesAndCopies() throws {
+        let (store, category) = makeErrands()
+        let ids = Dictionary(uniqueKeysWithValues: category.tasks.map { ($0.title, $0.id) })
+        store.moveTask(categoryID: category.id, taskID: ids["Gym"]!, to: ids["Party"]!)
+        #expect(store.selectedWeek!.categories[0].tasks.map(\.title) == ["Return", "Party", "Gym", "Brunch", "Call"], "Monday's can't go to Friday")
+        #expect(store.selectedWeek!.categories[0].reorderGroup(for: ids["Return"]!).map(\.title) == ["Return"])
+
+        store.setTaskDay(categoryID: category.id, taskID: ids["Return"]!, day: 3)
+        let task = try #require(store.selectedWeek?.categories[0].tasks.first)
+        #expect(task.dayOfWeek == 3 && task.isUserEdited)
+        let next = store.ensureWeekExists(for: TestClock(2099, 3, 11).now)
+        #expect(next.categories[0].tasks.first { $0.title == "Return" }?.dayOfWeek == 3, "next week's copy keeps its day")
+        store.setTaskDay(categoryID: category.id, taskID: ids["Return"]!, day: nil)
+        #expect(store.selectedWeek?.categories[0].tasks.first?.dayOfWeek == nil)
+    }
+
+    @Test("Late: its day has gone by in this week and it isn't done")
+    func late() {
+        var task = ChecklistTask(title: "Gym")
+        task.dayOfWeek = 2  // Monday the 2nd
+        #expect(task.isLate(inWeekStarting: day(2), firstWeekday: 2, today: day(4)))
+        #expect(!task.isLate(inWeekStarting: day(2), firstWeekday: 2, today: day(2)), "not on the day itself")
+        #expect(!task.isLate(inWeekStarting: day(9), firstWeekday: 2, today: day(4)), "next week's copy")
+        #expect(!task.isLate(inWeekStarting: DayKey(year: 2099, month: 2, day: 23), firstWeekday: 2, today: day(4)), "a past week")
+        task.isCompleted = true
+        #expect(!task.isLate(inWeekStarting: day(2), firstWeekday: 2, today: day(4)), "done")
+        #expect(ChecklistTask(title: "Call").day(inWeekStarting: day(2), firstWeekday: 2) == nil)
+    }
+
+    @Test("Smart Add gives a task the one weekday its words name")
+    func smartAddDay() throws {
+        #expect(TaskTextHints.weekdayNamed("call mom on friday") == 6)
+        #expect(TaskTextHints.weekdayNamed("gym every monday") == 2)
+        #expect(TaskTextHints.weekdayNamed("friday team lunch") == 6)
+        #expect(TaskTextHints.weekdayNamed("yoga on mondays") == 2)
+        #expect(TaskTextHints.weekdayNamed("swim every sat") == 7)
+        #expect(TaskTextHints.weekdayNamed("swim mon, wed, fri") == nil, "several days is a goal of 3")
+        #expect(TaskTextHints.weekdayNamed("buy sunscreen") == nil)
+        #expect(TaskTextHints.weekdayNamed("sun hat") == nil, "a short name only after on, every, each or this")
+        #expect(TaskTextHints.refine(ParsedTask(title: "Call Mom"), from: "Call Mom on Friday").day == 6)
+
+        let store = makeIsolatedStore()
+        let categoryID = store.selectedWeek!.categories[0].id
+        var parsed = ParsedTask(title: "Call Mom")
+        parsed.day = 6
+        let id = try #require(store.addParsedTask(parsed, categoryID: categoryID))
+        #expect(store.viewedTask(categoryID, id)?.dayOfWeek == 6)
+    }
+
+    @Test("Files from before days load without one, and a day out of range is dropped")
+    func oldFiles() throws {
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(ChecklistTask(title: "Gym"))) as? [String: Any])
+        json["dayOfWeek"] = nil
+        #expect(try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json)).dayOfWeek == nil)
+        json["dayOfWeek"] = 9
+        #expect(try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json)).dayOfWeek == nil)
+        json["dayOfWeek"] = 5
+        #expect(try JSONDecoder().decode(ChecklistTask.self, from: JSONSerialization.data(withJSONObject: json)).dayOfWeek == 5)
     }
 }
 
@@ -2894,12 +3126,18 @@ func smartAddNewRules(text: String, model: TaskMode, title: String, type: TaskTy
     #expect(task.goalUnit == unit)
 }
 
-/// Words that only look like the new rules are read as before.
+/// Words that only look like the new rules are read as before (a day the words name aside:
+/// the task gets it, `TaskDayTests`).
 @Test func smartAddNewRulesLeaveLookalikes() {
     for text in ["Move Monday's meeting to Friday", "Friday team lunch", "Measure twice, cut once", "Print 4 x 6 photos",
                  "Room 101 cleanup", "Renew passport in 3 days", "Dentist every other Tuesday", "Plan 3 days in Rome"] {
-        #expect(smartAddRules(text) == ParsedTask(title: text), "\(text)")
+        var task = smartAddRules(text)
+        task.day = nil
+        #expect(task == ParsedTask(title: text), "\(text)")
     }
+    #expect(smartAddRules("Friday team lunch").day == 6)
+    #expect(smartAddRules("Dentist every other Tuesday").day == 3)
+    #expect(smartAddRules("Move Monday's meeting to Friday").day == nil, "two days named")
     #expect(smartAddRules("Dentist every other Tuesday", model: .repeating).mode == .oneTime, "every other week isn't repeating")
     #expect(smartAddRules("Daily standup") == ParsedTask(title: "Daily standup", type: .goal, mode: .repeating, goalTarget: 7))
     #expect(smartAddRules("Weekly report") == ParsedTask(title: "Weekly report", mode: .repeating))
