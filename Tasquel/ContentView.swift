@@ -88,11 +88,15 @@ struct ContentView: View {
     @State private var pager = WeekPagerState()
     @State private var pagerTarget: PagerTarget?
     @State private var arrivingWeek: Week?  // its title and days show from release until it takes over
-    @State private var weekSwipeAxis: Axis?
-    /// Resets on its own when iOS cancels the touch (onEnded isn't called then), so a
-    /// cancelled swipe can't leave the page disabled and the grid unable to scroll.
-    @GestureState private var isWeekSwiping = false
-    @State private var weekDragOrigin: CGFloat = 0  // translation when the swipe was recognized
+    /// Which way the drag on the grid is going, decided once per drag. Not watched by the
+    /// screen: every drag (an ordinary scroll too) set it and cleared it, and as state each
+    /// change redrew the whole screen, every card and task row on all three pages, twice a
+    /// scroll (2026-11-12). The pages only need to know about a sideways one (`isSwipingWeeks`).
+    @State private var weekSwipe = WeekSwipeTracker()
+    /// A sideways drag is moving the weeks: the pages are disabled until it ends.
+    @State private var isSwipingWeeks = false
+    /// The grid of cards' width (the same on every page), for open cards' contents.
+    @State private var cardGridWidth: CGFloat?
     @State private var isChangingWeek = false
     @State private var weekPageWidth: CGFloat = 400
     /// Whether the window is wider than tall (an iPad in landscape, or a wide window).
@@ -163,17 +167,16 @@ struct ContentView: View {
                                 // A swipe that starts on a card or checkbox must not tap it: the
                                 // content moves with the finger, so the touch never leaves the button.
                                 // (allowsHitTesting doesn't cancel a touch already in progress.)
-                                .disabled(page.slot != 0 || weekSwipeAxis == .horizontal || isChangingWeek)
+                                .disabled(page.slot != 0 || isSwipingWeeks || isChangingWeek)
                         }
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekPageWidth = $0 }
-                    .simultaneousGesture(weekSwipeGesture)
-                    .onChange(of: isWeekSwiping) { _, swiping in
+                    .modifier(WeekSwipeGesture(onChanged: weekSwipeChanged, onEnded: weekSwipeEnded) {
                         // Cancelled rather than ended: put the page back.
-                        guard !swiping, weekSwipeAxis != nil else { return }
-                        weekSwipeAxis = nil
+                        guard weekSwipe.axis != nil else { return }
+                        endWeekSwipe()
                         if !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
-                    }
+                    })
                     // The cards scroll up under the header's frosted glass.
                     .safeAreaInset(edge: .top, spacing: 0) { weekHeader(week) }
                 } else {
@@ -418,46 +421,53 @@ struct ContentView: View {
 
     /// Horizontal drags move the week grid with the finger; releasing past a
     /// quarter of the width (or flicking) pages to the adjacent week. Vertical
-    /// drags are left to the scroll view.
-    private var weekSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 20)
-            .updating($isWeekSwiping) { _, swiping, _ in swiping = true }
-            .onChanged { value in
-                if weekSwipeAxis == nil {
-                    // A lifted card owns the touch: treating it as a week swipe would disable
-                    // the page (below), cancelling the card's drag. So does a task moved by
-                    // its handle, which a sideways wobble turned into a week swipe.
-                    weekSwipeAxis = cardDrag == nil && !store.isReorderingTask
-                        && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
-                    // Track from here so the grid doesn't jump by the recognition distance.
-                    weekDragOrigin = value.translation.width
-                    // The page is disabled for the swipe from now on, which took its field's
-                    // focus but left the keyboard up. What's typed is saved to this week.
-                    if weekSwipeAxis == .horizontal && isKeyboardVisible {
-                        store.keyboardDoneRequests += 1
-                        dismissKeyboard()
-                    }
-                }
-                guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else { return }
-                pager.offset = value.translation.width - weekDragOrigin
-            }
-            .onEnded { value in
-                defer { weekSwipeAxis = nil }
-                guard weekSwipeAxis == .horizontal, !isChangingWeek, cardDrag == nil else {
-                    // (Not while a page slides in: that would pull it back.)
-                    if cardDrag == nil && !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
-                    return
-                }
-                let distance = value.translation.width - weekDragOrigin
-                let predicted = value.predictedEndTranslation.width - weekDragOrigin
-                let velocity = value.velocity.width
-                if abs(distance) > weekPageWidth * 0.25 || abs(predicted) > weekPageWidth * 0.5 {
-                    let weeks = (abs(distance) > weekPageWidth * 0.25 ? distance : predicted) < 0 ? 1 : -1
-                    changeWeek(by: weeks, velocity: velocity)
-                } else {
-                    withAnimation(pagingSpring(to: 0, velocity: velocity)) { pager.offset = 0 }
+    /// drags are left to the scroll view (`WeekSwipeGesture`).
+    private func weekSwipeChanged(_ value: DragGesture.Value) {
+        if weekSwipe.axis == nil {
+            // A lifted card owns the touch: treating it as a week swipe would disable
+            // the page (below), cancelling the card's drag. So does a task moved by
+            // its handle, which a sideways wobble turned into a week swipe.
+            let axis: Axis = cardDrag == nil && !store.isReorderingTask
+                && abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+            weekSwipe.axis = axis
+            // Track from here so the grid doesn't jump by the recognition distance.
+            weekSwipe.origin = value.translation.width
+            if axis == .horizontal {
+                isSwipingWeeks = true
+                // The page is disabled for the swipe from now on, which took its field's
+                // focus but left the keyboard up. What's typed is saved to this week.
+                if isKeyboardVisible {
+                    store.keyboardDoneRequests += 1
+                    dismissKeyboard()
                 }
             }
+        }
+        guard weekSwipe.axis == .horizontal, !isChangingWeek, cardDrag == nil else { return }
+        pager.offset = value.translation.width - weekSwipe.origin
+    }
+
+    private func weekSwipeEnded(_ value: DragGesture.Value) {
+        defer { endWeekSwipe() }
+        guard weekSwipe.axis == .horizontal, !isChangingWeek, cardDrag == nil else {
+            // (Not while a page slides in: that would pull it back.)
+            if cardDrag == nil && !isChangingWeek { withAnimation(.snappy(duration: 0.25)) { pager.offset = 0 } }
+            return
+        }
+        let distance = value.translation.width - weekSwipe.origin
+        let predicted = value.predictedEndTranslation.width - weekSwipe.origin
+        let velocity = value.velocity.width
+        if abs(distance) > weekPageWidth * 0.25 || abs(predicted) > weekPageWidth * 0.5 {
+            let weeks = (abs(distance) > weekPageWidth * 0.25 ? distance : predicted) < 0 ? 1 : -1
+            changeWeek(by: weeks, velocity: velocity)
+        } else {
+            withAnimation(pagingSpring(to: 0, velocity: velocity)) { pager.offset = 0 }
+        }
+    }
+
+    /// The drag is over (ended or cancelled): the next one decides its direction afresh.
+    private func endWeekSwipe() {
+        weekSwipe.axis = nil
+        if isSwipingWeeks { isSwipingWeeks = false }
     }
 
     /// A spring from the current drag offset to `target` that starts at the finger's
@@ -1046,7 +1056,11 @@ struct ContentView: View {
                         // same view, so a menu, sheet or field open in it survives the rename.
                         ForEach(gridEntries(for: week), id: \.category.id) { entry in
                             let isExpanded = expandedCategoryKeys.contains(entry.id)
-                            CategoryGridCard(
+                            let weekStart = week.startDay
+                            GridCard(
+                                key: entry.id,
+                                layout: GridCard.Layout(columns: gridColumns, singleColumn: usesSingleColumn,
+                                                        reduceMotion: reduceMotion),
                                 category: entry.category,
                                 store: store,
                                 isExpanded: isExpanded,
@@ -1062,12 +1076,15 @@ struct ContentView: View {
                                         }
                                     }
                                 },
-                                onExpand: { expandCard(entry.id, in: week) },
+                                // The week as it is when tapped: a card that didn't change keeps
+                                // these closures while other cards in its week do (`GridCard`).
+                                onExpand: { expandCard(entry.id, in: liveWeek(startingOn: weekStart) ?? week) },
                                 onCollapse: {
                                     withAnimation(cardAnimation) { collapseCategory(entry.id) }
                                 },
                                 onRenamed: { renameCardKey(entry.id, to: $0) }
                             )
+                            .equatable()
                             // Deleting a card's last task while editing it ends its edit mode, so
                             // the Add task row is back (empty, as a checkbox and one-time) without
                             // tapping the checkmark first.
@@ -1120,6 +1137,10 @@ struct ContentView: View {
                         }
                     }
                     .coordinateSpace(.named(Self.cardGridSpace))
+                    // An open card is this wide: its contents are laid out at that width
+                    // while it opens and closes (`CardContentCrossFade`).
+                    .environment(\.cardGridWidth, cardGridWidth)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { cardGridWidth = $0 }
                     .overlay(alignment: .topLeading) { liftedCard(in: week) }
 
                     if categories.isEmpty && !isEditing {
@@ -1160,7 +1181,7 @@ struct ContentView: View {
 
     /// Weeks create new category IDs, so layout state follows a category's name.
     /// The occurrence distinguishes categories with the same name in one week.
-    private struct CategoryLayoutKey: Hashable {
+    fileprivate struct CategoryLayoutKey: Hashable {
         let name: String
         let occurrence: Int
 
@@ -1282,6 +1303,12 @@ struct ContentView: View {
 
     /// Expanding a card that isn't first in its row moves it into the row's first
     /// slot, so it opens in place instead of dropping below an already-open card.
+    /// The week a page shows, as it is now: the viewed week, or a neighbor's preview.
+    private func liveWeek(startingOn start: DayKey) -> Week? {
+        if let viewed = store.selectedWeek, viewed.startDay == start { return viewed }
+        return store.previewWeek(for: start.date(in: store.calendar))
+    }
+
     private func expandCard(_ key: CategoryLayoutKey, in week: Week) {
         guard !isEditing else { return }  // edit mode keeps cards collapsed
         withAnimation(cardAnimation) { expandCategory(key, in: week) }
@@ -1613,6 +1640,78 @@ private final class WeekPagerState {
     var offset: CGFloat = 0
 }
 
+/// A card in the grid, redrawn only when what it shows (or how the grid is laid out) changes.
+/// The screen redraws for many reasons, a card opening, a task checked in another card, and
+/// redrawing every card with it (each with every task row, also on the pages beside it) is
+/// what made opening cards, checking tasks and scrolling lag (2026-11-12). Its closures act
+/// through the screen's state, which they read when called, so the ones it was drawn with
+/// stay right; the grid's layout is compared because they read it.
+private struct GridCard: View, Equatable {
+    /// What the closures read besides state: the grid's columns, text size and Reduce Motion.
+    struct Layout: Equatable {
+        let columns: Int
+        let singleColumn: Bool
+        let reduceMotion: Bool
+    }
+
+    let key: ContentView.CategoryLayoutKey
+    let layout: Layout
+    let category: Category
+    let store: ChecklistStore
+    let isExpanded: Bool
+    let isEditing: Bool
+    let isEditingTasks: Bool
+    let isPastWeek: Bool
+    let onToggleEdit: () -> Void
+    let onExpand: () -> Void
+    let onCollapse: () -> Void
+    let onRenamed: (String) -> Void
+
+    static func == (a: GridCard, b: GridCard) -> Bool {
+        a.key == b.key && a.layout == b.layout && a.category == b.category && a.store === b.store
+            && a.isExpanded == b.isExpanded && a.isEditing == b.isEditing
+            && a.isEditingTasks == b.isEditingTasks && a.isPastWeek == b.isPastWeek
+    }
+
+    var body: some View {
+        CategoryGridCard(category: category, store: store, isExpanded: isExpanded, isEditing: isEditing,
+                         isEditingTasks: isEditingTasks, isPastWeek: isPastWeek, onToggleEdit: onToggleEdit,
+                         onExpand: onExpand, onCollapse: onCollapse, onRenamed: onRenamed)
+    }
+}
+
+/// The week swipe's direction and where it was recognized. A plain class, so setting them
+/// redraws nothing (see `ContentView.weekSwipe`).
+private final class WeekSwipeTracker {
+    var axis: Axis?
+    /// The drag's translation when its direction was decided.
+    var origin: CGFloat = 0
+}
+
+/// The week swipe's drag, in its own view with the state that notices iOS cancelling it
+/// (`onEnded` isn't called then), so a cancelled swipe can't leave the page disabled and the
+/// grid unable to scroll. That state flips at every drag, scrolls too; here it redraws only
+/// this, not the screen and every card on it.
+private struct WeekSwipeGesture: ViewModifier {
+    let onChanged: (DragGesture.Value) -> Void
+    let onEnded: (DragGesture.Value) -> Void
+    let onCancelled: () -> Void
+    @GestureState private var isDragging = false
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .updating($isDragging) { _, dragging, _ in dragging = true }
+                    .onChanged(onChanged)
+                    .onEnded(onEnded)
+            )
+            .onChange(of: isDragging) { _, dragging in
+                if !dragging { onCancelled() }
+            }
+    }
+}
+
 /// Lays the pages out in a ZStack and shifts them by the pager offset.
 private struct PagerTrack<Content: View>: View {
     let pager: WeekPagerState
@@ -1898,15 +1997,20 @@ private struct WindowSizeReader: UIViewRepresentable {
     }
 }
 
-/// One slight wiggle, 0.5s, each time `trigger` changes (a card with a task for today, as
-/// the app opens; `wiggleCardsWithTodaysTasks`). An open card, being bigger, turns less.
+/// One slight wiggle, 0.5s, each time `trigger` goes up while the card is on screen (a card
+/// with a task for today, as the app opens; `wiggleCardsWithTodaysTasks`). An open card,
+/// being bigger, turns less. It plays its own count (`plays`), which starts at zero in every
+/// card built: a card built again with a count above zero (this week's page, coming back to
+/// it from later weeks) wiggled again on the user's phone, iOS 27 (2026-11-12; a 26.3
+/// simulator doesn't).
 private struct CardWiggle: ViewModifier {
     let trigger: Int
     let isExpanded: Bool
+    @State private var plays = 0
 
     func body(content: Content) -> some View {
         let angle = isExpanded ? 0.6 : 2.0
-        content.keyframeAnimator(initialValue: 0.0, trigger: trigger) { view, degrees in
+        content.keyframeAnimator(initialValue: 0.0, trigger: plays) { view, degrees in
             view.rotationEffect(.degrees(degrees))
         } keyframes: { _ in
             KeyframeTrack {
@@ -1917,5 +2021,6 @@ private struct CardWiggle: ViewModifier {
                 CubicKeyframe(0, duration: 0.1)
             }
         }
+        .onChange(of: trigger) { plays += 1 }
     }
 }

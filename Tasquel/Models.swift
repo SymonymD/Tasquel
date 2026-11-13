@@ -182,6 +182,12 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// Set when the user adds or changes the task in its own week. Syncing with the week
     /// before then leaves it as it is: it isn't updated, removed, or adopted as a copy.
     var isUserEdited = false
+    /// A copy renamed in its own week keeps that name. A rename alone doesn't make it the
+    /// user's own (`isUserEdited`): syncing with the week before still updates everything else
+    /// in it, and it leaves with its source like any copy (the user's choice, 2026-11-12:
+    /// "Bugs 1.0.2" this week, next week's copy renamed "Bugs 1.0.3", what's left of 1.0.2
+    /// still going to 1.0.3). Renamed back to its source's name, it follows renames again.
+    var hasOwnTitle = false
     /// In a "This week only" card: the mode the task had before it was made one-time there,
     /// put back when This week only is turned off. Nil for other tasks.
     var modeBeforeThisWeekOnly: SavedMode? = nil
@@ -304,6 +310,7 @@ extension ChecklistTask {
         carriedFrom = try container.decodeIfPresent(UUID.self, forKey: .carriedFrom)
         repeatsFrom = try container.decodeIfPresent(UUID.self, forKey: .repeatsFrom)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        hasOwnTitle = (try? container.decodeIfPresent(Bool.self, forKey: .hasOwnTitle)) ?? false
         modeBeforeThisWeekOnly = (try? container.decodeIfPresent(SavedMode.self, forKey: .modeBeforeThisWeekOnly)) ?? nil
         isListFolded = (try? container.decodeIfPresent(Bool.self, forKey: .isListFolded)) ?? false
         isPinned = (try? container.decodeIfPresent(Bool.self, forKey: .isPinned)) ?? false

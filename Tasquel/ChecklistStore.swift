@@ -673,8 +673,15 @@ final class ChecklistStore {
             // As `removeExpiredTasks` does for saved weeks.
             for ci in week.categories.indices { week.categories[ci].tasks.removeAll { $0.isExpired(before: cutoff) } }
         }
-        if stored == nil, let last = lastPreviews[monday], !weeks.contains(where: { $0.id == last.id }) {
-            Self.reuseIDs(of: last, in: &week)
+        if let last = lastPreviews[monday] {
+            if let stored {
+                // What sync adds to a saved week (a card it doesn't have, a task copied from
+                // the week before) is made anew each time: without the IDs it had, every
+                // change to this week rebuilt those cards on the page beside it (2026-11-12).
+                if last.id == stored.id { Self.reuseIDs(of: last, in: &week, saved: stored) }
+            } else if !weeks.contains(where: { $0.id == last.id }) {
+                Self.reuseIDs(of: last, in: &week)
+            }
         }
         previewCache[monday] = week
         lastPreviews[monday] = week
@@ -682,25 +689,45 @@ final class ChecklistStore {
     }
 
     /// Gives a rebuilt preview the IDs of the previous preview of the same week: the week,
-    /// its categories (by name), tasks (by the task they copy) and items (by title).
-    private static func reuseIDs(of last: Week, in week: inout Week) {
-        week.id = last.id
+    /// its categories (by name), tasks (by the task they copy) and items (by title). For a
+    /// saved week (`saved`), only what sync added: what's saved there keeps its own IDs, which
+    /// edits find it by. Each earlier ID goes to one thing only (two cards with one name).
+    private static func reuseIDs(of last: Week, in week: inout Week, saved: Week? = nil) {
+        let savedCategories = Set(saved?.categories.map(\.id) ?? [])
+        let savedTasks = Set(saved?.categories.flatMap { $0.tasks.map(\.id) } ?? [])
+        let savedItems = Set(saved?.categories.flatMap { $0.tasks.flatMap { $0.subtasks.map(\.id) } } ?? [])
+        if saved == nil { week.id = last.id }
+        var usedCategories = Set<UUID>()
         for ci in week.categories.indices {
-            guard let lastCategory = last.categories.first(where: { $0.name == week.categories[ci].name }) else { continue }
+            let category = week.categories[ci]
+            let lastCategory = savedCategories.contains(category.id)
+                ? last.categories.first { $0.id == category.id }
+                : last.categories.first {
+                    $0.name == category.name && !savedCategories.contains($0.id) && !usedCategories.contains($0.id)
+                }
+            guard let lastCategory else { continue }
+            usedCategories.insert(lastCategory.id)
             week.categories[ci].id = lastCategory.id
             var usedTasks = Set<UUID>()
-            for ti in week.categories[ci].tasks.indices {
-                let task = week.categories[ci].tasks[ti]
-                guard let source = task.carriedFrom ?? task.repeatsFrom,
-                      let lastTask = lastCategory.tasks.first(where: {
-                          ($0.carriedFrom ?? $0.repeatsFrom) == source && !usedTasks.contains($0.id)
-                      }) else { continue }
+            for ti in category.tasks.indices {
+                let task = category.tasks[ti]
+                let lastTask: ChecklistTask?
+                if savedTasks.contains(task.id) {
+                    lastTask = lastCategory.tasks.first { $0.id == task.id }
+                } else if let source = task.carriedFrom ?? task.repeatsFrom {
+                    lastTask = lastCategory.tasks.first {
+                        ($0.carriedFrom ?? $0.repeatsFrom) == source && !savedTasks.contains($0.id) && !usedTasks.contains($0.id)
+                    }
+                } else {
+                    lastTask = nil
+                }
+                guard let lastTask else { continue }
                 usedTasks.insert(lastTask.id)
                 week.categories[ci].tasks[ti].id = lastTask.id
                 var usedItems = Set<UUID>()
-                for si in task.subtasks.indices {
+                for si in task.subtasks.indices where !savedItems.contains(task.subtasks[si].id) {
                     guard let lastItem = lastTask.subtasks.first(where: {
-                        $0.title == task.subtasks[si].title && !usedItems.contains($0.id)
+                        $0.title == task.subtasks[si].title && !savedItems.contains($0.id) && !usedItems.contains($0.id)
                     }) else { continue }
                     usedItems.insert(lastItem.id)
                     week.categories[ci].tasks[ti].subtasks[si].id = lastItem.id
@@ -1049,12 +1076,12 @@ final class ChecklistStore {
         return newTask
     }
 
-    /// An untouched future copy updated from its source: title, type and goal from the
-    /// source; items checked off in the source drop out and new unchecked ones are added.
-    /// Items added only to the copy stay.
+    /// An untouched future copy updated from its source: title (unless the copy was given its
+    /// own, `hasOwnTitle`), type and goal from the source; items checked off in the source
+    /// drop out and new unchecked ones are added. Items added only to the copy stay.
     private static func following(_ task: ChecklistTask, copy: ChecklistTask) -> ChecklistTask {
         var copy = copy
-        copy.title = task.title
+        if !copy.hasOwnTitle { copy.title = task.title }
         copy.taskType = task.taskType
         copy.goalTarget = task.goalTarget
         copy.goalProgress = task.goalProgress
@@ -1152,12 +1179,13 @@ final class ChecklistStore {
         return changed
     }
 
-    /// A later week's copy of a repeating task updated from its source: name, type and
-    /// goal setup follow; the copy's own progress and checks stay. A list gains the
-    /// source's new items and drops unchecked items the source no longer has.
+    /// A later week's copy of a repeating task updated from its source: name (unless it has
+    /// its own, `hasOwnTitle`), type and goal setup follow; the copy's own progress and checks
+    /// stay. A list gains the source's new items and drops unchecked items the source no
+    /// longer has.
     private static func followingRepeating(_ task: ChecklistTask, copy original: ChecklistTask) -> ChecklistTask {
         var copy = original
-        copy.title = task.title
+        if !copy.hasOwnTitle { copy.title = task.title }
         copy.taskType = task.taskType
         copy.goalTarget = task.goalTarget
         copy.goalUnit = task.goalUnit
@@ -1563,9 +1591,17 @@ final class ChecklistStore {
     // Edits that change nothing are ignored: marking the task edited would stop a
     // carried or repeating copy from following its source.
 
+    /// Picking a mode, even the one the task has, also brings it back into later weeks it was
+    /// deleted from (`undismissCopies`; the user asked, 2026-11-12: a list carried into next
+    /// week, its copy there renamed and then deleted, never came back however its mode was
+    /// set). The same mode isn't an edit: only that changes.
     func updateTaskMode(categoryID: UUID, taskID: UUID, mode: TaskMode) {
-        guard viewedTask(categoryID, taskID)?.mode != mode,
-              let wi = editableSelectedWeekIndex(),
+        guard let task = viewedTask(categoryID, taskID), let week = selectedWeek, !isPastWeek(week) else { return }
+        guard task.mode != mode else {
+            if undismissCopies(of: taskID, after: week.startDay) { save() }
+            return
+        }
+        guard let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].mode = mode
@@ -1573,8 +1609,39 @@ final class ChecklistStore {
         // The user picked this mode: it isn't put back to the one from before This week only.
         weeks[wi].categories[ci].tasks[ti].modeBeforeThisWeekOnly = nil
         keepCategory(wi, ci, for: mode)
+        undismissCopies(of: taskID, after: weeks[wi].startDay)
         noteEdit(categoryID)
         save()
+    }
+
+    /// The saved weeks after `start` forget that the task, or a copy of it, was deleted from
+    /// them, so syncing with the week before brings it back. Copies are found by their links
+    /// (`carriedFrom`, `repeatsFrom`), in saved weeks and the previews shown (a copy deleted two
+    /// weeks ahead is recorded by the copy in the week between). Returns whether any forgot.
+    @discardableResult
+    private func undismissCopies(of taskID: UUID, after start: DayKey) -> Bool {
+        var links: [UUID: [UUID]] = [:]
+        for week in weeks + Array(lastPreviews.values) where week.startDay > start {
+            for task in week.categories.flatMap(\.tasks) {
+                links[task.id] = [task.carriedFrom, task.repeatsFrom].compactMap { $0 }
+            }
+        }
+        func isTaskOrCopy(_ id: UUID) -> Bool {
+            var seen: Set<UUID> = [], queue = [id]
+            while let next = queue.popLast() {
+                guard seen.insert(next).inserted else { continue }
+                if next == taskID { return true }
+                queue += links[next] ?? []
+            }
+            return false
+        }
+        var changed = false
+        for wi in weeks.indices where weeks[wi].startDay > start {
+            guard let dismissed = weeks[wi].dismissedCarryOvers, dismissed.contains(where: isTaskOrCopy) else { continue }
+            weeks[wi].dismissedCarryOvers = dismissed.filter { !isTaskOrCopy($0) }
+            changed = true
+        }
+        return changed
     }
 
     /// Folds a list's items away, or opens it again. A view choice, not an edit: the task
@@ -1682,14 +1749,32 @@ final class ChecklistStore {
               let wi = editableSelectedWeekIndex(),
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        // A copy's rename changes only its name (`hasOwnTitle`); another task's makes it the
+        // user's own as any change does.
+        let source = viewedTask(categoryID, taskID).flatMap { $0.carriedFrom ?? $0.repeatsFrom }
+        let sourceTitle = source.flatMap(anyTaskTitle)
         let rename = { (task: inout ChecklistTask) -> Bool in
             task.title = newTitle
-            Self.markEdited(&task)
+            if task.carriedFrom != nil || task.repeatsFrom != nil {
+                task.hasOwnTitle = newTitle != sourceTitle
+            } else {
+                Self.markEdited(&task)
+            }
             return true
         }
         _ = rename(&weeks[wi].categories[ci].tasks[ti])
         noteEdit(categoryID)
         save(keepsUndo: changeInUndo(week: weeks[wi].startDay, taskID: taskID, rename))
+    }
+
+    /// The name of the task with this ID in any saved week or preview shown, if there is one.
+    private func anyTaskTitle(_ id: UUID) -> String? {
+        for week in weeks + Array(lastPreviews.values) {
+            for category in week.categories {
+                if let task = category.tasks.first(where: { $0.id == id }) { return task.title }
+            }
+        }
+        return nil
     }
 
     /// While a delete can be undone, a rename is made in the weeks Undo puts back too, when

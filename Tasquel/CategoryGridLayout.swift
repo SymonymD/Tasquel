@@ -71,6 +71,14 @@ struct CategoryGridLayout: Layout {
         }
     }
 
+    /// No alignment guides come out of the grid. Left to the default, which merges the guides
+    /// of every card, the scroll view's sizing measured every card (and every task row in it)
+    /// again on each frame of a card opening or closing (2026-11-12).
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout Cache) -> CGFloat? { nil }
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout Cache) -> CGFloat? { nil }
+
     /// Cards in the same row share the taller card's height.
     private func measure(subviews: Subviews, width: CGFloat, cache: inout Cache) {
         guard cache.width != width else { return }

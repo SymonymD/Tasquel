@@ -55,9 +55,15 @@ struct CategoryGridCard: View {
     @ScaledMetric(relativeTo: .caption) private var collapsedCaptionSize: CGFloat = 12
     @ScaledMetric(relativeTo: .subheadline) private var expandedCaptionSize: CGFloat = 15 * expandedCardScale
 
+    @Environment(\.cardGridWidth) private var gridWidth
+
     private var theme: AppearanceMode { store.appearanceMode }
     private var rc: RetroColor { store.retroColor }
     private var cornerRadius: CGFloat { Theme.cardCornerRadius(theme) }
+    /// An open card's padding (everything in it is 15% larger), and its contents' width: an
+    /// open card takes the grid's whole width.
+    private static let openPadding = 14 * expandedCardScale
+    private var openContentWidth: CGFloat? { gridWidth.map { max(0, $0 - 2 * Self.openPadding) } }
     private var design: Font.Design { Theme.isRetro(theme) ? .monospaced : .default }
 
     var body: some View {
@@ -88,11 +94,11 @@ struct CategoryGridCard: View {
                     isPastWeek: isPastWeek, onCollapse: onCollapse
                 )
                 .environment(\.isCardOpen, isExpanded)
-                .modifier(CardContentCrossFade(isHidden: !isExpanded))
+                .modifier(CardContentCrossFade(isHidden: !isExpanded, width: openContentWidth))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(isExpanded ? 14 * expandedCardScale : 12)
+        .padding(isExpanded ? Self.openPadding : 12)
         .frame(maxWidth: .infinity, minHeight: isExpanded ? 0 : 120, maxHeight: .infinity, alignment: .topLeading)
         // Contents animate inside the card's moving frame instead of each child
         // interpolating its own position (which let text run ahead of the card).
@@ -470,6 +476,7 @@ private struct CollapsedCategoryContent: View {
     /// Tasks listed on a closed card; any more are counted below them.
     private static let previewCount = 5
     @Environment(\.taskDayFilter) private var dayFilter
+    @Environment(\.cardWeekStart) private var weekStart
 
     /// In the card's order; with a day picked in the day strip, that day's and those with no day.
     private var shownTasks: [ChecklistTask] { category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter) }
@@ -508,6 +515,15 @@ private struct CollapsedCategoryContent: View {
                         Text(task.title)
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc)).lineLimit(1)
+                        if task.dayOfWeek != nil {
+                            // A task with a day: a small clock after its name (a long name
+                            // gives way first), colored like the open card's day label.
+                            Image(systemName: "clock")
+                                .font(.caption2.weight(.semibold))
+                                .imageScale(.small)
+                                .foregroundStyle(dayColor(task))
+                                .fixedSize()
+                        }
                     }
                 }
                 if shownTasks.count > Self.previewCount {
@@ -531,6 +547,21 @@ private struct CollapsedCategoryContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+extension CollapsedCategoryContent {
+    /// A day task's clock: green on its day until it's done, orange once its day has gone by
+    /// unfinished, gray otherwise (as the open card's "Today" / "Tue · late" / "Fri").
+    fileprivate func dayColor(_ task: ChecklistTask) -> Color {
+        guard let weekStart, !isPastWeek else { return Theme.textSecondary(theme, rc: rc) }
+        if task.isLate(inWeekStarting: weekStart, firstWeekday: store.firstWeekday, today: store.currentDay) {
+            return Theme.late(theme)
+        }
+        if !task.isCompleted, task.day(inWeekStarting: weekStart, firstWeekday: store.firstWeekday) == store.currentDay {
+            return Theme.expirySet(theme, rc: rc)
+        }
+        return Theme.textSecondary(theme, rc: rc)
     }
 }
 
@@ -816,9 +847,12 @@ struct AnimatableFont: ViewModifier, Animatable {
 /// of the buttons inside, so VoiceOver visibility is handled by the card.)
 struct CardContentCrossFade: ViewModifier {
     let isHidden: Bool
+    /// The width to lay the content out at, whatever the card's width on the way there (an
+    /// open card's contents: `openContentWidth`); nil, the card's width as it is.
+    var width: CGFloat? = nil
 
     func body(content: Content) -> some View {
-        HiddenContentLayout(isHidden: isHidden) { content }
+        HiddenContentLayout(isHidden: isHidden, width: width) { content }
             .opacity(isHidden ? 0 : 1)
             .allowsHitTesting(!isHidden)
     }
@@ -828,19 +862,38 @@ struct CardContentCrossFade: ViewModifier {
 /// width it's offered, but still lays its content out at that width. (Hidden task
 /// rows have a minimum width wider than a grid column, which squeezed out the gap
 /// between collapsed cards.)
+///
+/// With a `width`, the content is laid out at that width (and its own height) however wide
+/// the card is: an open card's task rows, laid out at the card's width on every frame of it
+/// growing or shrinking, made each frame take ~35ms and the animation stutter (2026-11-12).
+/// At its own width they're laid out once and the card's edge reveals them as it grows.
+/// (Its height doesn't depend on the height offered: nothing in it stretches.)
 private struct HiddenContentLayout: Layout {
     var isHidden: Bool
+    var width: CGFloat?
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let content = subviews.first else { return .zero }
-        return isHidden ? CGSize(width: proposal.width ?? 0, height: 0) : content.sizeThatFits(proposal)
+        if isHidden { return CGSize(width: proposal.width ?? 0, height: 0) }
+        guard let width else { return content.sizeThatFits(proposal) }
+        let size = content.sizeThatFits(ProposedViewSize(width: width, height: nil))
+        return CGSize(width: proposal.width ?? size.width, height: size.height)
     }
+
+    // No alignment guides come out of a card's contents. Left to the default, which merges
+    // the guides of everything inside, every layout pass measured each card's whole contents
+    // (every task row) again just to find there were none; with a card opening that was
+    // every frame (2026-11-12, the lag the user felt on the phone).
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         subviews.first?.place(
             at: bounds.origin,
             anchor: .topLeading,
-            proposal: ProposedViewSize(width: bounds.width, height: isHidden ? nil : bounds.height)
+            proposal: ProposedViewSize(width: width ?? bounds.width, height: isHidden || width != nil ? nil : bounds.height)
         )
     }
 }
@@ -849,6 +902,8 @@ extension EnvironmentValues {
     /// Whether the card holding a view is open. An open card's contents stay in place
     /// (hidden) while it's closed, so a field there mustn't take the keyboard then.
     @Entry var isCardOpen = true
+    /// The width of the week's grid of cards (an open card's width), once measured.
+    @Entry var cardGridWidth: CGFloat? = nil
     /// The day picked in the week's day strip (1 Sunday … 7 Saturday): cards show that day's
     /// tasks and the ones with no day, and tasks added get that day. Nil: every task.
     @Entry var taskDayFilter: Int? = nil

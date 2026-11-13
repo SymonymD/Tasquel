@@ -2560,6 +2560,41 @@ func previewKeepsIDs() {
     #expect(after.categories[0].tasks.map(\.id) == before.categories[0].tasks.map(\.id))
 }
 
+/// A saved later week's preview adds what sync brings from this week (a card it doesn't have
+/// yet, a repeating task): those keep their IDs while this week changes, like an unsaved
+/// preview's. With new IDs each time, every check in this week rebuilt next week's cards
+/// beside it from scratch, one of the things that made the app lag (2026-11-12). What's
+/// saved there keeps its own IDs.
+@Test("A saved next week's preview keeps the IDs of what sync adds")
+func savedPreviewKeepsAddedIDs() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let this = store.selectedWeek!.startDate
+    let next = clock.weeks(1, from: clock.now)
+    // Next week is saved (an edit there), then this week gets a card next week doesn't have.
+    store.navigateToDate(next)
+    let savedCategory = store.selectedWeek!.categories[0]
+    _ = store.addTask(categoryID: savedCategory.id, title: "Saved there", mode: .oneTime)
+    let saved = try #require(store.weeks.first { $0.startDay == store.selectedWeek!.startDay })
+    store.navigateToDate(this)
+    store.addCategory(name: "Garden", symbol: "leaf")
+    let garden = try #require(store.selectedWeek!.categories.first { $0.name == "Garden" })
+    let water = try #require(store.addTask(categoryID: garden.id, title: "Water", mode: .repeating))
+
+    let before = store.previewWeek(for: next)
+    let addedCard = try #require(before.categories.first { $0.name == "Garden" })
+    #expect(!saved.categories.contains { $0.id == addedCard.id })
+    #expect(addedCard.tasks.map(\.title) == ["Water"])
+    store.toggleTask(categoryID: garden.id, taskID: water)  // any change to this week
+    let after = store.previewWeek(for: next)
+    #expect(after.id == saved.id)
+    #expect(after.categories.map(\.id) == before.categories.map(\.id))
+    #expect(after.categories.first { $0.name == "Garden" }?.tasks.map(\.id) == addedCard.tasks.map(\.id))
+    // What's saved there keeps its own IDs.
+    #expect(after.categories.first { $0.id == savedCategory.id }?.tasks.map(\.id)
+            == saved.categories.first { $0.id == savedCategory.id }?.tasks.map(\.id))
+}
+
 /// A category icon is an emoji only when it's one emoji; SF Symbol names never are.
 @Test func categoryIconEmojiDetection() {
     for emoji in ["😀", "❤️", "👍🏽", "🇺🇸", "👨‍👩‍👧", "1️⃣"] {
@@ -2691,6 +2726,189 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
     store.addTask(categoryID: category().id, title: "Other")  // saves the week in between
     store.navigateToDate(clock.weeks(2, from: clock.now))
     #expect(!category().tasks.contains { $0.title == "Taxes" })
+}
+
+/// Picking a task's mode, even the one it has, brings it back into later weeks it was deleted
+/// from (the user asked, 2026-11-12: a list carried into next week, its copy there renamed and
+/// then deleted, never came back however its mode was set this week).
+@Test func pickingModeBringsBackDeletedCopy() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let this = clock.now, next = clock.weeks(1, from: clock.now)
+    let bugs = try #require(store.addTask(categoryID: category().id, title: "Bugs 1.0.2", mode: .carryOver, type: .list))
+    _ = store.addSubtask(categoryID: category().id, taskID: bugs, title: "Crash")
+    // Next week its copy is renamed, so it's its own; this week the list is renamed too.
+    store.navigateToDate(next)
+    let copy = try #require(category().tasks.first { $0.carriedFrom == bugs })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Bugs 1.0.3")
+    store.navigateToDate(this)
+    store.renameTask(categoryID: category().id, taskID: bugs, newTitle: "Bugs 1.0.3")
+    // The copy is deleted from next week, and stays deleted...
+    store.navigateToDate(next)
+    store.deleteTask(categoryID: category().id, taskID: copy.id)
+    store.navigateToDate(this)
+    store.navigateToDate(next)
+    #expect(!category().tasks.contains { $0.carriedFrom == bugs })
+    // ...until Carry-over is picked for the list this week (its mode already).
+    store.navigateToDate(this)
+    store.updateTaskMode(categoryID: category().id, taskID: bugs, mode: .carryOver)
+    #expect(store.previewWeek(for: next).categories.first { $0.name == name }?.tasks.contains { $0.carriedFrom == bugs } == true)
+    store.navigateToDate(next)
+    let back = try #require(category().tasks.first { $0.carriedFrom == bugs })
+    #expect(back.title == "Bugs 1.0.3")
+    #expect(back.subtasks.map(\.title) == ["Crash"])
+    #expect(!back.isUserEdited)
+}
+
+/// Deleted two weeks ahead (a copy of next week's copy), it comes back there too.
+@Test func pickingModeBringsBackCopyDeletedTwoWeeksAhead() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let taxes = try #require(store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver))
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.addTask(categoryID: category().id, title: "Other")  // saves next week, with its copy
+    store.navigateToDate(clock.weeks(2, from: clock.now))
+    let copy = try #require(category().tasks.first { $0.title == "Taxes" })
+    store.deleteTask(categoryID: category().id, taskID: copy.id)
+
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.navigateToDate(clock.weeks(2, from: clock.now))
+    #expect(!category().tasks.contains { $0.title == "Taxes" })
+
+    store.navigateToDate(clock.now)
+    store.updateTaskMode(categoryID: category().id, taskID: taxes, mode: .carryOver)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.navigateToDate(clock.weeks(2, from: clock.now))
+    #expect(category().tasks.contains { $0.title == "Taxes" })
+}
+
+/// With nothing deleted later, picking the mode a task has changes nothing (it isn't an edit).
+@Test func pickingSameModeChangesNothing() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let taxes = try #require(store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver))
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.addTask(categoryID: category().id, title: "Other")
+    store.navigateToDate(clock.now)
+    let before = store.weeks
+    store.updateTaskMode(categoryID: category().id, taskID: taxes, mode: .carryOver)
+    #expect(store.weeks == before)
+}
+
+/// Renaming a copy in a later week changes only its name there: it keeps following its source
+/// in everything else (the user's choice, 2026-11-12: "Bugs 1.0.2" this week, its copy next week
+/// renamed "Bugs 1.0.3", and what's left of 1.0.2 should still go to 1.0.3).
+@Test func renamedCopyKeepsFollowingAllButItsName() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let this = clock.now, next = clock.weeks(1, from: clock.now), after = clock.weeks(2, from: clock.now)
+    let bugs = try #require(store.addTask(categoryID: category().id, title: "Bugs 1.0.2", mode: .carryOver, type: .list))
+    for item in ["Crash", "Typo"] { _ = store.addSubtask(categoryID: category().id, taskID: bugs, title: item) }
+    store.navigateToDate(after)
+    store.addTask(categoryID: category().id, title: "Saves the week after", mode: .oneTime)
+    store.navigateToDate(next)
+    let copy = try #require(category().tasks.first { $0.carriedFrom == bugs })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Bugs 1.0.3")
+    #expect(!category().tasks.first { $0.id == copy.id }!.isUserEdited)
+
+    // This week: an item fixed, one found, and its name changed.
+    store.navigateToDate(this)
+    let crash = try #require(category().tasks.first { $0.id == bugs }?.subtasks.first { $0.title == "Crash" })
+    store.toggleSubtask(categoryID: category().id, taskID: bugs, subtaskID: crash.id)
+    _ = store.addSubtask(categoryID: category().id, taskID: bugs, title: "Slow scroll")
+    store.renameTask(categoryID: category().id, taskID: bugs, newTitle: "Bugs (old)")
+    #expect(category().tasks.first { $0.id == bugs }?.title == "Bugs (old)")
+
+    store.navigateToDate(next)
+    let followed = try #require(category().tasks.first { $0.id == copy.id })
+    #expect(followed.title == "Bugs 1.0.3")
+    #expect(followed.subtasks.map(\.title) == ["Typo", "Slow scroll"])
+    // The week after follows next week's copy, its name too.
+    store.navigateToDate(after)
+    #expect(category().tasks.first { $0.carriedFrom == copy.id }?.title == "Bugs 1.0.3")
+}
+
+/// A repeating task's renamed copy keeps its name and follows the rest (here a goal's target).
+@Test func renamedRepeatingCopyFollowsTheRest() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let run = try #require(store.addTask(categoryID: category().id, title: "Run", mode: .repeating, type: .goal))
+    store.setGoalTarget(categoryID: category().id, taskID: run, target: 3)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let copy = try #require(category().tasks.first { $0.repeatsFrom == run })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Run (race week)")
+    store.navigateToDate(clock.now)
+    store.renameTask(categoryID: category().id, taskID: run, newTitle: "Jog")
+    store.setGoalTarget(categoryID: category().id, taskID: run, target: 5)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let followed = try #require(category().tasks.first { $0.id == copy.id })
+    #expect(followed.title == "Run (race week)")
+    #expect(followed.goalTarget == 5)
+}
+
+/// Renamed back to its source's name, a copy follows renames again.
+@Test func copyRenamedBackFollowsRenamesAgain() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let taxes = try #require(store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver))
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let copy = try #require(category().tasks.first { $0.carriedFrom == taxes })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Taxes (call CPA)")
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Taxes")
+    store.navigateToDate(clock.now)
+    store.renameTask(categoryID: category().id, taskID: taxes, newTitle: "File taxes")
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(category().tasks.first { $0.id == copy.id }?.title == "File taxes")
+}
+
+/// A rename changes only the name: when its source is finished, a renamed copy leaves with it
+/// like any copy (a finished carry-over doesn't carry over).
+@Test func renamedCopyLeavesWhenItsSourceIsFinished() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let taxes = try #require(store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver))
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    store.addTask(categoryID: category().id, title: "Saves next week", mode: .oneTime)
+    let copy = try #require(category().tasks.first { $0.carriedFrom == taxes })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Taxes (call CPA)")
+    store.navigateToDate(clock.now)
+    store.toggleTask(categoryID: category().id, taskID: taxes)
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    #expect(!category().tasks.contains { $0.id == copy.id })
+}
+
+/// Any other change to a copy still makes it the user's own: it stops following.
+@Test func copyChangedOtherwiseStopsFollowing() throws {
+    let clock = TestClock(2099, 3, 4)
+    let store = makeIsolatedStore(clock: clock)
+    let name = store.selectedWeek!.categories[0].name
+    func category() -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+    let taxes = try #require(store.addTask(categoryID: category().id, title: "Taxes", mode: .carryOver))
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let copy = try #require(category().tasks.first { $0.carriedFrom == taxes })
+    store.renameTask(categoryID: category().id, taskID: copy.id, newTitle: "Taxes (call CPA)")
+    store.updateTaskMode(categoryID: category().id, taskID: copy.id, mode: .oneTime)
+    store.navigateToDate(clock.now)
+    store.renameTask(categoryID: category().id, taskID: taxes, newTitle: "File taxes")
+    store.navigateToDate(clock.weeks(1, from: clock.now))
+    let kept = try #require(category().tasks.first { $0.id == copy.id })
+    #expect(kept.isUserEdited)
+    #expect(kept.title == "Taxes (call CPA)")
+    #expect(kept.mode == .oneTime)
 }
 
 /// Tapping a name and leaving it unchanged doesn't make a copy stop following its source.
