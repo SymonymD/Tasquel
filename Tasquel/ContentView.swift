@@ -715,19 +715,28 @@ struct ContentView: View {
     }
 
     /// The Tasquel mark (the app icon's ring and t), in one color, at the top left: back to
-    /// this week (what Go to Today in the bottom bar used to do).
+    /// this week (what Go to Today in the bottom bar used to do). In late December it wears
+    /// the holiday's layers (`HolidayMark`).
     @ViewBuilder
     private var homeButton: some View {
         if store.persistenceError == nil {
+            let retro = Theme.isRetro(theme)
+            // Retro's brackets are wide; the ring is 5% larger.
+            let markHeight: CGFloat = retro ? 28.6 : 30
+            let layers = HolidayMark.of(DayKey(today, in: store.calendar), firstWeekday: store.firstWeekday,
+                                        calendar: store.calendar)?.layers(retro: retro)
+            let layerSize = HolidayMark.layerSize(forMarkHeight: markHeight, retro: retro)
             Button { changeWeek(to: today) } label: {
                 // Retro's is its icon's: the t in brackets.
-                Image(Theme.isRetro(theme) ? "TasquelMarkRetro" : "TasquelMark")
+                Image(retro ? "TasquelMarkRetro" : "TasquelMark")
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    // Retro's brackets are wide; the ring is 5% larger.
-                    .frame(height: Theme.isRetro(theme) ? 28.6 : 30)
+                    .frame(height: markHeight)
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .background { holidayMarkLayer(layers?.behind, size: layerSize) }
+                    // Retro's are one color: its bright one.
+                    .overlay { holidayMarkLayer(layers?.front, size: layerSize).foregroundStyle(Theme.textPrimary(theme, rc: rc)) }
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -735,6 +744,20 @@ struct ContentView: View {
             .padding(.leading, markLeadingInset)
             .accessibilityLabel("This Week")
             .accessibilityHint("Goes back to the current week")
+        }
+    }
+
+    /// One of the holiday mark's layers, centered on the mark (Retro's are templates, tinted
+    /// by the caller; the others keep their own colors).
+    @ViewBuilder
+    private func holidayMarkLayer(_ name: String?, size: CGSize) -> some View {
+        if let name {
+            Image(name)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size.width, height: size.height)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 

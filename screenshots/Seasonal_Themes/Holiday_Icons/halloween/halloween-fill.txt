@@ -1,0 +1,1 @@
+Fill gradient (the ring's inside, same direction as AppIcon.icon): #FFB347 → #F2761E → #C4500E

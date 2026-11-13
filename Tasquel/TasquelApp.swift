@@ -16,6 +16,7 @@ struct TasquelApp: App {
 
     init() {
         ExpiryNotifications.shared.start()
+        RetroCaret.install()
     }
 
     var body: some Scene {
@@ -24,6 +25,10 @@ struct TasquelApp: App {
                 // The pending reminders follow the tasks: set, changed, checked off, deleted.
                 .onChange(of: store.expiryReminders, initial: true) { _, reminders in
                     ExpiryNotifications.shared.update(reminders)
+                }
+                // Retro's DOS cursor in every text field.
+                .onChange(of: store.appearanceMode, initial: true) { _, mode in
+                    RetroCaret.isOn = Theme.isRetro(mode)
                 }
         }
     }

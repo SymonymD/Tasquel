@@ -310,3 +310,54 @@ private struct SeededRandom {
         return Double(top) / 9_007_199_254_740_992.0
     }
 }
+
+// MARK: - Holiday marks
+
+/// The Tasquel mark's holiday look, in every appearance, by the app's weeks (the week-start
+/// setting): string lights for the week before Christmas's week and Christmas's week, then
+/// confetti for the week after, New Year's Eve's (or, when Christmas's week holds New Year's
+/// Eve too, New Year's Day's). Picked by today.
+enum HolidayMark: String {
+    case holidaySeason, newYear
+
+    static func of(_ day: DayKey, firstWeekday: Int, calendar: Calendar) -> HolidayMark? {
+        let weekStart = { (day: DayKey) in
+            DayKey(Week.startOfWeek(containing: day.date(in: calendar), firstWeekday: firstWeekday, calendar: calendar), in: calendar)
+        }
+        let week = weekStart(day)
+        // Early January belongs to the Christmas before it.
+        for year in [day.year, day.year - 1] {
+            switch weekStart(DayKey(year: year, month: 12, day: 25)).days(to: week) {
+            case -7, 0: return .holidaySeason
+            case 7: return .newYear
+            default: continue
+            }
+        }
+        return nil
+    }
+
+    /// The images drawn with the mark, each in its space with 170 more on every side, so it
+    /// lines up centered on it (`layerSize`). The usual mark's are in their own colors, behind
+    /// and in front of it. Retro's are its own pixel versions round the t in brackets, in one
+    /// color (tinted to Retro's), clear of the t: the lights hang under the brackets.
+    struct Layers: Equatable {
+        var behind: String?
+        var front: String
+    }
+
+    func layers(retro: Bool) -> Layers {
+        switch (self, retro) {
+        case (.holidaySeason, false): Layers(front: "HolidaySeasonMarkFront")
+        case (.newYear, false): Layers(behind: "NewYearMarkBehind", front: "NewYearMarkFront")
+        case (.holidaySeason, true): Layers(front: "HolidaySeasonMarkRetro")
+        case (.newYear, true): Layers(front: "NewYearMarkRetro")
+        }
+    }
+
+    /// A layer's size for a mark `height` tall: the mark's drawing is 443.31 tall and 408.04
+    /// wide (Retro's 500, for its brackets), and the layers add 170 on every side.
+    static func layerSize(forMarkHeight height: CGFloat, retro: Bool) -> CGSize {
+        let markWidth: CGFloat = retro ? 500 : 408.04
+        return CGSize(width: height * (markWidth + 340) / 443.31, height: height * (443.31 + 340) / 443.31)
+    }
+}

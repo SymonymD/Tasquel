@@ -1885,6 +1885,45 @@ struct TaskDayTests {
     }
 }
 
+// MARK: - Retro's DOS cursor
+
+@MainActor @Suite(.serialized)
+struct RetroCaretTests {
+    @Test("In Retro the cursor is an underscore a character wide at the line's bottom; elsewhere UIKit's bar")
+    func cursorShape() {
+        let font = UIFont.monospacedSystemFont(ofSize: 17, weight: .regular)
+        let bar = CGRect(x: 40, y: 10, width: 2, height: 22)
+        let was = RetroCaret.isOn
+        defer { RetroCaret.isOn = was }
+        RetroCaret.isOn = false
+        #expect(RetroCaret.cursor(replacing: bar, font: font) == bar)
+        RetroCaret.isOn = true
+        let cursor = RetroCaret.cursor(replacing: bar, font: font)
+        #expect(cursor.minX == bar.minX)
+        #expect(cursor.maxY == bar.maxY)
+        #expect(abs(cursor.width - ("M" as NSString).size(withAttributes: [.font: font]).width) < 1)
+        #expect(cursor.height >= 2 && cursor.height < 5)
+    }
+
+    @Test("Text views and fields draw their cursor through it")
+    func installed() {
+        RetroCaret.install()
+        let was = RetroCaret.isOn
+        defer { RetroCaret.isOn = was }
+        RetroCaret.isOn = true
+        let view = UITextView(frame: CGRect(x: 0, y: 0, width: 200, height: 60))
+        view.font = .monospacedSystemFont(ofSize: 17, weight: .regular)
+        view.text = "abc"
+        let viewCursor = view.caretRect(for: view.endOfDocument)
+        #expect(viewCursor.width > viewCursor.height)
+        let field = UITextField(frame: CGRect(x: 0, y: 0, width: 200, height: 40))
+        field.font = .monospacedSystemFont(ofSize: 17, weight: .regular)
+        field.text = "abc"
+        let fieldCursor = field.caretRect(for: field.endOfDocument)
+        #expect(fieldCursor.width > fieldCursor.height)
+    }
+}
+
 // MARK: - Seasons
 
 struct SeasonTests {
@@ -1960,6 +1999,55 @@ struct SeasonTests {
         store.setAppearance(.seasonal)
         #expect(store.colorScheme == nil)
         #expect(Theme.isSeasonal(store.appearanceMode) && Theme.hasOwnBackground(store.appearanceMode))
+    }
+
+    private func mark(_ year: Int, _ month: Int, _ day: Int, from firstWeekday: Int = Week.monday) -> HolidayMark? {
+        HolidayMark.of(DayKey(year: year, month: month, day: day), firstWeekday: firstWeekday,
+                       calendar: .weekDates(in: TimeZone(identifier: "America/New_York")!))
+    }
+
+    @Test("The mark wears string lights the week before Christmas's week and that week, confetti the week after")
+    func holidayMarkWeeks() {
+        // 2026, weeks from Monday: Christmas (a Friday) is in Dec 21–27.
+        #expect(mark(2026, 12, 13) == nil)
+        #expect(mark(2026, 12, 14) == .holidaySeason)
+        #expect(mark(2026, 12, 27) == .holidaySeason)
+        #expect(mark(2026, 12, 28) == .newYear)
+        #expect(mark(2027, 1, 3) == .newYear)
+        #expect(mark(2027, 1, 4) == nil)
+        // Weeks from Sunday: Christmas's week is Dec 20–26, New Year's Eve's Dec 27–Jan 2.
+        #expect(mark(2026, 12, 12, from: Week.sunday) == nil)
+        #expect(mark(2026, 12, 13, from: Week.sunday) == .holidaySeason)
+        #expect(mark(2026, 12, 27, from: Week.sunday) == .newYear)
+        #expect(mark(2027, 1, 2, from: Week.sunday) == .newYear)
+        #expect(mark(2027, 1, 3, from: Week.sunday) == nil)
+        #expect(mark(2026, 7, 4) == nil)
+    }
+
+    @Test("When Christmas's week holds New Year's Eve too, the confetti waits for New Year's Day's week")
+    func holidayMarkWhenChristmasWeekHoldsNewYearsEve() {
+        // 2022 from Sunday: Dec 25–31 is one week.
+        #expect(mark(2022, 12, 18, from: Week.sunday) == .holidaySeason)
+        #expect(mark(2022, 12, 31, from: Week.sunday) == .holidaySeason)
+        #expect(mark(2023, 1, 1, from: Week.sunday) == .newYear)
+        #expect(mark(2023, 1, 7, from: Week.sunday) == .newYear)
+        #expect(mark(2023, 1, 8, from: Week.sunday) == nil)
+        // 2028 from Monday: Dec 25–31 again.
+        #expect(mark(2028, 12, 31) == .holidaySeason)
+        #expect(mark(2029, 1, 1) == .newYear)
+    }
+
+    @Test("The holiday marks' layers are in the app, Retro's its own")
+    func holidayMarkImages() {
+        for mark in [HolidayMark.holidaySeason, .newYear] {
+            for retro in [false, true] {
+                let layers = mark.layers(retro: retro)
+                for name in [layers.behind, layers.front].compactMap({ $0 }) {
+                    #expect(UIImage(named: name) != nil, "\(mark) \(name)")
+                    #expect(name.contains("Retro") == retro, "\(mark) \(name)")
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,2 @@
+Regenerate: swiftc -O render.swift -o render; python3 make.py .. ./render; python3 overview.py .. ../overview.png default thanksgiving halloween christmas hanukkah holiday-season new-year easter
+Retro versions: python3 retro.py .. ./render; python3 retro_overview.py .. ./render ../retro-overview.png

@@ -222,21 +222,58 @@ struct ScanlineOverlay: View {
 // MARK: - Card Text Fields
 
 extension View {
-    /// The look of every text field in a card: a soft fill with slightly rounded corners
-    /// (square in retro, like its cards). With `outset`, the fill reaches beyond the text
-    /// instead of padding it, so swapping a name for its field doesn't move the words.
+    /// The look of every text field in a card: a soft fill with slightly rounded corners; in
+    /// Retro, square brackets at its ends, like an input box in an old DOS dialog (with the
+    /// DOS cursor, `RetroCaret`). With `outset`, the fill reaches beyond the text instead of
+    /// padding it, so swapping a name for its field doesn't move the words.
+    @ViewBuilder
     func cardField(_ theme: AppearanceMode, rc: RetroColor, outset: Bool = false) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 8, style: .continuous)
-        let fill = Theme.textTertiary(theme, rc: rc).opacity(0.2)
-        return Group {
+        let frame = FieldFrame(theme: theme, rc: rc)
+        let field = Group {
             if outset {
-                background { shape.fill(fill).padding(.horizontal, -8).padding(.vertical, -4) }
+                background { frame.padding(.horizontal, -8).padding(.vertical, -4) }
             } else {
                 textFieldStyle(.plain)
                     .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(fill, in: shape)
+                    .background { frame }
             }
         }
+        if Theme.isRetro(theme) {
+            field.tint(Theme.textPrimary(theme, rc: rc))  // the cursor, Retro's color
+        } else {
+            field
+        }
+    }
+}
+
+/// A card field's frame (`cardField`): a soft fill, or Retro's brackets.
+private struct FieldFrame: View {
+    let theme: AppearanceMode
+    let rc: RetroColor
+
+    var body: some View {
+        if Theme.isRetro(theme) {
+            DOSFieldBrackets()
+                .stroke(Theme.textSecondary(theme, rc: rc), style: StrokeStyle(lineWidth: 1.5, lineCap: .square))
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Theme.textTertiary(theme, rc: rc).opacity(0.2))
+        }
+    }
+}
+
+/// `[` at a field's leading end and `]` at its trailing end, the full height.
+struct DOSFieldBrackets: Shape {
+    var serif: CGFloat = 5
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: 0.75, dy: 0.75)  // half the stroke, so it stays inside
+        var path = Path()
+        path.addLines([CGPoint(x: r.minX + serif, y: r.minY), CGPoint(x: r.minX, y: r.minY),
+                       CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.minX + serif, y: r.maxY)])
+        path.addLines([CGPoint(x: r.maxX - serif, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
+                       CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.maxX - serif, y: r.maxY)])
+        return path
     }
 }
 
