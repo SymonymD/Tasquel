@@ -25,12 +25,22 @@ struct TypedDate: Equatable {
                      locale: Locale = .current) -> TypedDate? {
         var found: [(range: Range<String.Index>, day: DayKey, hasYear: Bool)] = []
         if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) {
-            for match in detector.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            // Read with a slip after the day blanked out ("December 15tg"); the same length,
+            // so the ranges found are the text's too.
+            let read = blankingDaySlips(text)
+            for match in detector.matches(in: read, range: NSRange(read.startIndex..., in: read)) {
                 // Slash dates are all read below, one way: the detector rolls "2/30" over to March 2.
-                guard let start = match.date, let range = Range(match.range, in: text),
+                guard let start = match.date, var range = Range(match.range, in: text),
                       isWrittenOutDate(String(text[range])),
                       String(text[range]).range(of: #"^\s*\d{1,2}/\d{1,2}(/\d{2,4})?\s*$"#, options: .regularExpression) == nil
                 else { continue }
+                // The slip after the day is part of the date, so it leaves the name with it.
+                if range.upperBound < text.endIndex, text[range.upperBound].isLetter,
+                   text[text.index(before: range.upperBound)].isNumber {
+                    var end = range.upperBound
+                    while end < text.endIndex, text[end].isLetter { end = text.index(after: end) }
+                    range = range.lowerBound..<end
+                }
                 // "until 12/15" is read as from now until then: the date is its end.
                 let date = match.duration > 0 ? start.addingTimeInterval(match.duration) : start
                 found.append((range, DayKey(date, in: calendar), hasYear(String(text[range]))))
@@ -55,6 +65,22 @@ struct TypedDate: Equatable {
             return TypedDate(day: day, phrase: phrase, titleWithoutDate: title)
         }
         return nil
+    }
+
+    /// The text with a slip after a day that follows a month's name blanked out with spaces,
+    /// so the detector finds the date: "go to the park december 15tg" (2026-11-15). Not st,
+    /// nd, rd or th, and not a count or a unit ("Mar 3x", "May 5k", "Dec 2pm").
+    static func blankingDaySlips(_ text: String) -> String {
+        let pattern = #"(?i)\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})([a-z]{1,3})\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        let kept: Set<String> = ["st", "nd", "rd", "th", "x", "am", "pm", "k", "km", "mi", "h", "hr", "m", "min"]
+        let blanked = NSMutableString(string: text)
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: blanked.length)).reversed() {
+            let slip = match.range(at: 2)
+            guard !kept.contains(blanked.substring(with: slip).lowercased()) else { continue }
+            blanked.replaceCharacters(in: slip, with: String(repeating: " ", count: slip.length))
+        }
+        return blanked as String
     }
 
     /// "2/3", "12/15", "2/3/27", "2/3/2027": a real date, read month first or day first as

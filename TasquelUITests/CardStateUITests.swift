@@ -60,7 +60,8 @@ final class CardStateUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Add Category")).firstMatch.tap()
         let saved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Work")).firstMatch
         XCTAssertTrue(saved.waitForExistence(timeout: 3))
-        saved.tap()  // adds it and ends Edit
+        saved.tap()  // adds it; Done closes the sheet and ends Edit
+        app.navigationBars["Add Category"].buttons["Done"].tap()
         sleep(2)
         XCTAssertFalse(app.buttons["Close Work"].exists, "Work doesn't come back open by itself")
         XCTAssertTrue(card("Work").exists, "Work is back, closed")

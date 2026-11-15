@@ -95,7 +95,10 @@ struct TaskOptionsPicker: View {
                     },
                     onCancel: finishDate,
                     title: "Until",
-                    noteFor: { Self.thisWeekOnlyNote(for: $0, weekStart: weekStart, isThisWeekOnly: isThisWeekOnlyCategory) }
+                    noteFor: {
+                        Self.thisWeekOnlyNote(for: $0, weekStart: weekStart, isThisWeekOnly: isThisWeekOnlyCategory)
+                            ?? Self.datesWeekNote(for: $0, weekStart: weekStart, mode: mode)
+                    }
                 )
             } else {
                 // Scrolls when it's taller than the screen (accessibility text sizes).
@@ -152,15 +155,7 @@ struct TaskOptionsPicker: View {
                 }
             }
             if let onSelectDay { dayRow(onSelectDay) }
-            // A warning looks like one (a gray line that changed its words went unseen).
-            Group {
-                if hintIsWarning {
-                    Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(hint)")
-                        .foregroundStyle(Theme.late(theme))
-                } else {
-                    Text(hint).foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                }
-            }
+            Text(hint).foregroundStyle(Theme.textSecondary(theme, rc: rc))
             .font(Theme.isRetro(theme) ? .system(.footnote, design: .monospaced) : .footnote)
             .fixedSize(horizontal: false, vertical: true)
             if let action = onAdd ?? onDone {
@@ -202,15 +197,30 @@ struct TaskOptionsPicker: View {
             return switch mode {
             case .carryOver: "Carries over until \(until)\(cardComesBack)"
             case .repeating: "Comes back every week until \(until)\(cardComesBack)"
-            // Picked after the date: it's gone with this week, before its date.
-            case .oneTime: afterThisWeek ? "Gone after this week, before \(until)" : "Until \(until), then it's gone"
+            // After this week: it goes into its date's week (`ChecklistStore.setTaskDate`), but
+            // a This week only card isn't there, so it carries over until then instead.
+            case .oneTime: !afterThisWeek ? "Until \(until), then it's gone"
+                : isThisWeekOnlyCategory ? "Carries over until \(until), and this card comes back"
+                : "Moves to the week of \(until)"
             }
         }
-        guard isThisWeekOnlyCategory else { return mode.hint }
+        guard isThisWeekOnlyCategory else { return modeHint }
         return switch mode {
         case .carryOver: "Carries over, and this card comes back next week"
         case .repeating: "Comes back every week, and so does this card"
         case .oneTime: mode.hint
+        }
+    }
+
+    /// The mode's hint for this type. A repeating list keeps its checks (d4016f8) and a goal
+    /// starts from zero, so "unchecked" is only a checkbox's: a tester's grocery list came
+    /// back with milk and bread still checked under that line (2026-11-14).
+    private var modeHint: String {
+        guard mode == .repeating else { return mode.hint }
+        return switch type {
+        case .checkbox: mode.hint
+        case .goal: "Comes back every week, from zero"
+        case .list: "Comes back every week, checks kept"
         }
     }
 
@@ -221,11 +231,13 @@ struct TaskOptionsPicker: View {
         return "It carries over until then, so this card will come back every week."
     }
 
-    /// One-Time with a date after this week: it's gone before its date.
-    private var hintIsWarning: Bool {
-        guard mode == .oneTime, let date, onSelectDate != nil, let weekStart else { return false }
-        return date > weekStart.adding(days: 6)
+    /// A one-time task dated after its week moves into its date's week: the calendar says so
+    /// before Set (2026-11-15).
+    static func datesWeekNote(for day: DayKey, weekStart: DayKey?, mode: TaskMode) -> String? {
+        guard mode == .oneTime, let weekStart, day > weekStart.adding(days: 6) else { return nil }
+        return "As a One-Time task, it moves to that week."
     }
+
 
     /// A one-time or carry-over task's day and date are one choice: with a date, no day is
     /// picked, and picking a day (or Any) takes the date away. A repeating task's day and

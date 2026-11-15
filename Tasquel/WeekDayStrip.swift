@@ -3,8 +3,8 @@ import SwiftUI
 // MARK: - Week Day Strip
 
 /// The viewed week's seven days, as pills under its title, so it's clear where today
-/// falls: days gone by are green (like Save Goal), today shows its date ("7th"), days to
-/// come are empty. In a past week every day is green; in a future week none is. Tapping
+/// falls: each shows its date, days gone by are blue, today is green (like Save Goal) with
+/// its date's ending ("7th"), days to come are plain. In a past week every day is green; in a future week none is. Tapping
 /// a day shows only its tasks (and the ones without a day) in every card: that pill fills
 /// in with the day's name, a line under the strip says so with Show All, and tapping it
 /// again shows every task. Its text size is capped where it's placed (`.dynamicTypeSize`,
@@ -24,6 +24,9 @@ struct WeekDayStrip: View {
     /// About half the size the days first had (26pt-tall boxes), then 5% larger.
     @ScaledMetric(relativeTo: .caption2) private var height: CGFloat = 13.65
     @ScaledMetric(relativeTo: .caption2) private var width: CGFloat = 24.15
+    /// The other days' dates, a little smaller than today's (`.caption2`, 11pt): at today's
+    /// size they were too big for the pills (the user, 2026-11-15).
+    @ScaledMetric(relativeTo: .caption2) private var dateSize: CGFloat = 9
 
     private var days: [DayKey] { (0..<7).map { weekStart.adding(days: $0) } }
 
@@ -53,8 +56,11 @@ struct WeekDayStrip: View {
             .accessibilityIdentifier("Week days")
             if let selectedWeekday, let onSelect {
                 HStack(spacing: 6) {
-                    Text(Theme.isRetro(theme) ? "> \(Weekday.name(selectedWeekday, short: false).uppercased()) + NO_DAY"
-                                              : "\(Weekday.name(selectedWeekday, short: false)) and tasks with no day")
+                    // Today's pill also shows tasks whose day went by unfinished (`shownTasks`).
+                    let isToday = days.contains { $0 == today && Calendar.weekDates().component(.weekday, from: $0.date(in: Calendar.weekDates())) == selectedWeekday }
+                    Text(Theme.isRetro(theme)
+                         ? "> \(Weekday.name(selectedWeekday, short: false).uppercased())\(isToday ? " + LATE" : "") + NO_DAY"
+                         : "\(Weekday.name(selectedWeekday, short: false))\(isToday ? ", late," : "") and tasks with no day")
                         .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     Button(Theme.isRetro(theme) ? "[SHOW_ALL]" : "Show All") { onSelect(selectedWeekday) }
                         .fontWeight(.semibold)
@@ -81,8 +87,10 @@ struct WeekDayStrip: View {
         let isPast = day < today
         let isSelected = selectedWeekday == weekday
         let accent = Theme.accent(theme, rc: rc)
-        // Save Goal's green: a soft fill inside a full-color border.
-        let done = Theme.dotComplete(theme, rc: rc)  // green, or the season's
+        // Today is green (Save Goal's, or the season's), days gone by blue, a soft fill inside a
+        // full-color border (the user, 2026-11-15: swapped; two testers read green past days
+        // as "done").
+        let todayGreen = Theme.dotComplete(theme, rc: rc)
         return Group {
             if isSelected {
                 // The picked day: filled in, with its name ("Thu", today's date on today).
@@ -100,7 +108,7 @@ struct WeekDayStrip: View {
                 // As wide as its date needs ("22nd").
                 Text(Self.ordinal(day.day))
                     .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced).bold() : .caption2.bold())
-                    .foregroundStyle(Theme.todayDate(theme, rc: rc))
+                    .foregroundStyle(Theme.expirySet(theme, rc: rc))
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 7)
@@ -108,12 +116,23 @@ struct WeekDayStrip: View {
                     .frame(minWidth: width, minHeight: height)
                     .fixedSize()
             } else {
-                Color.clear.frame(width: width, height: height)
+                // Its date, so each day can be told apart at a glance (the user, 2026-11-15);
+                // only today's has its ending ("15th"). Days gone by in blue, days to come gray.
+                Text(verbatim: "\(day.day)")
+                    .font(.system(size: dateSize, weight: .semibold, design: Theme.isRetro(theme) ? .monospaced : .default))
+                    .monospacedDigit()
+                    .foregroundStyle(isPast ? Theme.pastDayDate(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .frame(minWidth: width, minHeight: height)
+                    .fixedSize()
             }
         }
         .background {
-            shape.fill(isPast ? done.opacity(0.18) : Color.clear)
-            shape.stroke(isToday ? accent : isPast ? done : Theme.textTertiary(theme, rc: rc).opacity(0.8),
+            shape.fill(isPast ? accent.opacity(0.14) : Color.clear)
+            shape.stroke(isToday ? todayGreen : isPast ? accent : Theme.textTertiary(theme, rc: rc).opacity(0.8),
                          lineWidth: isToday ? 1.5 : 1)
         }
     }

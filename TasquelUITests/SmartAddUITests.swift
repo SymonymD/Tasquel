@@ -120,6 +120,23 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertEqual(taskCount, 1, "still one task")
     }
 
+    /// With List picked, words in parts are its name and items, whatever the model makes: the
+    /// sure way to "Go to the zoo" with "harass penguins" (2026-11-15).
+    @MainActor
+    func testPickedListSplitsWordsIntoItems() throws {
+        typeInFitness("Go to the zoo and harass penguins")
+        app.buttons["New task options: Checkbox, One-Time"].tap()
+        app.buttons["List"].tap()
+        let dismiss = app.otherElements["PopoverDismissRegion"]
+        if dismiss.exists { dismiss.tap() }
+        let smartAdd = app.buttons["Smart Add"]
+        XCTAssertTrue(smartAdd.waitForExistence(timeout: 3))
+        smartAdd.tap()
+        XCTAssertTrue(app.staticTexts["Go to the zoo"].waitForExistence(timeout: 10), "named by the first part")
+        XCTAssertTrue(app.staticTexts["harass penguins"].exists, "the rest is its item")
+        XCTAssertEqual(taskCount, 1)
+    }
+
     /// Closing the card while Smart Add works on a list with no items: the list is added,
     /// and the keyboard doesn't come up for its (now hidden) first-item field.
     @MainActor
@@ -158,7 +175,7 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertTrue(field.value(forKey: "hasKeyboardFocus") as? Bool ?? false, "still typing")
 
         let faded = expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: undo)
-        wait(for: [faded], timeout: 8)
+        wait(for: [faded], timeout: 12)  // the note lasts 8 seconds
         XCTAssertEqual(field.frame.minY, fieldY, accuracy: 0.5, "the field didn't move")
 
         app.buttons["Done"].firstMatch.tap()
@@ -235,8 +252,9 @@ final class SmartAddUITests: XCTestCase {
     }
 
     /// A written-out date ("Exam 12/15") isn't a goal's numbers: the task is added as typed,
-    /// and the note asks "Until …?" with Set Date, which makes it the task's date (a one-time
-    /// task then carries over until it) and takes it out of the name (2026-11-14).
+    /// and the note asks "Until …?" with Set Date, which makes it the task's date and takes it
+    /// out of the name (2026-11-14). One-time, it then moves to its date's week, and the
+    /// screen goes with it (2026-11-15).
     @MainActor
     func testTypedDateIsOfferedAndSetOnlyWhenAsked() throws {
         let date = Calendar.current.date(byAdding: .day, value: 20, to: Date())!
@@ -249,10 +267,30 @@ final class SmartAddUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[typed].exists, "added as typed until it's set")
         XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].exists, "not a goal")
         setDate.tap()
-        XCTAssertTrue(app.staticTexts["Exam"].waitForExistence(timeout: 3), "the date leaves the name")
+        let moved = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "“Exam” moved here, to the week of its date")).firstMatch
+        XCTAssertTrue(moved.waitForExistence(timeout: 5), "its date's week, with a note")
+        let popUp = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Moved to ")).firstMatch
+        XCTAssertTrue(popUp.exists, "and a pop-up saying the screen went there")
+        app.buttons["Moved OK"].tap()
+        XCTAssertTrue(app.staticTexts["Exam"].exists, "the date leaves the name")
         let checkbox = app.buttons.matching(NSPredicate(format: "label == %@ AND value BEGINSWITH %@", "Complete Exam", "expires in 20 days")).firstMatch
         XCTAssertTrue(checkbox.exists, "and is its last day")
-        XCTAssertTrue(app.buttons["Task options: Checkbox, Carry Over"].exists, "a one-time task dated after this week carries over")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].exists, "still one-time")
+    }
+
+    /// "Due 12/15" is a deadline: Set Date keeps the task in front of you, carrying over until
+    /// then, where a date alone moves it to its week (2026-11-15).
+    @MainActor
+    func testTypedDeadlineCarriesOver() throws {
+        let date = Calendar.current.date(byAdding: .day, value: 20, to: Date())!
+        let parts = Calendar.current.dateComponents([.month, .day], from: date)
+        typeInFitness("Essay due \(parts.month!)/\(parts.day!)")
+        app.buttons["Smart Add"].tap()
+        let setDate = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Set date to")).firstMatch
+        XCTAssertTrue(setDate.waitForExistence(timeout: 10), "the date is offered")
+        setDate.tap()
+        XCTAssertTrue(app.staticTexts["Essay"].waitForExistence(timeout: 3), "here, the date out of the name")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, Carry Over"].exists, "carrying over until its date")
     }
 
     private var fitnessCard: XCUIElement {

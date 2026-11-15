@@ -12,25 +12,24 @@ struct AddCategorySheet: View {
     @State private var newSymbol = "folder"
     @State private var templateToRemove: CategoryTemplate?
     @State private var isEditingSaved = false
-    /// Off: the category carries into future weeks. On: it's for the viewed week only.
+    /// The category being created is just this week's (off: it comes back every week).
     @State private var thisWeekOnly = false
     @FocusState private var isNameFocused: Bool
-    /// Set once a category is added, while the sheet closes: the name just added would
-    /// otherwise count as taken and flash the warning below the field.
-    @State private var didAdd = false
+    /// The category added last: the sheet stays open to add several, and says so.
+    @State private var lastAdded: String?
+    /// A saved category just removed, shown for a moment where its row was ("Removed
+    /// Errands"): with only the rows closing up, a tester read the Finish Editing row
+    /// (then "✓ Done Editing") as what had happened (2026-11-15).
+    @State private var removedNotice: RemovedNotice?
+    private struct RemovedNotice: Equatable {
+        let name: String
+        let index: Int
+        let token = UUID()
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                // Set before choosing, so a category is added in one tap (no second
-                // "every week or this week?" question).
-                Section {
-                    Toggle("This week only", isOn: $thisWeekOnly)
-                } footer: {
-                    Text(thisWeekOnly
-                         ? "The category is added to this week only and won't come back next week."
-                         : "The category is added to this week and later weeks.")
-                }
                 createSection
                 savedSection
             }
@@ -56,7 +55,15 @@ struct AddCategorySheet: View {
                     SheetDoneButton(action: finish)
                 }
             }
-            .savedCategoryRemoval($templateToRemove, store: store)
+            .savedCategoryRemoval($templateToRemove, store: store) { removed, index in
+                withAnimation(.snappy(duration: 0.25)) { removedNotice = RemovedNotice(name: removed.name, index: index) }
+                AccessibilityNotification.Announcement("Removed \(removed.name)").post()
+            }
+            .task(id: removedNotice?.token) {
+                guard removedNotice != nil else { return }
+                try? await Task.sleep(for: .seconds(3))
+                withAnimation(.snappy(duration: 0.25)) { removedNotice = nil }
+            }
         }
         .emojiPickerHost()
         .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
@@ -64,7 +71,7 @@ struct AddCategorySheet: View {
     }
 
     private var createSection: some View {
-        Section("Create New") {
+        Section {
             if isCreatingNew {
                 HStack {
                     CategorySymbolMenu(symbol: $newSymbol) {
@@ -84,9 +91,26 @@ struct AddCategorySheet: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
+                // For the category being created, just before Add Category (the user's flow,
+                // 2026-11-15: name, icon, this, Add); off each time. At the sheet's top it was
+                // the first thing new users met, and stayed on for every add after. A saved
+                // category tapped below comes back every week; its card's edit mode can make
+                // it just this week's.
+                Toggle(isOn: $thisWeekOnly) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Just this week")
+                        // Only when on (the user's wording, 2026-11-15).
+                        if thisWeekOnly {
+                            Text("It won't come back next week. Also saved for later use.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 HStack {
                     Button("Cancel") {
                         isCreatingNew = false
+                        thisWeekOnly = false
                         newName = ""
                     }
                     .buttonStyle(.borderless)
@@ -108,6 +132,14 @@ struct AddCategorySheet: View {
                     Label("Create New Category", systemImage: "plus.circle")
                 }
             }
+        } header: {
+            Text("Create New")
+        } footer: {
+            // What was just added, so it's clear it worked with the sheet still open.
+            if let lastAdded {
+                Label("Added \(lastAdded) · add another, or tap Done", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(Theme.dotComplete(store.appearanceMode, rc: store.retroColor))
+            }
         }
     }
 
@@ -115,7 +147,8 @@ struct AddCategorySheet: View {
     private var savedSection: some View {
         if !store.savedCategories.isEmpty {
             Section {
-                ForEach(store.savedCategories) { template in
+                ForEach(Array(store.savedCategories.enumerated()), id: \.element.id) { index, template in
+                    if let removedNotice, removedNotice.index == index { removedRow(removedNotice) }
                     if isEditingSaved {
                         SavedCategoryRow(store: store, template: template) {
                             templateToRemove = template
@@ -124,21 +157,35 @@ struct AddCategorySheet: View {
                         savedCategoryButton(template)
                     }
                 }
-                Button {
-                    withAnimation { isEditingSaved.toggle() }
-                } label: {
-                    Label(isEditingSaved ? "Done Editing" : "Edit Saved Categories",
-                          systemImage: isEditingSaved ? "checkmark" : "pencil")
-                }
-                .accessibilityRemoveTraits(.isSelected)  // a checkmark icon reads as "selected"
+                if let removedNotice, removedNotice.index >= store.savedCategories.count { removedRow(removedNotice) }
             } header: {
-                Text("Saved Categories")
+                // Edit beside the heading, where it's seen: at the list's end, below every saved
+                // category, it went unnoticed (the user, 2026-11-15).
+                HStack {
+                    Text("Saved Categories")
+                    Spacer()
+                    Button(isEditingSaved ? "Done" : "Edit") {
+                        withAnimation { isEditingSaved.toggle() }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .textCase(nil)
+                    .accessibilityLabel(isEditingSaved ? "Done Editing Saved Categories" : "Edit Saved Categories")
+                }
             } footer: {
                 if isEditingSaved {
                     Text("A new name or icon also applies to the category's card this week and in later weeks. To reorder, go to Settings ▸ Saved Categories.")
+                } else {
+                    Text("Tap one to add it to this week.")
                 }
             }
         }
+    }
+
+    /// "Removed Errands", in the removed row's place for a moment.
+    private func removedRow(_ notice: RemovedNotice) -> some View {
+        Label("Removed \(notice.name)", systemImage: "trash")
+            .foregroundStyle(.secondary)
+            .transition(.opacity)
     }
 
     /// Done adds a category being typed rather than dropping it; with nothing typed it
@@ -157,18 +204,26 @@ struct AddCategorySheet: View {
         return Button {
             addFromTemplate(template)
         } label: {
+            // Color.primary, not .primary: in a button that's its tint, and the ones that
+            // could be added showed blue, which read as nothing in particular (the user,
+            // 2026-11-15). A + says they can be added.
             HStack {
                 Label { Text(template.name) } icon: { CategoryIcon(symbol: template.symbol) }
-                    .foregroundStyle(alreadyAdded ? .secondary : .primary)
+                    .foregroundStyle(alreadyAdded ? Color.secondary : Color.primary)
                 Spacer()
                 if alreadyAdded {
                     Text("Added")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(Theme.dotComplete(store.appearanceMode, rc: store.retroColor))
+                        .accessibilityHidden(true)
                 }
             }
         }
         .disabled(alreadyAdded)
+        .accessibilityHint(alreadyAdded ? "" : "Adds it to this week")
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 templateToRemove = template
@@ -180,14 +235,11 @@ struct AddCategorySheet: View {
 
     private func addFromTemplate(_ template: CategoryTemplate) {
         if let week = store.selectedWeek,
-           week.categories.contains(where: { $0.name == template.name }) {
-            dismiss()
-            return
-        }
+           week.categories.contains(where: { $0.name == template.name }) { return }
         add(name: template.name, symbol: template.symbol, isNew: false)
     }
 
-    private var isNewNameTaken: Bool { !didAdd && store.isCategoryNameTaken(newName) }
+    private var isNewNameTaken: Bool { store.isCategoryNameTaken(newName) }
 
     /// Says where the name is taken: this week's cards, or Saved Categories.
     private var nameTakenMessage: String {
@@ -206,12 +258,21 @@ struct AddCategorySheet: View {
 
     /// A new category is also kept in Saved Categories, also one added for this week
     /// only, so it can be added again another week.
+    /// The sheet stays open for the next one (three testers went Edit ▸ Add Category ▸
+    /// Create New once per card, 2026-11-14); Done closes it. A new one's field is cleared
+    /// and keeps the keyboard.
     private func add(name: String, symbol: String, isNew: Bool) {
-        didAdd = true
         if isNew {
             store.addSavedCategory(name: name, symbol: symbol)
         }
-        onAdd?(name, symbol, thisWeekOnly)
-        dismiss()
+        onAdd?(name, symbol, isNew && thisWeekOnly)
+        withAnimation(.snappy(duration: 0.2)) { lastAdded = name }
+        if isNew {
+            newName = ""
+            newSymbol = "folder"
+            thisWeekOnly = false
+            isNameFocused = true
+        }
+        AccessibilityNotification.Announcement("Added \(name)").post()
     }
 }

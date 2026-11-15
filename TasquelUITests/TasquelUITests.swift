@@ -120,6 +120,15 @@ final class TasquelUITests: XCTestCase {
         XCTAssertTrue(editButton.waitForExistence(timeout: 3))
         editButton.tap()
         XCTAssertTrue(app.staticTexts["Add Category"].waitForExistence(timeout: 3), "Edit mode should show Add Category")
+        // The first tile, top left, in view however many cards there are (2026-11-15).
+        let add = app.staticTexts["Add Category"]
+        let errands = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Errands")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 3))
+        XCTAssertLessThan(add.frame.midY, errands.frame.maxY, "in the first row")
+        XCTAssertLessThan(add.frame.midX, errands.frame.midX, "in the top-left slot")
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Add Category"].waitForExistence(timeout: 3), "it opens Add Category")
+        XCTAssertTrue(app.buttons["Edit Saved Categories"].exists, "with Edit beside Saved Categories")
     }
 
     /// Pulling the grid down past its top and letting go closes every open card; a short

@@ -214,6 +214,20 @@ struct TaskRowCard: View {
     @State private var rowWidth: CGFloat = 0
     @State private var leadingWidth: CGFloat = 0
     @State private var iconsWidth: CGFloat = 0
+    /// The day and date marks' width: they sit beside the whole name, not in its last line.
+    @State private var markWidth: CGFloat = 0
+    /// The goal editor's width and its unit menu's, for `unitNameFitsBesideTarget`.
+    @State private var goalFormWidth: CGFloat = 0
+    @State private var unitMenuWidth: CGFloat = 0
+
+    /// A custom unit's name fits on the Target row: the label, the unit menu, the number
+    /// and the name's least width, 8pt apart. Fixed widths only, so typing a longer name
+    /// never moves the field (and its keyboard) to another row.
+    private var unitNameFitsBesideTarget: Bool {
+        if dynamicTypeSize.isAccessibilitySize || goalFormWidth == 0 { return true }
+        let needed = 64 * expandedCardScale + 8 + unitMenuWidth + 8 + 90 * expandedCardScale + 8 + 64 * expandedCardScale
+        return needed <= goalFormWidth
+    }
     /// Smart Add just added this task: lit like a drop target for a moment.
     private var isHighlighted: Bool { store.highlightedTaskID == task.id }
     /// The add-sub-task (or a list's add-item) field is open.
@@ -434,6 +448,9 @@ struct TaskRowCard: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         // The card keeps its order while this task's options or calendar are open.
         .onChange(of: showOptions || showMarkOptions || showExpiry) { _, open in freezesTaskOrder(open) }
+        // Gone with its options open (a date moved it to another week): the card's order is
+        // let go, as closing them would.
+        .onDisappear { if showOptions || showMarkOptions || showExpiry { freezesTaskOrder(false) } }
         .task(id: store.taskAwaitingFirstInput) {
             guard store.taskAwaitingFirstInput == task.id else { return }
             store.taskAwaitingFirstInput = nil
@@ -600,6 +617,7 @@ struct TaskRowCard: View {
             .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
             .textRenderer(DayPulseRenderer(strength: dayPulse))
             .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { markWidth = $0 }
         if isPastWeek || showsEditIcons {
             shown.accessibilityHidden(true)
         } else {
@@ -617,7 +635,10 @@ struct TaskRowCard: View {
 
     /// The day and date marks, if any (see `dayMark`, `dateMark`).
     private var markText: Text? {
-        switch (dayMark, dateMark) {
+        // Not in the card's edit mode: the name has the row (the clock shows a date there),
+        // where the marks pushed the edit icons onto a line of their own (2026-11-15).
+        guard !showsEditIcons else { return nil }
+        return switch (dayMark, dateMark) {
         case let (day?, date?): Text("\(day)  \(date)")
         case let (day?, nil): day
         case let (nil, date?): date
@@ -732,9 +753,13 @@ struct TaskRowCard: View {
         if dynamicTypeSize.isAccessibilitySize { return true }
         guard rowWidth > 0, iconsWidth > 0 else { return false }
         let besideIcons = rowWidth - leadingWidth - 10 - 10 - iconsWidth  // the row's two gaps
+        // The day and date marks sit beside the name (8pt apart), so every line of the name
+        // has that much less room: counted as one more word, "Send invoice" next to
+        // "Fri · late" and edit mode's four icons broke as "invoic / e" (2026-11-14).
+        let besideMark = besideIcons - (markText == nil ? 0 : markWidth + 8)
         let widest = max(TaskRowCard.widestWord(of: titleWords, retro: Theme.isRetro(theme)),
                          showsDuplicate ? Text.duplicateMarkWidth(retro: Theme.isRetro(theme)) : 0)
-        return besideIcons < widest
+        return besideMark < widest
     }
 
     /// The name's pieces that can't break: its words, and a folded list's count ("2 of 5").
@@ -743,7 +768,6 @@ struct TaskRowCard: View {
         if isFolded, !task.subtasks.isEmpty {
             words.append("\(task.subtasks.filter(\.isCompleted).count)\u{00A0}of\u{00A0}\(task.subtasks.count)")
         }
-        if let day = task.dayOfWeek { words.append((isTaskDay ? "Today" : Weekday.name(day)) + (isLate ? "\u{00A0}·\u{00A0}late" : "")) }
         return words
     }
 
@@ -771,8 +795,17 @@ struct TaskRowCard: View {
             text = Text("\(text)  \(count)")
         }
         if showsDuplicate { text = Text("\(text)  \(Text.duplicateMark(theme))") }
+        if showsPinMark {
+            // A pinned task says so outside edit mode too; it only sat at the top, which
+            // two testers took for nothing having happened (2026-11-14).
+            let pin = Theme.isRetro(theme) ? Text(verbatim: "[PIN]") : Text(Image(systemName: "pin.fill"))
+            text = Text("\(text)  \(pin.font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default)).foregroundStyle(Theme.pinned(theme, rc: rc)))")
+        }
         return text
     }
+
+    /// Edit mode's own pin button shows it there.
+    private var showsPinMark: Bool { task.isPinned && !showsEditIcons }
 
     /// Today is its day (only in the current week): its label says Today.
     private var isTaskDay: Bool {
@@ -824,9 +857,13 @@ struct TaskRowCard: View {
     /// A task with a date (its last day): a small calendar after its name, green until it's
     /// done (the user asked, 2026-11-14). The checkbox's ring and VoiceOver say how long.
     private var dateMark: Text? {
-        guard task.expiresOn != nil else { return nil }
-        return Text(Image(systemName: "calendar"))
-            .font(.expandedCard(.caption1, weight: .semibold))
+        guard let lastDay = task.expiresOn else { return nil }
+        // The date itself too ("Nov 28"): an icon alone left new users unsure what the date
+        // was, or that there was one (four of six testers, 2026-11-14).
+        let shown = lastDay.date(in: store.calendar).formatted(.dateTime.month(.abbreviated).day())
+        let retro = Theme.isRetro(theme)
+        return Text("\(Image(systemName: "calendar"))\u{00A0}\(retro ? shown.uppercased() : shown)")
+            .font(.expandedCard(.caption1, weight: .semibold, design: retro ? .monospaced : .default))
             .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.expirySet(theme, rc: rc))
     }
 
@@ -836,7 +873,8 @@ struct TaskRowCard: View {
     /// What VoiceOver hears after the name: a folded list's count, and "duplicate".
     private var titleValue: String {
         let day = task.dayOfWeek.map { isTaskDay ? "today" : Weekday.name($0, short: false) + (isLate ? ", late" : "") } ?? ""
-        return [day, foldedCountDescription, showsDuplicate ? "duplicate" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        return [day, foldedCountDescription, showsDuplicate ? "duplicate" : "", showsPinMark ? "pinned" : ""]
+            .filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     /// A folded list's count in words ("2 of 5 items checked"); empty otherwise.
@@ -977,6 +1015,7 @@ struct TaskRowCard: View {
                     TaskOptionsPicker.thisWeekOnlyNote(
                         for: day, weekStart: store.selectedWeek?.startDay,
                         isThisWeekOnly: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true)
+                        ?? TaskOptionsPicker.datesWeekNote(for: day, weekStart: store.selectedWeek?.startDay, mode: task.mode)
                 }
             )
         }
@@ -1198,6 +1237,7 @@ struct TaskRowCard: View {
         VStack(alignment: .leading, spacing: 8) {
             labeledGoalRow("Target") {
                 goalUnitMenu
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { unitMenuWidth = $0 }
                 // Typed by hand, the target leads: a typed Step goes back to Auto, a day's
                 // share of it. (Only typing: a Unit switch converting it keeps the Step.)
                 goalAmountFields(Binding(get: { goalTargetInput }, set: {
@@ -1205,9 +1245,15 @@ struct TaskRowCard: View {
                                      if !goalStepInput.isEmpty { goalStepInput = GoalAmountInput() }
                                  }),
                                  kind: goalKindSelection, field: .target, placeholder: "Target")
-                if goalKindSelection == .custom { unitNameField }
+                if goalKindSelection == .custom && unitNameFitsBesideTarget { unitNameField }
             }
             goalHint(goalTargetInput.problem(for: goalKindSelection))
+            // Where it doesn't fit beside the target, the unit's name has a row of its own:
+            // on a 402pt iPhone the Target row ran ~20pt past the card, cutting off the name
+            // and Save Goal (2026-11-14).
+            if goalKindSelection == .custom && !unitNameFitsBesideTarget {
+                labeledGoalRow("Unit") { unitNameField }
+            }
             // What + and − add or take away; empty (Auto) is the target ÷ the days.
             labeledGoalRow("Step") {
                 goalAmountFields($goalStepInput, kind: goalKindSelection, field: .step, placeholder: "Auto")
@@ -1235,6 +1281,13 @@ struct TaskRowCard: View {
                 let step = ChecklistTask.automaticStep(forTarget: target, days: days)
                 goalLinkHint("Target ÷ \(days) \(dayWord) = \(goalKindSelection.format(step)) a step")
             }
+            // Saving would make the goal met at once: said before, not found struck through
+            // after ("Done, 8 of 7" when a tester set a step of 1, 2026-11-14).
+            if let metBySaving = goalMetBySaving {
+                Text(metBySaving)
+                    .font(.expandedCard(.caption1, design: Theme.isRetro(theme) ? .monospaced : .default))
+                    .foregroundStyle(Theme.late(theme))
+            }
             ViewThatFits(in: .horizontal) {
                 editGoalButtons(stacked: false)
                 editGoalButtons(stacked: true)
@@ -1242,9 +1295,20 @@ struct TaskRowCard: View {
         }
         .font(.expandedCard(.body, design: Theme.isRetro(theme) ? .monospaced : .default))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { goalFormWidth = $0 }
         .padding(.leading, 24 * expandedCardScale)
         .onChange(of: goalStepInput) { followStepTimesDays() }
         .onChange(of: goalDaysSelection) { followStepTimesDays() }
+    }
+
+    /// "Already 8 of 7: saving marks it done", when the target as edited is one the progress
+    /// already meets but the saved target isn't.
+    private var goalMetBySaving: String? {
+        guard let progress = task.goalProgress, progress > 0,
+              (task.goalUnitKind ?? .quantity) == goalKindSelection,
+              let target = goalTargetInput.positiveValue(for: goalKindSelection), progress >= target,
+              task.goalTarget.map({ progress < $0 }) ?? true else { return nil }
+        return "Already \(goalKindSelection.format(progress)) of \(goalKindSelection.format(target)): saving marks it done"
     }
 
     /// How Target, Step and Days go together, under the fields.
@@ -2227,6 +2291,8 @@ struct AddTaskRowCard: View {
     /// What Smart Add just added, or that a task just added has the name of one already in
     /// the card: shown above the row (so right under the new task, which goes at the end)
     /// for a few seconds with Undo.
+    /// Holds the card's order while the field is in use (`ExpandedCategoryContent.freezeOrder`).
+    @Environment(\.freezesTaskOrder) private var freezesTaskOrder
     @State private var addNote: AddNote?
     /// What Smart Add worked out, waiting to be added (see `finishSmartAdd`).
     @State private var smartAddOutcome: SmartAddOutcome?
@@ -2253,6 +2319,11 @@ struct AddTaskRowCard: View {
         /// A date Smart Add found in the words ("Exam 12/15"), offered as the task's date:
         /// Set Date sets it and renames the task to `titleWithoutDate` ("Exam").
         var typedDate: TypedDate? = nil
+        /// The week the task went into when it isn't the one viewed: a day that had gone by
+        /// this week put it in next week (`ChecklistStore.placeParsedTask`).
+        var nextWeek: DayKey? = nil
+        /// Undo for a task added; none for one moved to its date's week (nothing to undo to).
+        var canUndo = true
         let token = UUID()
     }
 
@@ -2297,10 +2368,12 @@ struct AddTaskRowCard: View {
         }
         if Theme.isRetro(theme) {
             return "new_" + (mode.map { $0.replacingOccurrences(of: "-", with: "_") + "_" } ?? "") + kind
-                + (addDay.map { "_" + Weekday.name($0).lowercased() } ?? "") + ">"
+                + (addDay.map { (store.dayHasGoneBy($0) ? "_next_" : "_") + Weekday.name($0).lowercased() } ?? "") + ">"
         }
-        // "Add Task", "Add Repeating Goal", "Add Task for Thu"
-        return ("Add " + (mode.map { $0 + " " } ?? "") + kind).capitalized + (addDay.map { " for \(Weekday.name($0))" } ?? "")
+        // "Add Task", "Add Repeating Goal", "Add Task for Thu"; "Add Task for Next Thu" once
+        // Thursday has gone by this week, since that's where it will go (`placeParsedTask`).
+        return ("Add " + (mode.map { $0 + " " } ?? "") + kind).capitalized
+            + (addDay.map { " for " + (store.dayHasGoneBy($0) ? "Next " : "") + Weekday.name($0) } ?? "")
     }
 
     /// The day the next task added gets: one picked in the picker, else the day strip's.
@@ -2316,7 +2389,8 @@ struct AddTaskRowCard: View {
         if store.remindsBeforeExpiry { ExpiryNotifications.shared.requestPermissionIfNeeded() }
         // Shown in the picker; adding applies the rule itself (`addParsedTask`), so it isn't
         // a picked mode: Smart Add keeps the mode it works out ("3x per week" repeats).
-        newMode = ChecklistTask.dateMode(newMode, lastDay: day, weekStart: weekStart)
+        // A one-time task stays one: dated after this week it goes into its date's week
+        // (`placeParsedTask`); other modes don't change.
         if let weekday = ChecklistTask.dateWeekday(day, wholeWeek: wholeWeek, weekStart: weekStart, calendar: store.calendar) {
             newDay = weekday
             didPickDay = true
@@ -2339,7 +2413,8 @@ struct AddTaskRowCard: View {
         case .carryOver: "carry-over"
         case .repeating: "repeating"
         }
-        return "Add " + (mode.map { $0 + " " } ?? "") + kind + (addDay.map { " for " + Weekday.name($0, short: false) } ?? "")
+        return "Add " + (mode.map { $0 + " " } ?? "") + kind
+            + (addDay.map { " for " + (store.dayHasGoneBy($0) ? "next " : "") + Weekday.name($0, short: false) } ?? "")
     }
 
     var body: some View {
@@ -2385,8 +2460,13 @@ struct AddTaskRowCard: View {
             // So it does with demo data, for the App Store screenshot. In the card's edit
             // mode it's hidden: its time starts when editing ends.
             guard addNote != nil, !isEditing, !voiceOverEnabled, !Self.keepsSmartAddMessage else { return }
-            // Longer while it asks about a date, so there's time to answer.
-            try? await Task.sleep(for: .seconds(addNote?.typedDate != nil ? 10 : 4))
+            // One asking about a date stays until it's answered, the next task is added or
+            // this one goes: two testers and the user missed Set Date before it faded
+            // (2026-11-15; it had 10 seconds).
+            guard addNote?.typedDate == nil else { return }
+            // 8 seconds: at 4, Undo was gone before the user saw what Smart Add had made
+            // (2026-11-15).
+            try? await Task.sleep(for: .seconds(8))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy(duration: 0.25)) {
                 // Taking its place away would move the field up under the next task being
@@ -2408,6 +2488,10 @@ struct AddTaskRowCard: View {
             smartAddOutcome = nil
             finishSmartAdd(outcome)
         }
+        .onChange(of: handedOver?.token, initial: true) { showHandedOverNote() }
+        // While typing, and while a new task's note shows, new tasks stay just above the
+        // field, under which the note is; then they move into place.
+        .onChange(of: holdsCardOrder) { _, hold in freezesTaskOrder(hold) }
         .onChange(of: noteTaskIsGone) { _, gone in
             if gone { withAnimation(.snappy(duration: 0.25)) { addNote = nil } }
         }
@@ -2416,8 +2500,9 @@ struct AddTaskRowCard: View {
     /// The task Smart Add's note is about was deleted (in the card's edit mode, say, where
     /// the note waits to show again): the note goes with it.
     private var noteTaskIsGone: Bool {
-        guard let id = addNote?.taskID else { return false }
-        return store.viewedTask(categoryID, id) == nil
+        guard let note = addNote else { return false }
+        if let week = note.nextWeek { return !store.hasTask(note.taskID, inWeekStarting: week) }
+        return store.viewedTask(categoryID, note.taskID) == nil
     }
 
     /// The field shows once + is tapped, and stays while there's something in it, Smart Add
@@ -2619,8 +2704,20 @@ struct AddTaskRowCard: View {
     private func setTypedDate(_ typedDate: TypedDate, for result: AddNote) {
         if store.remindsBeforeExpiry { ExpiryNotifications.shared.requestPermissionIfNeeded() }
         withAnimation(.snappy(duration: 0.2)) {
-            store.setTaskDate(categoryID: categoryID, taskID: result.taskID, lastDay: typedDate.day)
+            // Renamed first: a one-time task then goes into its date's week (`setTaskDate`).
             store.renameTask(categoryID: categoryID, taskID: result.taskID, newTitle: typedDate.titleWithoutDate)
+            // "By Dec 12", "due 12/12": a deadline, so it stays in front of you, carrying over
+            // until then; "on Dec 14", or the date alone, is when to do it (2026-11-15).
+            // The word is before the date, or in it: Foundation's detector reads "due 12/15"
+            // or "until 12/15" as one phrase.
+            let word = #"\b(by|due|until|till|before)(\s+on)?\s+"#
+            let deadline = typedDate.phrase.range(of: "^" + word, options: [.regularExpression, .caseInsensitive]) != nil
+                || result.text.range(of: word + NSRegularExpression.escapedPattern(for: typedDate.phrase),
+                                     options: [.regularExpression, .caseInsensitive]) != nil
+            if deadline, store.viewedTask(categoryID, result.taskID)?.mode == .oneTime {
+                store.updateTaskMode(categoryID: categoryID, taskID: result.taskID, mode: .carryOver)
+            }
+            store.setTaskDate(categoryID: categoryID, taskID: result.taskID, lastDay: typedDate.day)
             addNote = nil
         }
     }
@@ -2632,20 +2729,22 @@ struct AddTaskRowCard: View {
 
     private func addNoteLine(_ result: AddNote) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: result.isSmartAdd ? "sparkles" : "square.on.square")
-                .foregroundStyle(result.isSmartAdd ? Theme.accent(theme, rc: rc) : Theme.duplicate(theme))
+            Image(systemName: result.nextWeek != nil ? "calendar" : result.isSmartAdd ? "sparkles" : "square.on.square")
+                .foregroundStyle(result.isSmartAdd || result.nextWeek != nil ? Theme.accent(theme, rc: rc) : Theme.duplicate(theme))
             Text(result.message)
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                 .lineLimit(2)
                 // Both lines: beside the Undo it was laid out one line tall ("is already i…").
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            Button("Undo") { undoAdd(result) }
-                .buttonStyle(.plain)
-                .fontWeight(.semibold)
-                .foregroundStyle(Theme.accent(theme, rc: rc))
-                .touchTarget()
-                .accessibilityLabel(result.isSmartAdd ? "Undo Smart Add" : "Undo adding \(result.text)")
+            if result.canUndo {
+                Button("Undo") { undoAdd(result) }
+                    .buttonStyle(.plain)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.accent(theme, rc: rc))
+                    .touchTarget()
+                    .accessibilityLabel(result.isSmartAdd ? "Undo Smart Add" : "Undo adding \(result.text)")
+            }
         }
     }
 
@@ -2653,7 +2752,11 @@ struct AddTaskRowCard: View {
     /// in the field to be added again when the keyboard closes.
     private func undoAdd(_ result: AddNote) {
         withAnimation(.snappy(duration: 0.2)) {
-            store.deleteTask(categoryID: categoryID, taskID: result.taskID, undoable: false)
+            if let week = result.nextWeek {
+                store.removeAddedTask(result.taskID, inWeekStarting: week)
+            } else {
+                store.deleteTask(categoryID: categoryID, taskID: result.taskID, undoable: false)
+            }
             if result.wasThisWeekOnly { store.setCategoryThisWeekOnly(categoryID, true) }
             addNote = nil
         }
@@ -2729,7 +2832,12 @@ struct AddTaskRowCard: View {
             parsed.mode = newMode
             parsed.keepsMode = true
         }
-        // A day picked in the picker wins; then the words' ("on Friday"); then the strip's.
+        // A day picked in the picker wins; then the words' ("on Friday", "tomorrow"); then
+        // the strip's. ("Tomorrow" needs today, so it's read here; not for a repeating task:
+        // "run daily starting tomorrow" is every day.)
+        if parsed.day == nil, parsed.mode != .repeating {
+            parsed.day = TaskTextHints.relativeDay(outcome.text, today: store.currentDay, calendar: store.calendar)
+        }
         if didPickDay { parsed.day = newDay } else if parsed.day == nil { parsed.day = dayFilter }
         if let newDate {
             parsed.lastDay = newDate
@@ -2745,6 +2853,19 @@ struct AddTaskRowCard: View {
             // picked: "Call 3 clients today" as a checkbox is "Call 3 clients".
             let words = outcome.typedDate?.titleWithoutDate ?? outcome.text
             parsed.title = TaskTextHints.cleanTitle(words, fallback: words)
+        }
+        // List picked: words in parts are its name and items, whatever the model made
+        // ("Go to the zoo and harass penguins" is "Go to the zoo", "harass penguins"), the sure
+        // way to a list (2026-11-15: the model made one only sometimes). Not "Name: a, b",
+        // which the rules already read.
+        if pickedType, newType == .list {
+            let words = outcome.typedDate?.titleWithoutDate ?? outcome.text
+            let parts = TaskTextHints.clauses(words)
+            if parts.count >= 2, !words.contains(":") {
+                parsed.type = .list
+                parsed.title = parts[0].prefix(1).uppercased() + parts[0].dropFirst()
+                parsed.items = Array(parts.dropFirst())
+            }
         }
         // A goal without an amount takes the keyboard for its target; a list without
         // items, for its first item.
@@ -2762,33 +2883,94 @@ struct AddTaskRowCard: View {
         // row's highlight, so the Add task field moves down once. (The spinner going on its
         // own shrank the row for a frame first.)
         var added: UUID?
+        var nextWeek: DayKey?
         var isDuplicate = false
         let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         withAnimation(.snappy(duration: 0.2)) {
             isParsing = false
-            added = store.addParsedTask(parsed, categoryID: categoryID, weekStart: outcome.weekStart)
+            let placed = store.placeParsedTask(parsed, categoryID: categoryID, weekStart: outcome.weekStart)
+            added = placed?.id
             guard let added else { return }
+            // A day that had gone by this week put it in next week (`placeParsedTask`).
+            nextWeek = placed.flatMap { $0.weekStart != store.selectedWeek?.startDay ? $0.weekStart : nil }
             // A goal it couldn't find an amount for takes the keyboard for its target.
-            if awaitsTarget { store.taskAwaitingFirstInput = added }
-            isDuplicate = isDuplicateInCard(added)
-            addNote = AddNote(taskID: added, text: outcome.text,
-                              message: "Added \(summary)" + (isDuplicate ? " · already in this card" : ""),
-                              wasThisWeekOnly: wasThisWeekOnly, typedDate: typedDate)
-            if isCardOpen && !reduceMotion { store.highlightedTaskID = added }
+            if awaitsTarget && nextWeek == nil { store.taskAwaitingFirstInput = added }
+            isDuplicate = nextWeek == nil && isDuplicateInCard(added)
+            if let nextWeek {
+                // The screen goes there, and the note with it (`handOver`).
+                addNote = nil
+                let why = parsed.lastDay != nil ? "the week of its date"
+                    : parsed.day.map { "as \(Weekday.name($0, short: false)) had gone by" } ?? "another week"
+                handOver(added, to: nextWeek, text: outcome.text, message: "Added \(summary) · here, \(why)", isSmartAdd: true,
+                         detail: Self.handOverDetail(lastDay: parsed.lastDay, day: parsed.day))
+            } else {
+                addNote = AddNote(taskID: added, text: outcome.text,
+                                  message: "Added \(summary)" + (isDuplicate ? " · already in this card" : ""),
+                                  wasThisWeekOnly: wasThisWeekOnly, typedDate: typedDate)
+                if isCardOpen && !reduceMotion { store.highlightedTaskID = added }
+            }
             // Anything typed meanwhile stays.
             if newTitle.trimmingCharacters(in: .whitespaces) == outcome.text { newTitle = "" }
         }
         // Smart Add may have finished after the keyboard went (Done while it worked).
         closeFieldIfIdle()
         guard added != nil else { return }
-        if !awaitsTarget { keepFieldInView() }
+        if !awaitsTarget && nextWeek == nil { keepFieldInView() }
         smartAddCount += 1
         pickedType = false
         pickedMode = false
         newDate = nil
         newDateIsWeek = false
         let dateQuestion = typedDate.map { " Set its date to \(Self.spokenDate($0.day))? Set Date is above." } ?? ""
-        AccessibilityNotification.Announcement("Added \(Self.describe(parsed))\(isDuplicate ? ", already in this card" : ""). Undo is above.\(dateQuestion)").post()
+        let nextWeekSaid = nextWeek != nil ? ", in next week: its day has gone by this week" : ""
+        AccessibilityNotification.Announcement("Added \(Self.describe(parsed))\(nextWeekSaid)\(isDuplicate ? ", already in this card" : ""). Undo is above.\(nextWeek == nil ? dateQuestion : "")").post()
+    }
+
+    /// "Thursday had already gone by, so “Call dentist” is here, in next week", said in next
+    /// week's card, where the screen has gone with it.
+    private static func nextWeekMessage(_ title: String, day: Int) -> String {
+        "\(Weekday.name(day, short: false)) had already gone by, so “\(title)” is here, in next week"
+    }
+
+    /// "“Zoo trip” is here, in the week of its date, Mon, Dec 14", said in that week's card.
+    private static func datesWeekMessage(_ title: String, lastDay: DayKey, calendar: Calendar) -> String {
+        let shown = lastDay.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        return "“\(title)” is here, in the week of its date, \(shown)"
+    }
+
+    /// A task that went into next week (its day had gone by): the screen goes there
+    /// (`ContentView`), and this card there shows its note (`handedOver`), so the task is seen
+    /// where it went instead of vanishing from this week (2026-11-15).
+    private func handOver(_ taskID: UUID, to week: DayKey, text: String, message: String, isSmartAdd: Bool, detail: String) {
+        guard let name = store.selectedWeek?.categories.first(where: { $0.id == categoryID })?.name else { return }
+        store.addedElsewhere = .init(taskID: taskID, categoryName: name, weekStart: week, text: text,
+                                     message: message, isSmartAdd: isSmartAdd, detail: detail)
+    }
+
+    /// Why a new task went into another week, for the pop-up as the screen follows it.
+    private static func handOverDetail(lastDay: DayKey?, day: Int?) -> String {
+        if lastDay != nil { return "A one-time task goes into the week of its date." }
+        return day.map { "\(Weekday.name($0, short: false)) had already gone by this week." } ?? ""
+    }
+
+    private var holdsCardOrder: Bool { isFocused || isParsing || (addNote != nil && addNote?.nextWeek == nil) }
+
+    /// The note handed over for this card, once its week is the one viewed.
+    private var handedOver: ChecklistStore.AddedElsewhere? {
+        guard let note = store.addedElsewhere, let week = store.selectedWeek, week.startDay == note.weekStart,
+              week.categories.first(where: { $0.id == categoryID })?.name == note.categoryName else { return nil }
+        return note
+    }
+
+    private func showHandedOverNote() {
+        guard let note = handedOver else { return }
+        store.addedElsewhere = nil
+        withAnimation(.snappy(duration: 0.25)) {
+            addNote = AddNote(taskID: note.taskID, text: note.text, message: note.message,
+                              isSmartAdd: note.isSmartAdd, nextWeek: note.weekStart, canUndo: note.canUndo)
+        }
+        if !reduceMotion { store.highlightedTaskID = note.taskID }
+        AccessibilityNotification.Announcement("\(note.message).\(note.canUndo ? " Undo is in the card." : "")").post()
     }
 
     /// "Run, repeating goal of 3" (VoiceOver), or with " · " for the message above the row.
@@ -2836,30 +3018,44 @@ struct AddTaskRowCard: View {
         let awaitsInput = task.type != .checkbox
         let wasThisWeekOnly = store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true
         var added: UUID?
+        var nextWeek: DayKey?
         withAnimation(.snappy(duration: 0.2)) {
-            added = store.addParsedTask(task, categoryID: categoryID)
-            if keepTyping && awaitsInput { store.taskAwaitingFirstInput = added }
+            let placed = store.placeParsedTask(task, categoryID: categoryID)
+            added = placed?.id
+            nextWeek = placed.flatMap { $0.weekStart != store.selectedWeek?.startDay ? $0.weekStart : nil }
+            if keepTyping && awaitsInput && nextWeek == nil { store.taskAwaitingFirstInput = added }
             // A task with its name is already in the card: a note says so, with Undo. (Any
-            // other note would now sit under this task instead of its own.)
+            // other note would now sit under this task instead of its own.) One that went
+            // into next week says so instead.
             if let added {
-                addNote = isDuplicateInCard(added)
-                    ? AddNote(taskID: added, text: title, message: "“\(title)” is already in this card",
-                              isSmartAdd: false, wasThisWeekOnly: wasThisWeekOnly)
-                    : nil
+                if let nextWeek {
+                    // The screen goes there, and the note with it (`handOver`).
+                    addNote = nil
+                    let message = task.lastDay.map { Self.datesWeekMessage(title, lastDay: $0, calendar: store.calendar) }
+                        ?? task.day.map { Self.nextWeekMessage(title, day: $0) } ?? "“\(title)” is here"
+                    handOver(added, to: nextWeek, text: title, message: message, isSmartAdd: false,
+                             detail: Self.handOverDetail(lastDay: task.lastDay, day: task.day))
+                } else {
+                    addNote = isDuplicateInCard(added)
+                        ? AddNote(taskID: added, text: title, message: "“\(title)” is already in this card",
+                                  isSmartAdd: false, wasThisWeekOnly: wasThisWeekOnly)
+                        : nil
+                }
             }
         }
         // Refused (the week changed before the words landed: another iPad window, say):
         // the words stay in the field.
         guard let added else { return false }
         if addNote?.taskID == added {
-            AccessibilityNotification.Announcement("\(title) is already in this card. Undo is above.").post()
+            AccessibilityNotification.Announcement("\(addNote?.message ?? title). Undo is above.").post()
         }
         if typed == nil { newTitle = "" }
         pickedType = false
         pickedMode = false
         newDate = nil
         newDateIsWeek = false
-        if keepTyping && !awaitsInput {
+        // Not when it went into next week: the screen goes there, closing the keyboard.
+        if keepTyping && !awaitsInput && nextWeek == nil {
             isFocused = true
             keepFieldInView()
         }

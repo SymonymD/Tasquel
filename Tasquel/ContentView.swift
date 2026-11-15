@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var showDatePicker = false
     @State private var showSettings = false
     @State private var showAddCategory = false
+    /// A category was added in the open Add Category sheet (Edit ends when it closes).
+    @State private var addedCategoryInSheet = false
     @State private var expandedCategoryKeys: Set<CategoryLayoutKey> = []
     @State private var categoryDisplayOrder: [CategoryLayoutKey] = []
     @State private var lastToggledCategory: CategoryLayoutKey?
@@ -83,6 +85,8 @@ struct ContentView: View {
     /// differently once the time zone changes), to tell whether the viewed week was the
     /// current one when the day or time zone changes.
     @State private var currentWeekStart: DayKey?
+    /// "Moved to the week of Dec 14": the screen just went to another week with a task.
+    @State private var movedNotice: MovedNotice?
     /// A week to go to without animation (Reduce Motion), set from a dispatched block and
     /// gone to in `onChange`: store changes from async code inside an animation could be
     /// drawn from the week as it was (see CLAUDE.md, "Store changes from async code").
@@ -251,6 +255,8 @@ struct ContentView: View {
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
             }
 
+            movedNoticeLayer
+
             // Retro scanline overlay
             if Theme.isRetro(theme) {
                 ScanlineOverlay()
@@ -285,10 +291,15 @@ struct ContentView: View {
             // kept light sections under Seasonal's night text (2026-11-14).
             SettingsSheet(store: store, calendar: calendarService, systemColorScheme: deviceColorScheme)
         }
-        .sheet(isPresented: $showAddCategory) {
+        // The sheet stays open to add several; once it closes after an add, Edit ends, as it
+        // did after each add before.
+        .sheet(isPresented: $showAddCategory, onDismiss: {
+            if addedCategoryInSheet { isEditing = false }
+            addedCategoryInSheet = false
+        }) {
             AddCategorySheet(store: store) { name, symbol, thisWeekOnly in
                 store.addCategory(name: name, symbol: symbol, thisWeekOnly: thisWeekOnly)
-                isEditing = false
+                addedCategoryInSheet = true
             }
             // Full height on iPad, where half a form sheet cut the content off.
             .presentationDetents(horizontalSizeClass == .regular ? [.large] : [.medium, .large])
@@ -378,7 +389,10 @@ struct ContentView: View {
             }
             isChangingWeek = false
         }
-        .background { sortOrderWatcher }
+        .background {
+            sortOrderWatcher
+            addedElsewhereFollower
+        }
         // Midnight (or a time zone change) while the app is open.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
             handleDayChange()
@@ -823,7 +837,7 @@ struct ContentView: View {
     private var whatsNewButton: some View {
         if store.persistenceError == nil && (store.showsWhatsNewButton || isWhatsNewOut) {
             let retro = Theme.isRetro(theme)
-            let fill: Color = Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : Color(Theme.todayDateLight)
+            let fill: Color = Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : Color(Theme.pastDayDateLight)
             let markMiddle = markLeadingInset + 22
             let markEdge = markMiddle + (retro ? 16.5 : 15.5)
             let out = markLeadingInset + 44 - 2
@@ -1075,6 +1089,10 @@ struct ContentView: View {
             }
             .layoutPriority(1)
             .onChange(of: barHouseSide) { _, side in moveBarHouse(to: side) }
+            // The bar is gone while the keyboard is up, and missed a week change then (a task
+            // that went into next week, a swipe while typing): the house catches up as the bar
+            // comes back (it stayed in, 2026-11-15).
+            .onAppear { reconcileBarHouse() }
 
             Spacer(minLength: 4)
 
@@ -1148,12 +1166,19 @@ struct ContentView: View {
         return min(Self.barButtonSize, max(36, barHouseRoom - 2 * 6))
     }
 
-    /// From the selector's middle to the house's middle: left, centered in the room between
-    /// Settings and the selector; right, at the row's end where Edit is.
+    /// From the selector's middle to the house's middle: left, beside the selector, centered
+    /// in the room to Settings where that's narrow (an iPhone) but no more than 10pt from the
+    /// selector (on an iPad the room's middle left it far off, the user, 2026-11-15); right,
+    /// at the row's end where Edit is on an iPhone, 10pt from the selector on an iPad.
     private func barHouseOffset(_ side: BarHouseSide) -> CGFloat {
         switch side {
-        case .left: return Self.barButtonSize + barHouseRoom / 2 - barContentWidth / 2
-        case .right: return barContentWidth / 2 - Self.barButtonSize / 2
+        case .left: return -(weekButtonsWidth / 2 + 6 + min(barHouseRoom / 2, 10 + barHouseSize(.left) / 2))
+        case .right:
+            // At Edit's place (no Edit on a past week); on an iPad, as on the left, 10pt from
+            // the selector rather than the far end of a wide bar (the user, 2026-11-15).
+            let editsPlace = barContentWidth / 2 - Self.barButtonSize / 2
+            guard horizontalSizeClass == .regular else { return editsPlace }
+            return min(editsPlace, weekButtonsWidth / 2 + 6 + 10 + barHouseSize(.right) / 2)
         }
     }
 
@@ -1163,6 +1188,15 @@ struct ContentView: View {
     /// in. Back: it rejoins the selector at that edge and slips into the middle. To the
     /// other side: into the middle, then out the other way. Reduce Motion: it fades in
     /// and out in place.
+    /// Moves the house to where the week on screen needs it, if it isn't there.
+    private func reconcileBarHouse() {
+        let side = barHouseSide
+        let isOut = houseStage != .inside
+        let needsMove: Bool
+        if let side { needsMove = !isOut || houseStageSide != side } else { needsMove = isOut }
+        if needsMove { moveBarHouse(to: side) }
+    }
+
     private func moveBarHouse(to side: BarHouseSide?) {
         houseMoveGeneration += 1
         let generation = houseMoveGeneration
@@ -1185,7 +1219,10 @@ struct ContentView: View {
             switch side {
             case .left:
                 later(0.12) { withAnimation(.spring(duration: 0.45, bounce: 0.15)) { houseStage = .out } }
-                later(0.45) { withAnimation(.easeOut(duration: 0.2)) { houseAttached = false } }
+                // Lets go as it pulls away, as on the right, so the selector draws in with the
+                // house's move: at 0.45s, the house nearly settled, the neck letting go and then
+                // the edge drawing in came as steps of their own (the user, 2026-11-15).
+                later(0.12 + 0.12) { withAnimation(.easeOut(duration: 0.2)) { houseAttached = false } }
             case .right:
                 // Out of the selector slowly, then quickly over to Edit's place, easing out
                 // (the user's ask, 2026-11-14: one spring went too fast). One curve, slow at
@@ -1365,9 +1402,7 @@ struct ContentView: View {
             // down); the house at Edit's place, the dimmed checkboxes and VoiceOver's title
             // say it.
             if isEditing && !isPastWeek {
-                Text(editModeHint)
-                    .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
-                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                editModeHintText
                     .padding(.bottom, -4)
                     .transition(.opacity)
             }
@@ -1426,6 +1461,12 @@ struct ContentView: View {
     /// At accessibility text sizes every card takes a full row, so names and tasks fit.
     private var usesSingleColumn: Bool { dynamicTypeSize.isAccessibilitySize }
 
+    /// In four columns (iPad landscape) an open card takes two, half the width, and the closed
+    /// cards go two across beside it (`CategoryGridLayout.halfWidthOpen`), so the rest of the
+    /// week stays in view (the user, 2026-11-15; prototyped 2026-11-13/14). Portrait keeps
+    /// three columns and full-width open cards; at accessibility sizes every card has a row.
+    private var halfWidthOpen: Bool { gridColumns >= 4 && !usesSingleColumn }
+
     /// Three columns of closed cards on iPad (a full-width window), two on iPhone.
     /// Columns of closed cards: 2 on iPhone (portrait only), 3 on iPad in portrait and 4 in
     /// landscape. A narrow iPad window (compact width) gets 2 like an iPhone.
@@ -1444,7 +1485,14 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 8) {
                     // Expanded cards take a full row; other open cards remain open.
-                    CategoryGridLayout(spacing: 8, columns: gridColumns) {
+                    CategoryGridLayout(spacing: 8, columns: gridColumns, halfWidthOpen: halfWidthOpen) {
+                        // First, in the top-left slot: at the grid's end it was below the screen
+                        // with ten cards (the user, 2026-11-15). Card drags go by the cards'
+                        // measured frames, so the tile ahead of them changes nothing there.
+                        if showAdd {
+                            addCategoryButton
+                                .transition(.opacity)
+                        }
                         // By category ID, not by the entry's name key: a renamed card stays the
                         // same view, so a menu, sheet or field open in it survives the rename.
                         ForEach(gridEntries(for: week), id: \.category.id) { entry in
@@ -1458,7 +1506,11 @@ struct ContentView: View {
                                 store: store,
                                 isExpanded: isExpanded,
                                 isEditing: isEditing,
-                                isEditingTasks: isEditing || editingCategoryKeys.contains(entry.id),
+                                // Only a card's own edit mode: in Edit every card is closed, and
+                                // putting all their hidden task rows into editing too (every row's
+                                // icons running out, on three weeks of pages) held up Edit for about
+                                // half a second before its tile showed (the user, 2026-11-15).
+                                isEditingTasks: editingCategoryKeys.contains(entry.id),
                                 isPastWeek: store.isPastWeek(week),
                                 onToggleEdit: {
                                     withAnimation(.snappy(duration: 0.25)) {
@@ -1524,15 +1576,16 @@ struct ContentView: View {
                             // The card being opened or closed stays above neighbors sliding past it.
                             .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                         }
-                        if showAdd {
-                            addCategoryButton
-                                .transition(.opacity)
-                        }
                     }
                     .coordinateSpace(.named(Self.cardGridSpace))
                     // An open card is this wide: its contents are laid out at that width
                     // while it opens and closes (`CardContentCrossFade`).
-                    .environment(\.cardGridWidth, cardGridWidth)
+                    // Two columns' width when open cards take half the grid.
+                    .environment(\.cardGridWidth, cardGridWidth.map { width in
+                        guard halfWidthOpen else { return width }
+                        let column = (width - 8 * CGFloat(gridColumns - 1)) / CGFloat(gridColumns)
+                        return column * 2 + 8
+                    })
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { cardGridWidth = $0 }
                     .overlay(alignment: .topLeading) { liftedCard(in: week) }
 
@@ -1668,6 +1721,101 @@ struct ContentView: View {
     }
 
     /// Re-sorts at the calm moments `sortedNames` describes.
+    /// A task just added to next week (its day had gone by this week): the screen goes there,
+    /// as › would, and its card there shows the note (`AddTaskRowCard.handedOver`).
+    private var addedElsewhereFollower: some View {
+        Color.clear.onChange(of: store.addedElsewhere?.token) {
+            guard let note = store.addedElsewhere, note.weekStart != store.selectedWeek?.startDay else { return }
+            let title = "\(note.canUndo ? "Added" : "Moved") to \(weekPhrase(note.weekStart))"
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                movedNotice = MovedNotice(title: title, detail: note.detail)
+            }
+            changeWeek(to: note.weekStart.adding(days: 3).date(in: store.calendar))
+        }
+    }
+
+    /// The screen just went to another week with a task: a pop-up says so, where it can't be
+    /// missed (the user, 2026-11-15: right after Set Date, the slide alone was a blink, and
+    /// they might not notice they'd been taken to the future). OK, or Back to This Week.
+    private struct MovedNotice: Equatable {
+        let title: String
+        let detail: String
+        let token = UUID()
+    }
+
+    /// "next week", or "the week of Dec 14".
+    private func weekPhrase(_ start: DayKey) -> String {
+        if let currentWeekStart, start == currentWeekStart.adding(days: 7) { return "next week" }
+        return "the week of " + start.date(in: store.calendar).formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    @ViewBuilder
+    private var movedNoticeLayer: some View {
+        if let notice = movedNotice {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                movedNoticeCard(notice)
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 24)
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.94)))
+            .task(id: notice.token) {
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                withAnimation(.snappy(duration: 0.25)) { movedNotice = nil }
+            }
+        }
+    }
+
+    private func movedNoticeCard(_ notice: MovedNotice) -> some View {
+        let retro = Theme.isRetro(theme)
+        return VStack(spacing: 10) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.title2)
+                .foregroundStyle(Theme.expirySet(theme, rc: rc))
+                .hiddenFromVoiceOver()
+            Text(retro ? notice.title.uppercased() : notice.title)
+                .font(retro ? .system(.headline, design: .monospaced) : .headline)
+                .foregroundStyle(Theme.textPrimary(theme, rc: rc))
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            if !notice.detail.isEmpty {
+                Text(notice.detail)
+                    .font(retro ? .system(.subheadline, design: .monospaced) : .subheadline)
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .multilineTextAlignment(.center)
+            }
+            HStack(spacing: 12) {
+                Button(retro ? "[OK]" : "OK") {
+                    withAnimation(.snappy(duration: 0.25)) { movedNotice = nil }
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("Moved OK")
+                Button(retro ? "[BACK]" : "Back to This Week") {
+                    withAnimation(.snappy(duration: 0.25)) { movedNotice = nil }
+                    changeWeek(to: today)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("Moved Back to This Week")
+            }
+            .tint(Theme.accent(theme, rc: rc))
+            .padding(.top, 4)
+        }
+        .padding(20)
+        .frame(maxWidth: 340)
+        .background {
+            if retro {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.navCapsule(theme))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+            } else {
+                RoundedRectangle(cornerRadius: 24).fill(.clear).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     private var sortOrderWatcher: some View {
         Color.clear
             .onChange(of: viewedCategories) { old, new in reconcileCardKeys(from: old, to: new) }
@@ -1692,6 +1840,12 @@ struct ContentView: View {
             .onChange(of: viewedWeekHasOpenCard) { _, anyOpen in
                 if !anyOpen { withAnimation(cardAnimation) { refreshSortOrder() } }
             }
+    }
+
+    private var editModeHintText: some View {
+        Text(editModeHint)
+            .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
+            .foregroundStyle(Theme.textSecondary(theme, rc: rc))
     }
 
     private var editModeHint: String {
@@ -1758,6 +1912,8 @@ struct ContentView: View {
     /// already open, each taking a full row.
     private func orderOpening(_ key: CategoryLayoutKey, in order: [CategoryLayoutKey],
                               pinned: Set<CategoryLayoutKey>, open: Set<CategoryLayoutKey>) -> [CategoryLayoutKey]? {
+        // Open cards half the width: an opened card keeps its place (its lane takes it).
+        guard !halfWidthOpen else { return nil }
         let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || open.contains($0) }, columns: gridColumns)
         guard let row = rows.first(where: { $0.dropFirst().contains { order[$0] == key } }),
               let index = row.first(where: { order[$0] == key }) else { return nil }

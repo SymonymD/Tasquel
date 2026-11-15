@@ -20,13 +20,13 @@ enum WhatsNew {
 
     static let items: [Item] = [
         Item(symbol: "calendar", title: "Days for Tasks",
-             detail: "Give a task a day of the week in its options, or type “on Friday” in Smart Add. On its day it reads Today, and its card gives a little wiggle when you open the app. Tap a day at the top to see just that day's tasks. A task whose day has gone by is marked late.",
+             detail: "Give a task a day of the week in its options, or type “on Friday” in Smart Add. On its day it reads Today, and its card gives a little wiggle when you open the app. Tap a day at the top to see just that day's tasks. A new task for a day that's already gone by this week goes into next week.",
              color: .blue),
         Item(symbol: "clock", title: "Dates and Reminders",
-             detail: "Give a task a last day, like a birthday or a gift list: it carries over until then, and a notification reminds you the day before. Smart Add spots dates you type.",
+             detail: "Give a task a date: a one-time task goes into that week, and a carry-over one comes along until then. The date shows after its name, and a notification reminds you the day before. Smart Add spots dates you type.",
              color: .green),
         Item(symbol: "pin.fill", title: "Pins",
-             detail: "Keep up to two cards first in the grid, and up to two tasks at the top of a card. Pin them in edit mode.",
+             detail: "Keep up to two cards first in the grid, and up to two tasks at the top of a card. Pin them in edit mode; a pinned task shows a pin.",
              color: .orange),
         Item(symbol: "circle.dashed", title: "Progress Rings",
              detail: "A card's ring fills as you go, counting each step of a goal and each item of a list.",
@@ -47,10 +47,10 @@ enum WhatsNew {
              detail: "Scrolling, opening cards and checking off tasks are much quicker, even with lots of tasks.",
              color: .yellow),
         Item(symbol: "questionmark.circle", title: "Help in Tabs",
-             detail: "Help is now in tabs (Weeks, Cards, Tasks, Types, Modes and Dates), so you can go straight to an answer. Swipe between them.",
+             detail: "Help is now in tabs, starting with answers to common questions, so you can go straight to an answer. Swipe between them.",
              color: .cyan),
         Item(symbol: "sparkles", title: "And More",
-             detail: "Escape on a keyboard cancels a rename, and past weeks no longer push the cards down with a banner. Fixes for VoiceOver, iPad and smaller iPhones.",
+             detail: "Add several categories in one go. Escape on a keyboard cancels a rename, and past weeks no longer push the cards down with a banner. Fixes for VoiceOver, iPad and smaller iPhones.",
              color: .indigo),
     ]
 

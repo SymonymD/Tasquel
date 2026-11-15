@@ -25,6 +25,24 @@ final class ChecklistStore {
     /// A task Smart Add just added, its row lit for a moment so it's seen (not with Reduce
     /// Motion). Not saved.
     var highlightedTaskID: UUID?
+    /// A task just added to another week than the one viewed (its day had gone by this
+    /// week): the screen goes to that week (`ContentView`), and its card there shows the
+    /// note, so the task is seen where it went instead of vanishing (2026-11-15). Not saved.
+    var addedElsewhere: AddedElsewhere?
+    struct AddedElsewhere: Equatable {
+        let taskID: UUID
+        let categoryName: String
+        let weekStart: DayKey
+        /// The words it was added from, and the note's message.
+        let text: String
+        let message: String
+        let isSmartAdd: Bool
+        /// Added there (Undo takes it away), or moved there (nothing to undo to).
+        var canUndo = true
+        /// Why it went there, for the pop-up as the screen follows (`ContentView`).
+        var detail = ""
+        let token = UUID()
+    }
     /// A task is being moved by its handle (a card's edit mode): the week isn't swiped
     /// meanwhile. Read only by gestures, so changing it redraws nothing. Not saved.
     @ObservationIgnored var isReorderingTask = false
@@ -704,12 +722,15 @@ final class ChecklistStore {
         var newWeek = Week(startDay: monday)
         if let previousWeek = mostRecentWeekBefore(monday) {
             newWeek.categories = rollForwardCategories(from: previousWeek, cutoff: expiryCutoff(forWeekStarting: monday))
-        } else {
+        } else if !isPastWeek(newWeek) {
             // First ever week: seed from saved category templates
             newWeek.categories = savedCategories.map {
                 Category(name: $0.name, symbol: $0.symbol)
             }
         }
+        // A past week with no week before it is from before Tasquel was used: it has no
+        // cards ("Nothing was planned this week"). Seeded from the templates, it showed every
+        // saved card, deleted starters and cards made today alike (2026-11-14).
         return newWeek
     }
 
@@ -981,8 +1002,33 @@ final class ChecklistStore {
               let ci = weeks[wi].categories.firstIndex(where: { $0.id == categoryID }),
               let ti = weeks[wi].categories[ci].tasks.firstIndex(where: { $0.id == taskID }) else { return }
         weeks[wi].categories[ci].tasks[ti].dayOfWeek = day
+        // A day given after it had gone by this week isn't "late" (`ChecklistTask.isLate`).
+        weeks[wi].categories[ci].tasks[ti].daySetOn = day == nil ? nil : today
         markEdited(wi, ci, ti)
         noteEdit(categoryID)
+        save()
+    }
+
+    /// The weekday has already gone by in the viewed week, which is this week (Tuesday on a
+    /// Saturday). A new task given such a day goes into next week (`addParsedTask`).
+    func dayHasGoneBy(_ weekday: Int) -> Bool {
+        guard let week = selectedWeek, isCurrentWeek(week) else { return false }
+        return week.startDay.adding(days: Weekday.offset(weekday, firstWeekday: firstWeekday)) < today
+    }
+
+    /// Whether the week starting `start` has the task (one added to next week, say).
+    func hasTask(_ taskID: UUID, inWeekStarting start: DayKey) -> Bool {
+        guard let wi = storedWeekIndex(startingOn: start) else { return false }
+        return weeks[wi].categories.contains { $0.tasks.contains { $0.id == taskID } }
+    }
+
+    /// Takes back a task just added to another week than the one viewed (a day gone by this
+    /// week put it in next week): no Undo message, as for a Smart Add taken back.
+    func removeAddedTask(_ taskID: UUID, inWeekStarting start: DayKey) {
+        guard persistenceError == nil, let wi = storedWeekIndex(startingOn: start) else { return }
+        for ci in weeks[wi].categories.indices {
+            weeks[wi].categories[ci].tasks.removeAll { $0.id == taskID }
+        }
         save()
     }
 
@@ -1018,10 +1064,14 @@ final class ChecklistStore {
     }
 
     /// A task's date, from the type and mode popup or the edit mode's clock: its last day
-    /// (`setTaskExpiry`), and what a date changes besides (`ChecklistTask.dateMode`: a
-    /// one-time task dated after its week carries over; `dateWeekday`: a date inside the
-    /// week is its day). Nil takes the date away and changes nothing else.
+    /// (`setTaskExpiry`), and what a date changes besides. A one-time task dated after its
+    /// week goes into the week of its date (`moveToItsDatesWeek`); where it can't (no card of
+    /// its name there), it carries over until then (`ChecklistTask.dateMode`). A date inside
+    /// the week is its day (`dateWeekday`). Nil takes the date away and changes nothing else.
     func setTaskDate(categoryID: UUID, taskID: UUID, lastDay: DayKey?, wholeWeek: Bool = false) {
+        if let lastDay, moveToItsDatesWeek(categoryID: categoryID, taskID: taskID, lastDay: lastDay, wholeWeek: wholeWeek) {
+            return
+        }
         if let lastDay, let week = selectedWeek, let task = viewedTask(categoryID, taskID) {
             let mode = ChecklistTask.dateMode(task.mode, lastDay: lastDay, weekStart: week.startDay)
             if mode != task.mode { updateTaskMode(categoryID: categoryID, taskID: taskID, mode: mode) }
@@ -1035,6 +1085,38 @@ final class ChecklistStore {
             }
         }
         setTaskExpiry(categoryID: categoryID, taskID: taskID, lastDay: lastDay, wholeWeek: wholeWeek)
+    }
+
+    /// The week a task dated `lastDay` belongs in: the one holding its date.
+    func weekOfDate(_ lastDay: DayKey) -> DayKey { weekStartDay(containing: lastDay.date(in: calendar)) }
+
+    /// A one-time task dated after the viewed week goes into the week of its date, on that day,
+    /// and the screen follows it there (`addedElsewhere`, no Undo: it was moved, not added).
+    /// The user's rule, 2026-11-15: as Carry Over until its date, a task months off sat in
+    /// every week, and set back to One-Time it was gone before its date. Into that week's card
+    /// of the same name; false, with nothing changed, when there's none (a This week only card).
+    private func moveToItsDatesWeek(categoryID: UUID, taskID: UUID, lastDay: DayKey, wholeWeek: Bool) -> Bool {
+        guard let week = selectedWeek, !isPastWeek(week), var task = viewedTask(categoryID, taskID),
+              task.mode == .oneTime, lastDay > week.startDay.adding(days: 6),
+              let name = week.categories.first(where: { $0.id == categoryID })?.name else { return false }
+        let target = weekOfDate(lastDay)
+        task.expiresOn = lastDay
+        task.expirySetOn = today
+        task.expiresWithWeek = wholeWeek
+        task.dayOfWeek = ChecklistTask.dateWeekday(lastDay, wholeWeek: wholeWeek, weekStart: target, calendar: calendar)
+        task.daySetOn = nil
+        // Its own task there: not a copy, and not pinned (that card may have its two).
+        task.carriedFrom = nil
+        task.repeatsFrom = nil
+        task.isPinned = false
+        guard addTask(task, toWeekStarting: target, categoryNamed: name) != nil else { return false }
+        deleteTask(categoryID: categoryID, taskID: taskID, undoable: false)
+        let shown = lastDay.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        addedElsewhere = AddedElsewhere(taskID: task.id, categoryName: name, weekStart: target, text: task.title,
+                                        message: "“\(task.title)” moved here, to the week of its date, \(shown)",
+                                        isSmartAdd: false, canUndo: false,
+                                        detail: "A one-time task goes into the week of its date.")
+        return true
     }
 
     /// Sets the task's last day (`expiresOn`; `wholeWeek` when a week was picked, its last
@@ -1697,6 +1779,30 @@ final class ChecklistStore {
               let index = tasks.firstIndex(where: { $0.id == taskID }),
               tasks.indices.contains(index + offset) else { return }
         moveTask(categoryID: categoryID, taskID: taskID, to: tasks[index + offset].id)
+    }
+
+    /// Adds a task to a later week than the one viewed (next week, for a day gone by this
+    /// week), into its card named `name`, saving that week first if it's still a preview.
+    /// Nil, with nothing changed, when that week has no such card.
+    func addTask(_ task: ChecklistTask, toWeekStarting start: DayKey, categoryNamed name: String) -> UUID? {
+        guard persistenceError == nil else { return nil }
+        var wi = storedWeekIndex(startingOn: start)
+        if wi == nil {
+            var preview = previewWeek(for: midweek(start))
+            guard isFutureWeek(preview), preview.categories.contains(where: { $0.name == name }) else { return nil }
+            preview.didFinalSync = false
+            weeks.append(preview)
+            sortWeeks()
+            wi = storedWeekIndex(startingOn: start)
+        }
+        guard let wi, let ci = weeks[wi].categories.firstIndex(where: { $0.name == name }) else { return nil }
+        var task = task
+        task.isUserEdited = true
+        weeks[wi].categories[ci].tasks.append(task)
+        keepCategory(wi, ci, for: task.mode)
+        noteEdit(named: name)
+        save()
+        return task.id
     }
 
     /// Adds a fully built task (a parsed one, with its goal or items) in one save.

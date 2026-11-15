@@ -4,14 +4,20 @@ import SwiftUI
 
 extension View {
     /// The one confirmation for removing a saved category, used by Settings and Add Category.
-    func savedCategoryRemoval(_ template: Binding<CategoryTemplate?>, store: ChecklistStore) -> some View {
+    /// `onRemoved`: the removed one and where it was in the list, once it's gone.
+    func savedCategoryRemoval(_ template: Binding<CategoryTemplate?>, store: ChecklistStore,
+                              onRemoved: @escaping (CategoryTemplate, Int) -> Void = { _, _ in }) -> some View {
         confirmationDialog(
             "Remove \(template.wrappedValue?.name ?? "")?",
             isPresented: Binding(get: { template.wrappedValue != nil }, set: { if !$0 { template.wrappedValue = nil } }),
             titleVisibility: .visible
         ) {
             Button("Remove Saved Category", role: .destructive) {
-                if let removed = template.wrappedValue { store.removeSavedCategory(removed.id) }
+                if let removed = template.wrappedValue {
+                    let index = store.savedCategories.firstIndex { $0.id == removed.id } ?? store.savedCategories.count
+                    store.removeSavedCategory(removed.id)
+                    onRemoved(removed, index)
+                }
                 template.wrappedValue = nil
             }
         } message: {

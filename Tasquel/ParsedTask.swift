@@ -53,18 +53,33 @@ extension ChecklistStore {
     /// user may have moved on while the parser worked). Returns its ID.
     @discardableResult
     func addParsedTask(_ parsed: ParsedTask, categoryID: UUID, weekStart: DayKey? = nil) -> UUID? {
+        placeParsedTask(parsed, categoryID: categoryID, weekStart: weekStart)?.id
+    }
+
+    /// As `addParsedTask`, saying which week the task went into. A day that has already gone
+    /// by this week means next week's ("Call dentist Thursday" typed on a Friday, or Thursday
+    /// picked for it): the task goes into next week's card of that name, on that day. The
+    /// user's rule, 2026-11-14, after four of six new users saw tasks "late" the moment they
+    /// added them. A card that doesn't come back next week (This week only) keeps it here.
+    func placeParsedTask(_ parsed: ParsedTask, categoryID: UUID, weekStart: DayKey? = nil) -> (id: UUID, weekStart: DayKey)? {
         let title = parsed.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, weekStart == nil || selectedWeek?.startDay == weekStart else { return nil }
         var task = ChecklistTask(title: title, mode: parsed.mode, taskType: parsed.type)
         task.dayOfWeek = parsed.day.flatMap { (1...7).contains($0) ? $0 : nil }
+        // A one-time task dated after this week goes into the week of its date (as
+        // `setTaskDate`), unless that week has no card of this one's name.
+        var datesWeek: DayKey?
         if let lastDay = parsed.lastDay {
             task.expiresOn = lastDay
             task.expirySetOn = currentDay
             task.expiresWithWeek = parsed.lastDayIsWeek
-            // A date's rules, here for every way a task is added with one (the add row,
-            // Smart Add): a one-time task dated after its week carries over until then, and a
-            // date inside the week is its day (as `setTaskDate`).
-            if let start = selectedWeek?.startDay {
+            if task.mode == .oneTime, let start = selectedWeek?.startDay, lastDay > start.adding(days: 6) {
+                let week = weekOfDate(lastDay)
+                datesWeek = week
+                task.dayOfWeek = ChecklistTask.dateWeekday(lastDay, wholeWeek: parsed.lastDayIsWeek, weekStart: week, calendar: calendar)
+            } else if let start = selectedWeek?.startDay {
+                // A date's rules, here for every way a task is added with one (the add row,
+                // Smart Add): a date inside the week is its day (as `setTaskDate`).
                 if !parsed.keepsMode { task.mode = ChecklistTask.dateMode(task.mode, lastDay: lastDay, weekStart: start) }
                 if let weekday = ChecklistTask.dateWeekday(lastDay, wholeWeek: parsed.lastDayIsWeek, weekStart: start, calendar: calendar) {
                     task.dayOfWeek = weekday
@@ -98,7 +113,18 @@ extension ChecklistStore {
         case .checkbox:
             break
         }
-        return addTask(task, categoryID: categoryID)
+        if let datesWeek, let name = selectedWeek?.categories.first(where: { $0.id == categoryID })?.name {
+            if let id = addTask(task, toWeekStarting: datesWeek, categoryNamed: name) { return (id, datesWeek) }
+            // No such card there (This week only): it carries over until its date instead.
+            task.mode = .carryOver
+            task.dayOfWeek = nil
+        } else if let weekday = task.dayOfWeek, dayHasGoneBy(weekday), let week = selectedWeek,
+                  let name = week.categories.first(where: { $0.id == categoryID })?.name,
+                  let id = addTask(task, toWeekStarting: week.startDay.adding(days: 7), categoryNamed: name) {
+            return (id, week.startDay.adding(days: 7))
+        }
+        guard let id = addTask(task, categoryID: categoryID), let start = selectedWeek?.startDay else { return nil }
+        return (id, start)
     }
 }
 
@@ -180,7 +206,30 @@ enum TaskTextHints {
             task.title = matched ? cleanTitle(list.title, fallback: list.title) : list.title
             task.items = list.items
         }
+        // "Remind me to call the plumber": the reminding is the app's job (a tester's task
+        // kept the words, 2026-11-14). Whether or not a rule matched.
+        let withoutAsk = task.title.replacingOccurrences(of: #"^\s*(please\s+)?remind\s+me\s+to\s+"#, with: "",
+                                                          options: [.regularExpression, .caseInsensitive])
+        if !withoutAsk.isEmpty, withoutAsk != task.title {
+            task.title = withoutAsk.prefix(1).uppercased() + withoutAsk.dropFirst()
+        }
         return task
+    }
+
+    /// "Today" or "tonight" is today's weekday, "tomorrow" tomorrow's: Smart Add gives the
+    /// task that day (it said nothing before, 2026-11-14). Sunday's "tomorrow", a day gone
+    /// by in a week that started Monday, then goes into next week (`placeParsedTask`).
+    static func relativeDay(_ text: String, today: DayKey, calendar: Calendar) -> Int? {
+        let lower = text.lowercased()
+        let offset: Int
+        if lower.contains(#/\btomorrow\b/#) {
+            offset = 1
+        } else if lower.contains(#/\b(today|tonight)\b/#) {
+            offset = 0
+        } else {
+            return nil
+        }
+        return calendar.component(.weekday, from: today.adding(days: offset).date(in: calendar))
     }
 
     /// The words without their amount, so a schedule just before it still reads as ending
@@ -314,6 +363,28 @@ enum TaskTextHints {
         if task.mode != .oneTime, !hasScheduleCue(lower) {
             task.mode = .oneTime
         }
+        // A model's list from words in parts ("Go to the zoo and harass penguins"), named by
+        // the first part: each item is the whole part it's from, as written (it gave
+        // "harass"), and the name is the first part as written (it gave "Go to zoo"). The
+        // user, 2026-11-15: things to do at the zoo, like "buy a panda shirt", are its list.
+        let parts = clauses(text)
+        var namedByFirstPart = false
+        if task.type == .list, !text.contains(":"), parts.count >= 2 {
+            let first = parts[0]
+            let titleWords = Set(loose(task.title.lowercased()).split(separator: " ").map(String.init))
+            let firstWords = Set(loose(first.lowercased()).split(separator: " ").map(String.init))
+            if !titleWords.isEmpty, titleWords.isSubset(of: firstWords) {
+                namedByFirstPart = true
+                task.title = first.prefix(1).uppercased() + first.dropFirst()
+                var seen = Set<String>()
+                task.items = task.items.compactMap { item in
+                    let wanted = loose(item.lowercased()).trimmingCharacters(in: .whitespaces)
+                    guard !wanted.isEmpty else { return nil }
+                    let whole = parts.dropFirst().first { loose($0.lowercased()).contains(wanted) } ?? item
+                    return seen.insert(whole.lowercased()).inserted ? whole : nil
+                }
+            }
+        }
         // The words the items can come from: all but the title.
         var words = loose(lower)
         let title = loose(task.title.lowercased()).trimmingCharacters(in: .whitespaces)
@@ -325,6 +396,16 @@ enum TaskTextHints {
             let singular = wanted.replacingOccurrences(of: #"(es|s)$"#, with: "", options: .regularExpression)
             return !wanted.isEmpty && (words.contains(wanted) || (singular.count > 2 && words.contains(singular)))
         }
+        // One item, with no colon and no list word, is the task's own words split up: the
+        // model made "Go to the zoo and harass penguins" "Go to zoo", a list of "harass"
+        // (2026-11-15). A checkbox, named as typed. (Not `soundsLikeAList`: its plural,
+        // meant for names like "Bugs", took "penguins" ending the words for a list's name.)
+        if task.type == .list, task.items.count == 1, !namedByFirstPart, !text.contains(":"), !mentionsAList(lower) {
+            let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            task.type = .checkbox
+            task.items = []
+            task.title = words.prefix(1).uppercased() + words.dropFirst()
+        }
         // A list with nothing named in it stays one only when it sounds like a collection
         // ("Bugs", "Groceries", "Packing list", "v1.2", "Trip: …"); the model made "Test's
         // birthday" an empty list.
@@ -334,12 +415,35 @@ enum TaskTextHints {
         return task
     }
 
+    /// The words in parts, at commas, "and", "&", "then" or "also": "Go to the zoo and harass
+    /// penguins" is "Go to the zoo", "harass penguins".
+    static func clauses(_ text: String) -> [String] {
+        // "Go to the zoo to harass penguins": a trip, then what to do there, at the "to"
+        // after the place (the user, 2026-11-15). Only after go, head, stop by and the like:
+        // "Remember to call Mom" is one thing.
+        var text = text
+        let trip = #"^\s*(?:go|head|run|drive|walk|swing|stop|pop|get)\s+(?:over\s+)?(?:to|by)\s+\S.*?(\s+to\s+)\S"#
+        if let regex = try? NSRegularExpression(pattern: trip, options: .caseInsensitive),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let purpose = Range(match.range(at: 1), in: text) {
+            text.replaceSubrange(purpose, with: "\u{1F}")
+        }
+        return text.replacingOccurrences(of: #"\s*,\s*(?:(?:and|then)\s+)?|\s+(?:and|&|then|also)\s+"#, with: "\u{1F}",
+                                         options: [.regularExpression, .caseInsensitive])
+            .split(separator: "\u{1F}")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// A list word: "list", "groceries", "packing", "supplies"…
+    private static func mentionsAList(_ text: String) -> Bool {
+        text.contains(#/\b(list|lists|groceries|grocery|shopping|packing|pack|to-?dos?|items|supplies|ingredients|checklist)\b/#)
+    }
+
     /// A list's name: list words ("list", "groceries", "packing"), a plural ("Bugs",
     /// "Errands"), or a version ("v1.2", a release's list).
     private static func soundsLikeAList(_ text: String) -> Bool {
-        if text.contains(#/\b(list|lists|groceries|grocery|shopping|packing|pack|to-?dos?|items|supplies|ingredients|checklist)\b/#) {
-            return true
-        }
+        if mentionsAList(text) { return true }
         let last = text.split(whereSeparator: \.isWhitespace).last.map(String.init)?
             .trimmingCharacters(in: CharacterSet.punctuationCharacters.subtracting(CharacterSet(charactersIn: "."))) ?? ""
         if last.range(of: #"^v?\d+(\.\d+)+$"#, options: .regularExpression) != nil { return true }
@@ -402,7 +506,8 @@ enum TaskTextHints {
     /// One weekday, in full ("on Friday"; not "on Fridays" or "on Fri").
     private static let oneWeekday = #"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?![a-z'’])"#
     /// Two or more weekdays: "Mondays and Thursdays", "Mon, Wed, Fri", "Tue/Thu".
-    private static let weekdayList = weekday + #"(?:(?:\s*,\s*(?:(?:and|&)\s+)?|\s+and\s+|\s*&\s*|\s*/\s*)"# + weekday + ")+"
+    /// Spaces alone too ("Gym Mon Wed Fri" wasn't read, 2026-11-14).
+    private static let weekdayList = weekday + #"(?:(?:\s*,\s*(?:(?:and|&)\s+)?|\s+and\s+|\s*&\s*|\s*/\s*|\s+)"# + weekday + ")+"
     /// A list of days after "on", "every" or "each", or ending the words.
     private static let weekdayListPatterns = [
         #"\b(?:on|every|each)\s+"# + weekdayList,
@@ -463,10 +568,16 @@ enum TaskTextHints {
     /// A day of this week: "today", "tonight", "tomorrow", "this weekend", "this Friday",
     /// "on Friday" (but "on Fridays" repeats). Weaker than the other rules: "run daily
     /// starting tomorrow" repeats.
+    /// A day alone at the end of the words, not after "other" or "to".
+    private static let bareEndingDay = #"(?<!\bother\s)(?<!\bto\s)\b"# + oneWeekday + #"\s*$"#
+
     private static let oneTimeDayPatterns = [
         #"\b(today|tonight|tomorrow)\b"#,
         #"\bthis\s+(?:weekend\b|"# + oneWeekday + ")",
         #"\bon\s+"# + oneWeekday,
+        // A day ending the words: "Call mom Sunday", "Grade essays by Thursday". Not "every
+        // other Tuesday" (every second week) or "move the meeting to Friday".
+        bareEndingDay,
     ]
 
     /// The mode the words give, if a rule reads one. "This week only" wins, then a
@@ -545,7 +656,8 @@ enum TaskTextHints {
     private static func weeklyCount(_ text: String) -> (count: Int, hasFrequency: Bool)? {
         let words = ["once": 1, "twice": 2, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
                      "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10]
-        guard let match = text.firstMatch(of: #/\b(\d{1,3}|once|twice|one|two|three|four|five|six|seven|eight|nine|ten)\s*(x|times)?(\s*(a|an|per|each|every|/)\s*(week|wk)\b|\s+weekly\b|\s*$)/#)
+        // "Twice this week" counts too, for this week only (no repeating rule reads "this").
+        guard let match = text.firstMatch(of: #/\b(\d{1,3}|once|twice|one|two|three|four|five|six|seven|eight|nine|ten)\s*(x|times)?(\s*(a|an|per|each|every|this|/)\s*(week|wk)\b|\s+weekly\b|\s*$)/#)
         else { return nil }
         let word = String(match.1)
         let hasMultiplier = match.2 != nil   // "x" or "times"
@@ -572,7 +684,7 @@ enum TaskTextHints {
         // removed at the end. So are days of this week and "sometime" ("Friday team lunch"
         // keeps its name).
         let removals = [
-            #"\b"# + counts + #"(\s*(a|an|per|each|every|/)\s*(week|wk|day)|\s+(daily|nightly|weekly))"#,
+            #"\b"# + counts + #"(\s*(a|an|per|each|every|this|/)\s*(week|wk|day)|\s+(daily|nightly|weekly))"#,
             daysAWeek,
             #"\b\d{1,3}\s*(x|times)\s*$"#,
             #"\b(every|each|per)\s+(week|wk)\b"#,
@@ -584,7 +696,9 @@ enum TaskTextHints {
             #"\b(on\s+)?weekdays\s*$"#,
             #"\bweekends\s*$"#,
             #"\b(no\s+rush|sometime|someday|eventually|when(ever)?\s+i\s+(can|get\s+a\s+chance)|whenever)\s*$"#,
-            #"\b((by|before|until|till|til|for)\s+)?(today|tonight|tomorrow|this\s+weekend|(this|on)\s+"# + oneWeekday + #")\s*$"#,
+            // A day ending the words, bare too ("Call mom Sunday", "Grade essays by Thursday"):
+            // only at the end, so "Friday team lunch" keeps its name (testers, 2026-11-14).
+            #"\b((by|before|until|till|til|for)\s+)?(today|tonight|tomorrow|this\s+weekend|(this|on)\s+"# + oneWeekday + "|" + bareEndingDay + #")\s*$"#,
             untilDone,
         ] + oneTimePatterns
         for pattern in removals {

@@ -209,6 +209,10 @@ struct ChecklistTask: Codable, Identifiable, Equatable {
     /// it stays the same day whichever day weeks start on. Picked in the type and mode
     /// picker (or from Smart Add's "on Friday"); copies in later weeks keep it. Nil: any day.
     var dayOfWeek: Int? = nil
+    /// The day `dayOfWeek` was picked for this task, so a day given after it had gone by
+    /// this week isn't "late": nothing was missed (on a Saturday, "every Tuesday" for the
+    /// trash showed "Tue · late" at once, 2026-11-14). Copies don't take it.
+    var daySetOn: DayKey? = nil
 
     /// Whether the list's items are folded away right now (another type keeps the setting
     /// but always shows its sub-tasks).
@@ -318,6 +322,7 @@ extension ChecklistTask {
         expirySetOn = (try? container.decodeIfPresent(DayKey.self, forKey: .expirySetOn)) ?? nil
         expiresWithWeek = (try? container.decodeIfPresent(Bool.self, forKey: .expiresWithWeek)) ?? false
         dayOfWeek = (try? container.decodeIfPresent(Int.self, forKey: .dayOfWeek)).flatMap { (1...7).contains($0) ? $0 : nil }
+        daySetOn = (try? container.decodeIfPresent(DayKey.self, forKey: .daySetOn)) ?? nil
     }
 }
 
@@ -370,6 +375,8 @@ extension ChecklistTask {
     /// past one every day has gone by; a carried copy's day comes round again next week).
     func isLate(inWeekStarting start: DayKey, firstWeekday: Int, today: DayKey) -> Bool {
         guard !isCompleted, let day = day(inWeekStarting: start, firstWeekday: firstWeekday) else { return false }
+        // Given the day after it had gone by: nothing was missed.
+        if let setOn = daySetOn, setOn > day { return false }
         return day < today && today < start.adding(days: 7)
     }
 }
@@ -419,10 +426,19 @@ struct Category: Codable, Identifiable, Equatable {
 
     /// The tasks as the card shows them (`orderedTasks`); with a day picked in the day strip
     /// (`day`), only that day's and those with no day.
-    func shownTasks(firstWeekday: Int, day: Int?) -> [ChecklistTask] {
+    func shownTasks(firstWeekday: Int, day: Int?, weekStart: DayKey? = nil, today: DayKey? = nil) -> [ChecklistTask] {
         let ordered = orderedTasks(firstWeekday: firstWeekday)
         guard let day else { return ordered }
-        return ordered.filter { $0.dayOfWeek == nil || $0.dayOfWeek == day }
+        // On today's own pill, the late ones too: what's left to do today includes them (a
+        // tester's unfinished Friday task was hidden on Saturday, 2026-11-14).
+        var lateWeek: DayKey?
+        if let weekStart, let today, weekStart.adding(days: Weekday.offset(day, firstWeekday: firstWeekday)) == today {
+            lateWeek = weekStart
+        }
+        return ordered.filter { task in
+            task.dayOfWeek == nil || task.dayOfWeek == day
+                || lateWeek.map { task.isLate(inWeekStarting: $0, firstWeekday: firstWeekday, today: today!) } == true
+        }
     }
 
     /// The tasks `taskID` can be moved among: the ones pinned like it with the same day (or
@@ -495,8 +511,14 @@ enum DuplicateNames {
 }
 
 extension Category {
-    /// Tasks with the same name as another task in this card.
-    var duplicateTaskIDs: Set<UUID> { DuplicateNames.duplicated(tasks) { $0.title } }
+    /// Tasks with the same name as another task in this card for the same day (or both with
+    /// none). "Gym" on Monday and "Gym" on Wednesday is a plan, not a slip: a tester's
+    /// Mon/Wed/Fri gym days were all marked Duplicate (2026-11-14).
+    var duplicateTaskIDs: Set<UUID> {
+        Dictionary(grouping: tasks, by: \.dayOfWeek).values.reduce(into: Set<UUID>()) { found, sameDay in
+            found.formUnion(DuplicateNames.duplicated(sameDay) { $0.title })
+        }
+    }
 }
 
 extension ChecklistTask {

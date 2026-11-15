@@ -278,6 +278,7 @@ struct SettingsSheet: View {
         Text(title)
             .font(Theme.bodyFont(theme))
             .foregroundStyle(Theme.accent(theme, rc: rc))
+            .accessibilityLabel(Theme.plainRetroLabel(title))
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
     }
@@ -288,6 +289,8 @@ struct SettingsSheet: View {
             Text("[\(title)]")
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(Theme.textTertiary(theme, rc: rc))
+                .accessibilityLabel(Theme.plainRetroLabel(title))
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 6) {
                 content()
             }
@@ -313,6 +316,7 @@ struct SettingsSheet: View {
                 HStack {
                     if retro {
                         Text("> \(mode.label.uppercased())")
+                            .accessibilityLabel(mode.label)
                             .font(Theme.bodyFont(theme))
                             .foregroundStyle(store.appearanceMode == mode ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
                     } else {
@@ -354,7 +358,7 @@ struct SettingsSheet: View {
             if on { ExpiryNotifications.shared.requestPermissionIfNeeded() }
         })) {
             if retro {
-                Text("> Expiration Reminders").font(Theme.bodyFont(theme))
+                Text("> Expiration Reminders").font(Theme.bodyFont(theme)).accessibilityLabel("Expiration Reminders")
             } else {
                 Label("Expiration Reminders", systemImage: "bell.badge")
             }
@@ -375,7 +379,7 @@ struct SettingsSheet: View {
         if AppIconSwitcher.isSupported {
             Toggle(isOn: $iconMatchesTheme) {
                 if retro {
-                    Text("> Match App Icon to Theme").font(Theme.bodyFont(theme))
+                    Text("> Match App Icon to Theme").font(Theme.bodyFont(theme)).accessibilityLabel("Match App Icon to Theme")
                 } else {
                     Label("Match App Icon to Theme", systemImage: "app.badge")
                 }
@@ -424,7 +428,7 @@ struct SettingsSheet: View {
         if retro {
             // Outside a List a menu picker shows no label: it goes beside it.
             HStack {
-                Text("> Sort Cards").font(Theme.bodyFont(theme))
+                Text("> Sort Cards").font(Theme.bodyFont(theme)).accessibilityLabel("Sort Cards")
                     .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                     .accessibilityHidden(true)  // the menu says it
                 Spacer()
@@ -477,7 +481,7 @@ struct SettingsSheet: View {
     private var weekStartRow: some View {
         HStack {
             if retro {
-                Text("> Week Starts On").font(Theme.bodyFont(theme))
+                Text("> Week Starts On").font(Theme.bodyFont(theme)).accessibilityLabel("Week Starts On")
             } else {
                 Label("Week Starts On", systemImage: "calendar.day.timeline.left")
             }

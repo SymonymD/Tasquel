@@ -19,7 +19,7 @@ struct CalendarSettingsRows: View {
             set: { setEnabled($0) }
         )) {
             if retro {
-                Text("> Show Calendar Events").font(Theme.bodyFont(theme))
+                Text("> Show Calendar Events").font(Theme.bodyFont(theme)).accessibilityLabel("Show Calendar Events")
             } else {
                 Label("Show Calendar Events", systemImage: "calendar")
             }
@@ -42,6 +42,7 @@ struct CalendarSettingsRows: View {
                             UIApplication.shared.open(url)
                         }
                     }
+                    .accessibilityLabel("Open Settings")
                     .font(retro ? Theme.bodyFont(theme) : .body)
                     .modifier(PlainButtonInRetro(isRetro: retro))
                 }
@@ -52,7 +53,7 @@ struct CalendarSettingsRows: View {
             } label: {
                 HStack {
                     if retro {
-                        Text("> Calendars").font(Theme.bodyFont(theme))
+                        Text("> Calendars").font(Theme.bodyFont(theme)).accessibilityLabel("Calendars")
                     } else {
                         Label("Calendars", systemImage: "checklist")
                     }

@@ -75,12 +75,22 @@ struct CategoryGridCard: View {
                     .foregroundStyle(Theme.destructive(theme))
             }
 
-            completionLine
-                .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", this week only" : "")\(category.isPinned ? ", pinned" : "")")
-                .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
-                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                completionLine
+                    .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", just this week" : "")\(category.isPinned ? ", pinned" : "")")
+                    .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                // In the card's own edit mode, up by the checkmark and the same size as this
+                // line, so no row below moves as editing starts (the user, 2026-11-15: the
+                // switch at the card's bottom, "This week only", wasn't clear).
+                if isRenaming {
+                    Spacer(minLength: 0)
+                    justThisWeekChip
+                        .modifier(AnimatableFont(size: expandedCaptionSize, design: design))
+                }
+            }
 
             // Both contents stay in place so they move with the card; only the
             // visible one takes up space.
@@ -268,14 +278,14 @@ struct CategoryGridCard: View {
         if Theme.isRetro(theme) {
             return Text(verbatim: "done: \(counts)\(category.isThisWeekOnly ? " [1WK]" : "")\(category.isPinned ? " [PIN]" : "")")
         }
-        let line = "Completed: \(counts)\(category.isThisWeekOnly ? " · This week" : "")"
+        let line = "Completed: \(counts)\(category.isThisWeekOnly ? " · Just this week" : "")"
         return category.isPinned ? Text("\(line)  \(Image(systemName: "pin.fill"))") : Text(verbatim: line)
     }
 
     /// What VoiceOver says for a closed card: "Open Work, 2 of 4 tasks complete" (in Edit,
     /// where cards don't open, without "Open").
     private var collapsedCardLabel: String {
-        let scope = (category.isPinned ? "pinned, " : "") + (category.isThisWeekOnly ? "this week only, " : "")
+        let scope = (category.isPinned ? "pinned, " : "") + (category.isThisWeekOnly ? "just this week, " : "")
         let tasks = category.totalCount == 0 ? "no tasks yet" : "\(category.completedCount) of \(category.totalCount) tasks complete"
         return (isEditing ? "" : "Open ") + "\(category.name), \(scope)\(tasks)"
     }
@@ -283,6 +293,35 @@ struct CategoryGridCard: View {
     private var completion: CardCompletion {
         CardCompletion(id: category.id, total: category.totalCount,
                        isDone: category.totalCount > 0 && category.completedCount == category.totalCount)
+    }
+
+    /// "◯ Just this week" / "✓ Just this week": the card won't come back next week.
+    private var justThisWeekChip: some View {
+        let on = category.isThisWeekOnly
+        let retro = Theme.isRetro(theme)
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) { store.setCategoryThisWeekOnly(category.id, !on) }
+        } label: {
+            HStack(spacing: 4) {
+                if retro {
+                    Text(on ? "[x]" : "[ ]")
+                } else {
+                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                }
+                Text(retro ? "just_this_week" : "Just this week")
+            }
+            .foregroundStyle(on ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
+            .lineLimit(1)
+            .fixedSize()
+            .contentShape(Rectangle())
+            .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Just this week")
+        .accessibilityIdentifier("Just this week chip")
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityHint(on ? "It won't come back next week." : "Makes this card this week's only.")
     }
 
     /// Hidden during global edit mode, which already covers every card.
@@ -427,7 +466,7 @@ nonisolated private struct CardCompletion: Equatable {
 // MARK: - This Week Only
 
 /// In a card's own edit mode: whether the category is for the viewed week only.
-private struct ThisWeekOnlyToggle: View {
+private struct ThisWeekOnlyNote: View {
     let category: Category
     let store: ChecklistStore
 
@@ -435,35 +474,22 @@ private struct ThisWeekOnlyToggle: View {
     private var rc: RetroColor { store.retroColor }
     private var design: Font.Design { Theme.isRetro(theme) ? .monospaced : .default }
 
-    /// What the switch does beyond its name.
+    /// What Just this week does beyond its name, when there's something to say.
     private var note: String? {
         if category.isThisWeekOnly {
-            return "It won't come back next week. Adding a carry-over or repeating task turns this off."
+            return "Just this week: it won't come back next week. Adding a carry-over or repeating task turns this off."
         }
         return category.tasks.contains { $0.mode != .oneTime }
-            ? "Turning this on makes its carry-over and repeating tasks one-time."
+            ? "Just this week would make its carry-over and repeating tasks one-time."
             : nil
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(isOn: Binding(
-                get: { category.isThisWeekOnly },
-                set: { on in
-                    withAnimation(.snappy(duration: 0.2)) { store.setCategoryThisWeekOnly(category.id, on) }
-                }
-            )) {
-                Text(Theme.isRetro(theme) ? "> This week only" : "This week only")
-                    .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-            }
-            .font(.expandedCard(.subheadline, design: design))
-            .tint(Theme.accent(theme, rc: rc))
-            if let note {
-                Text(note)
-                    .font(.expandedCard(.caption1, design: design))
-                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        if let note {
+            Text(note)
+                .font(.expandedCard(.caption1, design: design))
+                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -486,7 +512,9 @@ private struct CollapsedCategoryContent: View {
     @Environment(\.cardWeekStart) private var weekStart
 
     /// In the card's order; with a day picked in the day strip, that day's and those with no day.
-    private var shownTasks: [ChecklistTask] { category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter) }
+    private var shownTasks: [ChecklistTask] {
+        category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter, weekStart: weekStart, today: store.currentDay)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -627,6 +655,7 @@ private struct ExpandedCategoryContent: View {
     /// The task being moved by its handle (the card's edit mode), if any.
     @State private var reorder: TaskReorder?
     @Environment(\.taskDayFilter) private var dayFilter
+    @Environment(\.cardWeekStart) private var weekStart
     /// Each task row's frame in the task list (laid out, without a reorder's offsets).
     @State private var rowFrames: [UUID: CGRect] = [:]
     /// Scrolls the grid while a lifted task is held near the top or bottom.
@@ -643,12 +672,23 @@ private struct ExpandedCategoryContent: View {
     @State private var frozenOrder: [UUID]?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Holds the order (or lets it go, the tasks moving into place) for a row whose options
+    /// are open, or for the Add task row while it's in use; tasks added meanwhile go last.
+    private func freezeOrder(_ hold: Bool) {
+        withAnimation(hold || reduceMotion ? nil : .snappy(duration: 0.25)) {
+            frozenOrder = hold ? listedTasks.map(\.id) : nil
+        }
+    }
+
     /// Pinned first, then by day (`shownTasks`), unless a task's options are open.
     private var listedTasks: [ChecklistTask] {
-        let live = category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter)
+        let live = category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter, weekStart: weekStart, today: store.currentDay)
         guard let frozenOrder else { return live }
         let byID = Dictionary(category.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return frozenOrder.compactMap { byID[$0] } + live.filter { !frozenOrder.contains($0.id) }
+        // Tasks added meanwhile go last in the order they were added, not sorted (a new task
+        // with a day went ahead of the others typed with it, away from its note, 2026-11-15).
+        let shown = Set(live.map(\.id))
+        return frozenOrder.compactMap { byID[$0] } + category.tasks.filter { shown.contains($0.id) && !frozenOrder.contains($0.id) }
     }
 
     var body: some View {
@@ -681,22 +721,23 @@ private struct ExpandedCategoryContent: View {
                 // Last, so the stack sees it: before the measuring, the rows it passed while the
                 // grid scrolled were drawn over it.
                 .zIndex(isLifted ? 1 : 0)
-                .environment(\.freezesTaskOrder) { open in
-                    withAnimation(open || reduceMotion ? nil : .snappy(duration: 0.25)) {
-                        frozenOrder = open ? listedTasks.map(\.id) : nil
-                    }
-                }
+                .environment(\.freezesTaskOrder, freezeOrder)
             }
 
-            // Adding is off while the card is in edit mode. The This week only switch takes
-            // the add row's place then, so no row above it moves as editing starts (a tap
+            // Adding is off while the card is in edit mode. Just this week's note takes the
+            // add row's place then (its switch is beside Completed), so no row above it moves as
+            // editing starts (a tap
             // meant for a task's delete button landed on the row below instead). The add row
             // stays, showing nothing, so a Smart Add still working isn't lost.
             if !isPastWeek {
                 VStack(alignment: .leading, spacing: 0) {
                     AddTaskRowCard(categoryID: category.id, store: store, isEditing: isEditing)
+                        // New tasks stay just above the field, by their note, while it's in use
+                        // ("Call mom Sunday" went to the top, its note left by the field, 2026-11-15).
+                        .environment(\.freezesTaskOrder, freezeOrder)
                     if isEditing {
-                        ThisWeekOnlyToggle(category: category, store: store)
+                        // What Just this week (beside Completed, up top) does, where it says more.
+                        ThisWeekOnlyNote(category: category, store: store)
                     }
                 }
                 // Clear of the sub-task or item rows above: the field's fill reaches past

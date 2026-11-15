@@ -22,7 +22,10 @@ final class EmojiPickerUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Add Category"].exists, "Add Category stays open")
         XCTAssertTrue(app.buttons["Icon: 🌱"].waitForExistence(timeout: 3), "the emoji is the new icon")
         name.tap()
-        name.typeText("\n")  // Return adds it
+        name.typeText("\n")  // Return adds it; the sheet stays for another, Done closes it
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Added Garden")).firstMatch
+            .waitForExistence(timeout: 3), "the sheet says it was added")
+        app.navigationBars["Add Category"].buttons["Done"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Garden,")).firstMatch
             .waitForExistence(timeout: 3), "the category is added")
     }
@@ -174,9 +177,16 @@ final class EmojiPickerUITests: XCTestCase {
         while Date() < deadline, !sawTaken {
             sawTaken = taken.exists
         }
-        XCTAssertFalse(sawTaken, "no name-taken warning while the sheet closes")
+        XCTAssertFalse(sawTaken, "no name-taken warning once it's added")
+        // The sheet stays to add another: the field is empty again, with the keyboard.
+        XCTAssertEqual(name.value as? String ?? "", name.placeholderValue ?? "", "the field is cleared")
+        name.typeText("Pantry\n")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Added Pantry")).firstMatch
+            .waitForExistence(timeout: 3), "a second one in the same visit")
+        app.navigationBars["Add Category"].buttons["Done"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Garden,")).firstMatch
-            .waitForExistence(timeout: 3))
+            .waitForExistence(timeout: 3), "Done closes it and ends Edit")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Pantry,")).firstMatch.exists)
     }
 
     // MARK: Helpers

@@ -460,6 +460,23 @@ struct WeekPreviewTests {
         #expect(preview.categories.map { $0.tasks.map(\.title).sorted() }
                 == actual?.categories.map { $0.tasks.map(\.title).sorted() })
     }
+
+    @Test("A week from before Tasquel was used has no cards; the current week has the starters")
+    func weeksBeforeFirstUseAreEmpty() {
+        let store = makeIsolatedStore(clock: TestClock(2026, 11, 14))
+        store.navigateToDate(TestClock(2026, 11, 14).now)
+        store.deleteCategory(store.selectedWeek!.categories[0].id)
+        store.addCategory(name: "School", symbol: "book")
+        #expect(!(store.selectedWeek?.categories.isEmpty ?? true), "this week has its cards")
+
+        // Saved Categories still holds the deleted starter and today's new card; neither
+        // belongs in a week from before the first one.
+        let earlier = store.previewWeek(for: TestClock(2026, 11, 2).now)
+        #expect(earlier.categories.isEmpty, "nothing was planned that week")
+        store.navigateToDate(TestClock(2026, 10, 26).now)
+        #expect(store.selectedWeek?.categories.isEmpty ?? false)
+        #expect(store.weeks.count == 1, "looking back saves nothing")
+    }
 }
 
 @MainActor
@@ -1865,7 +1882,8 @@ struct TaskDayTests {
         #expect(TaskTextHints.weekdayNamed("sun hat") == nil, "a short name only after on, every, each or this")
         #expect(TaskTextHints.refine(ParsedTask(title: "Call Mom"), from: "Call Mom on Friday").day == 6)
 
-        let store = makeIsolatedStore()
+        // On a Monday, so Friday hasn't gone by (a day that has goes into next week).
+        let store = makeIsolatedStore(clock: TestClock(2026, 11, 9))
         let categoryID = store.selectedWeek!.categories[0].id
         var parsed = ParsedTask(title: "Call Mom")
         parsed.day = 6
@@ -1913,9 +1931,20 @@ struct TaskDateTests {
         let birthday = try #require(store.addTask(categoryID: categoryID, title: "Mom's birthday", mode: .oneTime))
         let later = start.adding(days: 17)
         store.setTaskDate(categoryID: categoryID, taskID: birthday, lastDay: later)
-        #expect(task(birthday).expiresOn == later)
-        #expect(task(birthday).mode == .carryOver, "carries over until its date")
-        #expect(task(birthday).dayOfWeek == nil, "a later week's date isn't a day this week")
+        // One-time, it goes into its date's week, on that day (the user's rule, 2026-11-15).
+        #expect(store.viewedTask(categoryID, birthday) == nil, "not in this week")
+        let name = store.selectedWeek!.categories[0].name
+        let moved = store.weeks.first { $0.startDay == store.weekOfDate(later) }?
+            .categories.first { $0.name == name }?.tasks.first { $0.title == "Mom's birthday" }
+        #expect(moved?.expiresOn == later)
+        #expect(moved?.dayOfWeek == store.calendar.component(.weekday, from: later.date(in: store.calendar)))
+
+        // Carry-over, it stays and carries over until then, with no day this week.
+        let drill = try #require(store.addTask(categoryID: categoryID, title: "Return the drill", mode: .carryOver))
+        store.setTaskDate(categoryID: categoryID, taskID: drill, lastDay: later)
+        #expect(task(drill).expiresOn == later)
+        #expect(task(drill).mode == .carryOver)
+        #expect(task(drill).dayOfWeek == nil, "a later week's date isn't a day this week")
 
         let call = try #require(store.addTask(categoryID: categoryID, title: "Call the bakery", mode: .oneTime))
         let thisWeek = start.adding(days: 4)
@@ -1927,9 +1956,9 @@ struct TaskDateTests {
         store.setTaskDate(categoryID: categoryID, taskID: gym, lastDay: later)
         #expect(task(gym).mode == .repeating, "repeats until its date")
 
-        store.setTaskDate(categoryID: categoryID, taskID: birthday, lastDay: nil)
-        #expect(task(birthday).expiresOn == nil)
-        #expect(task(birthday).mode == .carryOver, "taking the date away leaves the mode")
+        store.setTaskDate(categoryID: categoryID, taskID: drill, lastDay: nil)
+        #expect(task(drill).expiresOn == nil)
+        #expect(task(drill).mode == .carryOver, "taking the date away leaves the mode")
     }
 
     @Test("A date picked for a new task is its last day, set today")
@@ -2045,7 +2074,9 @@ struct LogicTestFixesTests {
     func remindersFromLaterWeeksAsTheyWillBe() {
         let home = Home(), store = home.store
         store.addCategory(name: "Family", symbol: "person.2")
-        let mom = home.add("Family", "Mom's birthday", .oneTime)
+        // Carry-over, so it's in each week until its date (a one-time one would go to its
+        // date's week, 2026-11-15).
+        let mom = home.add("Family", "Mom's birthday", .carryOver)
         store.setTaskDate(categoryID: home.card("Family").id, taskID: mom, lastDay: d(25))
         home.view(11)
         _ = home.add("Family", "Wrap the gift", .oneTime)  // next week saved, its copy as it was
@@ -2174,7 +2205,7 @@ struct LogicTestFixesTests {
         #expect(store.calendarMarks(weekStartingOn: DayKey(year: 2099, month: 2, day: 23)).isEmpty, "a past week never saved")
     }
 
-    @Test("A mode picked before adding is kept: One-Time with a later date stays One-Time, with no day")
+    @Test("A mode picked before adding is kept: One-Time with a later date stays One-Time, in its date's week on its day")
     func keepsPickedMode() throws {
         let home = Home(), store = home.store
         var parsed = ParsedTask(title: "Test weeks out", mode: .oneTime)
@@ -2182,9 +2213,11 @@ struct LogicTestFixesTests {
         parsed.day = 7
         parsed.keepsMode = true
         let id = try #require(store.addParsedTask(parsed, categoryID: home.card("Errands").id))
-        let task = try #require(home.card("Errands").tasks.first { $0.id == id })
+        #expect(!home.card("Errands").tasks.contains { $0.id == id }, "not this week")
+        let week = try #require(store.weeks.first { $0.startDay == store.weekOfDate(d(25)) })
+        let task = try #require(week.categories.first { $0.name == "Errands" }?.tasks.first { $0.id == id })
         #expect(task.mode == .oneTime)
-        #expect(task.dayOfWeek == nil)
+        #expect(task.dayOfWeek == 4, "its date's day (Wednesday the 25th), not the one picked")
     }
 
     @Test("7: a task added with a date gets the date's rules however it's added")
@@ -2197,7 +2230,11 @@ struct LogicTestFixesTests {
             let id = try #require(store.addParsedTask(parsed, categoryID: categoryID))
             return try #require(home.card("Errands").tasks.first { $0.id == id })
         }
-        #expect(try added("Mom's birthday", .oneTime, d(25)).mode == .carryOver, "dated after this week: carries over")
+        var birthday = ParsedTask(title: "Mom's birthday", mode: .oneTime)
+        birthday.lastDay = d(25)
+        #expect(store.placeParsedTask(birthday, categoryID: categoryID)?.weekStart == store.weekOfDate(d(25)),
+                "one-time, dated after this week: in its date's week")
+        #expect(try added("Card for Mom", .carryOver, d(25)).mode == .carryOver, "carry-over: here until then")
         let bakery = try added("Bakery", .oneTime, d(5))
         #expect(bakery.mode == .oneTime && bakery.dayOfWeek == 5, "this week: its day")
         #expect(try added("Run", .repeating, d(25)).mode == .repeating, "Smart Add's mode stays")
@@ -2330,7 +2367,7 @@ func todayDateContrast() {
         }
         return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
     }
-    let text = luminance(Theme.todayDateLight)
+    let text = luminance(Theme.pastDayDateLight)
     for background in [UIColor.white, UIColor(red: 0xF2 / 255.0, green: 0xF2 / 255.0, blue: 0xF7 / 255.0, alpha: 1)] {
         #expect((luminance(background) + 0.05) / (text + 0.05) >= 4.5)
     }
@@ -4847,4 +4884,268 @@ struct WhatsNewTests {
         #expect(!WhatsNew.isVersion("1.1.1", olderThan: "1.1"))
         #expect(!WhatsNew.isVersion("2.0", olderThan: "1.1"))
     }
+}
+
+@Test("Retro's decorated words get plain labels for VoiceOver")
+func retroWordsHavePlainLabels() {
+    #expect(Theme.plainRetroLabel("> Saved Categories") == "Saved Categories")
+    #expect(Theme.plainRetroLabel("[TERMINAL_COLOR]") == "Terminal Color")
+    #expect(Theme.plainRetroLabel("[APPEARANCE]") == "Appearance")
+    #expect(Theme.plainRetroLabel("> RETRO") == "Retro")
+    #expect(Theme.plainRetroLabel("> SETTINGS_") == "Settings")
+    #expect(Theme.plainRetroLabel("> What's New in 1.1") == "What's New in 1.1")
+}
+
+@MainActor
+struct DayGoneByTests {
+    private let thisWeek = DayKey(year: 2026, month: 11, day: 9)
+    private let nextWeek = DayKey(year: 2026, month: 11, day: 16)
+
+    private func work(_ store: ChecklistStore, in start: DayKey) -> Tasquel.Category? {
+        store.weeks.first { $0.startDay == start }?.categories.first { $0.name == "Work" }
+    }
+
+    @Test("A new task for a day gone by this week goes into next week, on that day")
+    func newTaskForPastDayGoesToNextWeek() throws {
+        let clock = TestClock(2026, 11, 14)  // a Saturday; the week started Monday the 9th
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        let workID = try #require(work(store, in: thisWeek)?.id)
+        #expect(store.dayHasGoneBy(5), "Thursday has gone by")
+        #expect(!store.dayHasGoneBy(7), "today hasn't")
+
+        var parsed = ParsedTask(title: "Call dentist", type: .checkbox, mode: .oneTime)
+        parsed.day = 5  // Thursday
+        let placed = store.placeParsedTask(parsed, categoryID: workID)
+        #expect(placed?.weekStart == nextWeek)
+        #expect(!(work(store, in: thisWeek)?.tasks.contains { $0.title == "Call dentist" } ?? true))
+        let moved = work(store, in: nextWeek)?.tasks.first { $0.title == "Call dentist" }
+        #expect(moved?.dayOfWeek == 5 && moved?.isUserEdited == true, "next week's, on Thursday, the user's own")
+
+        // Undo takes it back from there.
+        store.removeAddedTask(try #require(placed?.id), inWeekStarting: nextWeek)
+        #expect(!store.hasTask(try #require(placed?.id), inWeekStarting: nextWeek))
+
+        // Today's day, or none, stays in this week.
+        parsed.title = "Plan weekend"
+        parsed.day = 7
+        #expect(store.placeParsedTask(parsed, categoryID: workID)?.weekStart == thisWeek)
+        parsed.title = "Tidy desk"
+        parsed.day = nil
+        #expect(store.placeParsedTask(parsed, categoryID: workID)?.weekStart == thisWeek)
+    }
+
+    @Test("A This week only card keeps a task for a day gone by: it has no next week")
+    func thisWeekOnlyCardKeepsIt() throws {
+        let clock = TestClock(2026, 11, 14)
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        let trip = try #require(store.selectedWeek?.categories.first { $0.name == "Trip" })
+        var parsed = ParsedTask(title: "Pack", type: .checkbox, mode: .oneTime)
+        parsed.day = 3
+        #expect(store.placeParsedTask(parsed, categoryID: trip.id)?.weekStart == thisWeek)
+    }
+
+    @Test("A day given after it had gone by isn't late; one given before is, once it goes by")
+    func dayGivenAfterItPassedIsNotLate() throws {
+        let clock = TestClock(2026, 11, 14)
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        let workID = try #require(work(store, in: thisWeek)?.id)
+        let trash = try #require(store.addTask(categoryID: workID, title: "Trash", mode: .repeating))
+        store.setTaskDay(categoryID: workID, taskID: trash, day: 3)  // Tuesday, gone by
+        let report = try #require(store.addTask(categoryID: workID, title: "Report", mode: .oneTime))
+        store.setTaskDay(categoryID: workID, taskID: report, day: 7)  // today
+        func task(_ id: UUID) -> ChecklistTask? { work(store, in: thisWeek)?.tasks.first { $0.id == id } }
+        let late = { (id: UUID) in
+            task(id)?.isLate(inWeekStarting: thisWeek, firstWeekday: store.firstWeekday, today: store.currentDay) ?? false
+        }
+        #expect(!late(trash), "nothing was missed")
+        #expect(!late(report), "its day is today")
+        clock.now = TestClock(2026, 11, 15).now  // Sunday
+        #expect(late(report), "Saturday went by unfinished")
+        #expect(!late(trash))
+    }
+}
+
+@Test("Today's day pill shows late tasks too; another day's pill doesn't")
+func todayFilterShowsLateTasks() {
+    let start = DayKey(year: 2026, month: 11, day: 9)   // a Monday
+    let today = DayKey(year: 2026, month: 11, day: 14)  // Saturday (weekday 7)
+    var invoice = ChecklistTask(title: "Send invoice", isCompleted: false, mode: .oneTime)
+    invoice.dayOfWeek = 6  // Friday, gone by unfinished
+    var report = ChecklistTask(title: "Report", isCompleted: true, mode: .oneTime)
+    report.dayOfWeek = 4   // Wednesday, done: not late
+    let card = Tasquel.Category(name: "Work", symbol: "briefcase", tasks: [invoice, report])
+    let saturday = card.shownTasks(firstWeekday: 2, day: 7, weekStart: start, today: today).map(\.title)
+    #expect(saturday == ["Send invoice"], "today's: the late one, not the done one")
+    let wednesday = card.shownTasks(firstWeekday: 2, day: 4, weekStart: start, today: today).map(\.title)
+    #expect(wednesday == ["Report"], "another day's pill shows only its own")
+}
+
+@Test("Same-named tasks on different days aren't duplicates; on the same day they are")
+func duplicatesAreSameDayOnly() {
+    var monday = ChecklistTask(title: "Gym", isCompleted: false, mode: .repeating)
+    monday.dayOfWeek = 2
+    var wednesday = ChecklistTask(title: "gym", isCompleted: false, mode: .repeating)
+    wednesday.dayOfWeek = 4
+    #expect(Tasquel.Category(name: "Fitness", symbol: "figure.run", tasks: [monday, wednesday]).duplicateTaskIDs.isEmpty)
+    var again = ChecklistTask(title: "Gym ", isCompleted: false, mode: .oneTime)
+    again.dayOfWeek = 2
+    let ids = Tasquel.Category(name: "Fitness", symbol: "figure.run", tasks: [monday, wednesday, again]).duplicateTaskIDs
+    #expect(ids == [monday.id, again.id])
+}
+
+/// What six new users typed into Smart Add (2026-11-14), and what it now makes of it.
+@Test(arguments: [
+    ("Yoga twice this week", "Yoga", TaskType.goal, TaskMode.oneTime, 2.0 as Double?),
+    ("Gym Mon Wed Fri", "Gym", .goal, .repeating, 3),
+    ("Call mom Sunday", "Call mom", .checkbox, .oneTime, nil),
+    ("Grade essays by Thursday", "Grade essays", .checkbox, .oneTime, nil),
+    ("Friday team lunch", "Friday team lunch", .checkbox, .oneTime, nil),
+    ("Remind me to call the plumber", "Call the plumber", .checkbox, .oneTime, nil),
+] as [(String, String, TaskType, TaskMode, Double?)])
+func smartAddSwitcherWords(text: String, title: String, type: TaskType, mode: TaskMode, target: Double?) {
+    let refined = TaskTextHints.refine(ParsedTask(title: text), from: text)
+    #expect(refined.title == title)
+    #expect(refined.type == type)
+    #expect(refined.mode == mode)
+    #expect(refined.goalTarget == target)
+}
+
+@Test("Smart Add's today, tonight and tomorrow are days of the week")
+func smartAddRelativeDays() {
+    let calendar = Calendar.weekDates(in: TimeZone(identifier: "America/New_York")!)
+    let saturday = DayKey(year: 2026, month: 11, day: 14)
+    #expect(TaskTextHints.relativeDay("call the plumber tomorrow at 9", today: saturday, calendar: calendar) == 1, "Sunday")
+    #expect(TaskTextHints.relativeDay("pay rent today", today: saturday, calendar: calendar) == 7)
+    #expect(TaskTextHints.relativeDay("movie tonight", today: saturday, calendar: calendar) == 7)
+    #expect(TaskTextHints.relativeDay("buy milk", today: saturday, calendar: calendar) == nil)
+}
+
+@Test("A model's list from words in parts keeps each part whole; a one-item list from words that aren't a list is a checkbox")
+func smartAddListsFromParts() {
+    // Named by the first part: the name and the item as written (the model gave "Go to zoo",
+    // a list of "harass").
+    var zoo = ParsedTask(title: "Go to zoo")
+    zoo.type = .list
+    zoo.items = ["harass"]
+    let list = TaskTextHints.dropInvented(zoo, from: "go to the zoo and harass penguins")
+    #expect(list.type == .list)
+    #expect(list.title == "Go to the zoo")
+    #expect(list.items == ["harass penguins"])
+    var shirt = ParsedTask(title: "Go to the zoo")
+    shirt.type = .list
+    shirt.items = ["penguins", "panda shirt"]
+    #expect(TaskTextHints.dropInvented(shirt, from: "Go to the zoo, see the penguins and buy a panda shirt").items
+            == ["see the penguins", "buy a panda shirt"])
+    // A name that runs through the "and" is one thing.
+    var mac = ParsedTask(title: "Mac and cheese")
+    mac.type = .list
+    mac.items = ["cheese"]
+    let dish = TaskTextHints.dropInvented(mac, from: "Mac and cheese")
+    #expect(dish.type == .checkbox && dish.title == "Mac and cheese")
+    // No parts, no list word: a checkbox, named as typed (a plural ending isn't a list's name).
+    var plants = ParsedTask(title: "Water")
+    plants.type = .list
+    plants.items = ["plants"]
+    let kept = TaskTextHints.dropInvented(plants, from: "water the house plants")
+    #expect(kept.type == .checkbox && kept.items.isEmpty)
+    #expect(kept.title == "Water the house plants")
+    // A colon, or a list's name, still makes a list of one.
+    var groceries = ParsedTask(title: "Groceries")
+    groceries.type = .list
+    groceries.items = ["milk"]
+    #expect(TaskTextHints.dropInvented(groceries, from: "Groceries: milk").type == .list)
+}
+
+@MainActor
+struct DatesWeekTests {
+    private let thisWeek = DayKey(year: 2026, month: 11, day: 9)
+    private let dec14 = DayKey(year: 2026, month: 12, day: 14)  // a Monday
+
+    private func work(_ store: ChecklistStore, in start: DayKey) -> Tasquel.Category? {
+        store.weeks.first { $0.startDay == start }?.categories.first { $0.name == "Work" }
+    }
+
+    @Test("A one-time task given a date after this week moves into its date's week, on that day")
+    func oneTimeMovesToItsDatesWeek() throws {
+        let clock = TestClock(2026, 11, 14)
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        let workID = try #require(work(store, in: thisWeek)?.id)
+        let zoo = try #require(store.addTask(categoryID: workID, title: "Zoo", mode: .oneTime))
+        store.setTaskDate(categoryID: workID, taskID: zoo, lastDay: dec14)
+
+        #expect(store.viewedTask(workID, zoo) == nil, "gone from this week")
+        let there = work(store, in: dec14)?.tasks.first { $0.title == "Zoo" }
+        #expect(there?.expiresOn == dec14)
+        #expect(there?.dayOfWeek == 2, "on its date's day, Monday")
+        #expect(there?.mode == .oneTime)
+        #expect(store.addedElsewhere?.weekStart == dec14, "the screen follows it there")
+        #expect(store.addedElsewhere?.canUndo == false, "moved, not added: nothing to undo to")
+        let between = store.previewWeek(for: TestClock(2026, 11, 25).now)
+        #expect(!(between.categories.first { $0.name == "Work" }?.tasks.contains { $0.title == "Zoo" } ?? true),
+                "not in the weeks before")
+    }
+
+    @Test("A carry-over task carries over until its date; a new one-time task goes straight to its date's week")
+    func carryOverStaysAndNewOnesArePlaced() throws {
+        let clock = TestClock(2026, 11, 14)
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        let workID = try #require(work(store, in: thisWeek)?.id)
+        let report = try #require(store.addTask(categoryID: workID, title: "Report", mode: .carryOver))
+        store.setTaskDate(categoryID: workID, taskID: report, lastDay: dec14)
+        #expect(store.viewedTask(workID, report)?.expiresOn == dec14, "stays, carrying over until then")
+
+        var parsed = ParsedTask(title: "Dentist", type: .checkbox, mode: .oneTime)
+        parsed.lastDay = DayKey(year: 2026, month: 12, day: 3)  // a Thursday, week of Nov 30
+        let placed = store.placeParsedTask(parsed, categoryID: workID)
+        let week = DayKey(year: 2026, month: 11, day: 30)
+        #expect(placed?.weekStart == week)
+        #expect(work(store, in: week)?.tasks.first { $0.title == "Dentist" }?.dayOfWeek == 5)
+    }
+
+    @Test("In a This week only card, which isn't there, a later date makes it carry over as before")
+    func thisWeekOnlyCardCarriesOver() throws {
+        let clock = TestClock(2026, 11, 14)
+        let store = makeIsolatedStore(clock: clock)
+        store.navigateToDate(clock.now)
+        store.addCategory(name: "Trip", symbol: "airplane", thisWeekOnly: true)
+        let trip = try #require(store.selectedWeek?.categories.first { $0.name == "Trip" }?.id)
+        let pack = try #require(store.addTask(categoryID: trip, title: "Pack", mode: .oneTime))
+        store.setTaskDate(categoryID: trip, taskID: pack, lastDay: dec14)
+        #expect(store.viewedTask(trip, pack)?.mode == .carryOver)
+        #expect(store.addedElsewhere == nil)
+    }
+}
+
+@Test("A slip after a day that follows a month's name doesn't hide the date, and leaves the name with it")
+func typedDateWithASlip() throws {
+    let calendar = Calendar.weekDates()
+    let today = DayKey(year: 2026, month: 11, day: 15)
+    let park = try #require(TypedDate.find(in: "go to the park december 15tg", earliest: today, today: today,
+                                           calendar: calendar, locale: Locale(identifier: "en_US")))
+    #expect(park.day == DayKey(year: 2026, month: 12, day: 15))
+    #expect(park.titleWithoutDate == "go to the park")
+    #expect(TypedDate.blankingDaySlips("Run Mar 3x") == "Run Mar 3x", "a count stays")
+    #expect(TypedDate.blankingDaySlips("Dec 15th party") == "Dec 15th party")
+}
+
+@Test("Words in parts: commas and \"and\", and a trip's \"to\" (\"Go to the zoo to harass penguins\")")
+func wordsInParts() {
+    #expect(TaskTextHints.clauses("go to the zoo to harass penguins") == ["go to the zoo", "harass penguins"])
+    #expect(TaskTextHints.clauses("Stop by the bank to deposit a check") == ["Stop by the bank", "deposit a check"])
+    #expect(TaskTextHints.clauses("Go to the zoo, see the penguins and buy a panda shirt")
+            == ["Go to the zoo", "see the penguins", "buy a panda shirt"])
+    #expect(TaskTextHints.clauses("Remember to call Mom") == ["Remember to call Mom"], "not a trip")
+    #expect(TaskTextHints.clauses("Go to bed") == ["Go to bed"])
+    // The model's list from the user's words (2026-11-15): "Go to zoo", a list of "harass".
+    var zoo = ParsedTask(title: "Go to zoo")
+    zoo.type = .list
+    zoo.items = ["harass"]
+    let list = TaskTextHints.dropInvented(zoo, from: "go to the zoo to harass penguins")
+    #expect(list.type == .list && list.title == "Go to the zoo" && list.items == ["harass penguins"])
 }

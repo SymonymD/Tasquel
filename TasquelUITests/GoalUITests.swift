@@ -308,16 +308,17 @@ final class GoalUITests: XCTestCase {
         let day = Calendar.current.date(byAdding: .day, value: 10, to: Date())!
         if !Calendar.current.isDate(day, equalTo: Date(), toGranularity: .month) { app.buttons["Next month"].tap() }
         app.buttons[day.formatted(.dateTime.weekday(.wide).month(.wide).day())].tap()
+        XCTAssertTrue(app.staticTexts["As a One-Time task, it moves to that week."].exists, "the calendar says where it goes")
         app.buttons["Set"].tap()
         XCTAssertTrue(app.staticTexts["Until"].waitForNonExistence(timeout: 3), "back to the options")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Date: ")).firstMatch.exists, "the calendar says the date")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Carries over until ")).firstMatch.exists, "and so does the hint")
+        // One-time, dated after this week: it goes into its date's week (2026-11-15).
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Moves to the week of ")).firstMatch.exists, "and so does the hint")
         XCTAssertTrue(app.buttons["Add Task"].firstMatch.isHittable, "Add Task stays in the popover, keyboard and all")
-        XCTAssertTrue(app.buttons["Carry Over"].firstMatch.isSelected, "a one-time task dated after this week carries over")
-        // Picked back to One-Time, it warns: gone before its date.
-        app.buttons["One-Time"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Gone after this week")).firstMatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["One-Time"].firstMatch.isSelected, "it stays One-Time")
+        // Carry Over keeps it here until then.
         app.buttons["Carry Over"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Carries over until ")).firstMatch.waitForExistence(timeout: 2))
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "date-in-popup"
         shot.lifetime = .keepAlways
@@ -393,10 +394,12 @@ final class GoalUITests: XCTestCase {
         app.buttons["Done"].firstMatch.tap()
         sleep(1)
 
-        // Gifts gets a date from its options.
+        // Gifts gets a date from its options: carry-over, so it stays in this week (a one-time
+        // task dated after this week goes into its date's week, 2026-11-15).
         let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:"))
         let gifts = app.staticTexts["Gifts"].frame
         options.allElementsBoundByIndex.min { abs($0.frame.midY - gifts.midY) < abs($1.frame.midY - gifts.midY) }!.tap()
+        app.buttons["Carry Over"].firstMatch.tap()
         app.buttons["Add a date"].tap()
         let day = Calendar.current.date(byAdding: .day, value: 10, to: Date())!
         if !Calendar.current.isDate(day, equalTo: Date(), toGranularity: .month) { app.buttons["Next month"].tap() }
@@ -624,9 +627,13 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["System"].waitForExistence(timeout: 3), "Settings is open")
         _ = app.settingsButton("How to Use Tasquel")
         help.tap()
+        // It opens on the questions new users came with; Weeks is the next tab.
+        XCTAssertTrue(app.staticTexts["Is there a Someday list?"].waitForExistence(timeout: 3))
+        app.buttons["Weeks"].tap()
         XCTAssertTrue(app.staticTexts["Navigate Weeks"].waitForExistence(timeout: 3))
-        // In tabs: Category Cards shows its own entries; a swipe goes to the next tab.
-        app.buttons["Category Cards"].tap()
+        // In tabs: Cards shows its own entries; a swipe goes to the next tab. Each pill is
+        // named as it reads ("Cards", for Voice Control), its section's title the hint.
+        app.buttons["Cards"].tap()
         XCTAssertTrue(app.staticTexts["Close All Cards"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts["Navigate Weeks"].isHittable, "the first tab's out of view")
         app.staticTexts["Close All Cards"].swipeLeft()
@@ -689,6 +696,192 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Edit Errands"].exists, "the card left edit mode")
         app.addTaskField.tap()
         XCTAssertTrue(app.buttons["New task options: Checkbox, One-Time"].waitForExistence(timeout: 2))
+    }
+
+    /// A new task given a day that has gone by this week goes into next week on that day, with
+    /// a note saying so and Undo; the field's placeholder says "Next" beforehand (the user's
+    /// rule, 2026-11-14: Thursday picked on a Friday means next Thursday).
+    @MainActor
+    func testDayGoneByAddsToNextWeek() throws {
+        // Monday has gone by on every day but Monday (weeks start on Monday here).
+        try XCTSkipIf(Calendar(identifier: .gregorian).component(.weekday, from: Date()) == 2, "nothing has gone by on a Monday")
+        let app = launchFresh(["-isolatedDataID", "nextweek-\(UUID().uuidString)"])
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        app.buttons["New task options: Checkbox, One-Time"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForExistence(timeout: 3))
+        app.buttons["Monday"].tap()
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForNonExistence(timeout: 3))
+        // On iPad the options close the keyboard first, and the empty field folds back to its
+        // +: open it again (`addTaskField` taps the + when it must).
+        let field = app.addTaskField
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        XCTAssertEqual(field.placeholderValue, "Add Task for Next Mon", "the field says where it will go")
+        let thisWeek = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label
+
+        field.tap()
+        field.typeText("Call dentist\n")
+        // The screen goes with it to next week, where its note is (2026-11-15: left behind
+        // on this week, it seemed to vanish).
+        let note = app.staticTexts["Monday had already gone by, so “Call dentist” is here, in next week"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5), "next week's card says where it is")
+        XCTAssertNotEqual(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label,
+                          thisWeek, "next week is on screen")
+        let dentist = app.staticTexts["Call dentist"]
+        XCTAssertTrue(dentist.exists, "the task is there")
+        XCTAssertEqual(dentist.value as? String, "Monday", "on Monday, and not late")
+        // The bar was away with the keyboard as the week changed; the house still comes out.
+        let house = app.buttons.matching(NSPredicate(format: "identifier == %@", "Bar Back to This Week")).firstMatch
+        XCTAssertTrue(house.waitForExistence(timeout: 3), "the way back to this week is there")
+
+        // A pop-up says so, where it can't be missed; OK closes it.
+        XCTAssertTrue(app.staticTexts["Added to next week"].exists, "the pop-up says where the screen went")
+        XCTAssertTrue(app.staticTexts["Monday had already gone by this week."].exists)
+        app.buttons["Moved OK"].tap()
+        XCTAssertTrue(app.staticTexts["Added to next week"].waitForNonExistence(timeout: 3))
+
+        // Undo there takes it back.
+        app.buttons["Undo adding Call dentist"].tap()
+        XCTAssertTrue(dentist.waitForNonExistence(timeout: 3), "taken back")
+    }
+
+    /// While Add Task is in use, a new task stays just above the field (by its note), even
+    /// one whose day puts it first; once the keyboard goes it moves into place ("Call mom
+    /// Sunday" jumped to the top, its note left by the field, 2026-11-15).
+    @MainActor
+    func testNewTaskStaysByTheFieldWhileTyping() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Alpha\n")
+        addTask.typeText("Beta\n")
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "EEEE"
+        app.buttons["New task options: Checkbox, One-Time"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForExistence(timeout: 3))
+        app.buttons[formatter.string(from: Date())].tap()  // today: a day task comes first
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForNonExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Gamma\n")
+
+        let alpha = app.staticTexts["Alpha"], beta = app.staticTexts["Beta"], gamma = app.staticTexts["Gamma"]
+        XCTAssertTrue(gamma.waitForExistence(timeout: 3))
+        XCTAssertGreaterThan(gamma.frame.minY, beta.frame.minY, "while typing, it's last, by the field")
+        app.buttons["Done"].firstMatch.tap()  // the keyboard goes
+        let movedFirst = expectation(for: NSPredicate { _, _ in gamma.frame.minY < alpha.frame.minY }, evaluatedWith: nil, handler: nil)
+        wait(for: [movedFirst], timeout: 8)
+    }
+
+    /// A pinned task shows a pin after its name outside the card's edit mode too, and
+    /// VoiceOver hears "pinned" (it only sat at the top before, 2026-11-14).
+    @MainActor
+    func testPinnedTaskShowsItsPin() throws {
+        let app = launchFresh()
+        let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(errands.waitForExistence(timeout: 5))
+        errands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Return books\n")
+        addTask.typeText("Groceries\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+        app.editCard("Errands")
+        let pin = app.buttons["Pin Groceries to the top"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 3))
+        pin.tap()
+        app.buttons["Done editing Errands"].tap()
+        sleep(1)
+        XCTAssertEqual(app.staticTexts["Groceries"].value as? String, "pinned", "said after the name")
+        XCTAssertEqual(app.staticTexts["Return books"].value as? String ?? "", "", "and only on the pinned one")
+    }
+
+    /// A target that the goal's progress already meets says so before Save Goal, rather than
+    /// the goal turning up struck through ("Done, 8 of 7", 2026-11-14).
+    @MainActor
+    func testEditGoalSaysWhenItWouldBeMet() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Push-ups\n")
+        sleep(1)
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
+        let targetField = app.textFields["Target"]
+        XCTAssertTrue(targetField.waitForExistence(timeout: 3))
+        targetField.tap()
+        targetField.typeText("10")
+        app.buttons["Set"].tap()
+        if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
+        let plus = app.buttons["Add 2"]  // 10 ÷ 7, rounded up
+        XCTAssertTrue(plus.waitForExistence(timeout: 3))
+        plus.tap()
+
+        app.buttons["Edit goal"].tap()
+        let target = app.textFields["Target"].firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        target.tap()
+        target.typeText("2")
+        let note = app.staticTexts["Already 2 of 2: saving marks it done"]
+        XCTAssertTrue(note.waitForExistence(timeout: 3), "it says so before saving")
+        target.typeText("0")
+        XCTAssertTrue(note.waitForNonExistence(timeout: 3), "20 isn't met yet")
+    }
+
+    /// A task's day mark sits beside its whole name, so a name with a long word and a day gets
+    /// its icons on their own line rather than breaking mid-word ("Send invoic / e" next to
+    /// "Fri · late", 2026-11-14). In the card's edit mode the marks give way, so the four
+    /// edit icons stay beside the name (2026-11-15).
+    @MainActor
+    func testDayMarkLeavesRoomForTheName() throws {
+        let app = launchFresh(["-isolatedDataID", "daymark-\(UUID().uuidString)"])
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Spreadsheets\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+
+        // Today, which is never a day gone by.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "EEEE"
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForExistence(timeout: 3))
+        app.buttons[formatter.string(from: Date())].tap()
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["DAY"].waitForNonExistence(timeout: 3))
+        sleep(1)
+
+        let name = app.staticTexts["Spreadsheets"]
+        XCTAssertLessThan(name.frame.height, 34, "one line beside its day: never broken mid-word")
+
+        app.editCard("Work")
+        let delete = app.buttons["Delete Spreadsheets"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 3))
+        sleep(1)  // the edit icons run out to their places
+        XCTAssertLessThan(name.frame.height, 34, "one line in edit mode too")
+        XCTAssertLessThan(delete.frame.minY, name.frame.midY, "the day gives way, so the icons stay beside the name")
     }
 
     /// In a card's edit mode a task can be dragged by its handle to a new place.
@@ -1005,6 +1198,53 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(pastTarget.waitForExistence(timeout: 2), "+ stays at the target")
         pastTarget.tap()
         XCTAssertTrue(app.staticTexts["1h 9m / 1h"].waitForExistence(timeout: 3), "and counts past it")
+    }
+
+    /// With a custom unit the goal editor stays on the screen: the unit's name gets its own row
+    /// where it doesn't fit beside the target (on a 402pt iPhone it and Save Goal ran off the
+    /// card's edge, 2026-11-14).
+    @MainActor
+    func testEditGoalWithCustomUnitFits() throws {
+        let app = launchFresh()
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Work,")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        work.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Drink water\n")
+        sleep(1)
+        app.buttons["Task options: Checkbox, One-Time"].firstMatch.tap()
+        app.buttons["Goal"].firstMatch.tap()
+        dismissPopover(app)
+        let targetField = app.textFields["Target"]
+        XCTAssertTrue(targetField.waitForExistence(timeout: 3))
+        targetField.tap()
+        targetField.typeText("56")
+        app.buttons["Set"].tap()
+        if app.buttons["Done"].exists { app.buttons["Done"].firstMatch.tap() }
+
+        app.buttons["Edit goal"].tap()
+        let unitMenu = app.buttons["Goal unit: Quantity"]
+        XCTAssertTrue(unitMenu.waitForExistence(timeout: 3))
+        unitMenu.tap()
+        app.buttons["Custom"].firstMatch.tap()
+        let unitName = app.textFields["Unit name, for example pages"]
+        XCTAssertTrue(unitName.waitForExistence(timeout: 3))
+        unitName.tap()
+        unitName.typeText("glasses")
+        sleep(1)
+
+        // Sideways nothing moves with the keyboard up, so the edges can be checked now.
+        let screen = app.windows.firstMatch.frame
+        XCTAssertLessThanOrEqual(unitName.frame.maxX, screen.maxX - 16, "the unit's name is on the screen")
+        let save = app.buttons["Save Goal"]
+        XCTAssertTrue(save.exists)
+        XCTAssertLessThanOrEqual(save.frame.maxX, screen.maxX - 16, "so is Save Goal")
+        // The keyboard's Done saves the goal, as Save Goal would.
+        app.buttons["Done"].firstMatch.tap()
+        let unitShown = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "glasses")).firstMatch
+        XCTAssertTrue(unitShown.waitForExistence(timeout: 3), "the unit was saved")
     }
 
     /// One tap on any field in the goal editor opens the keyboard on it.

@@ -49,6 +49,18 @@ enum Theme {
 
     // Helpers
     static func isRetro(_ m: AppearanceMode) -> Bool { m == .retro }
+
+    /// Retro's decorated words as VoiceOver and Voice Control should have them:
+    /// "> Saved Categories" → "Saved Categories", "[TERMINAL_COLOR]" → "Terminal Color",
+    /// "> RETRO" → "Retro". The prompt, brackets and underscores are only for the look.
+    static func plainRetroLabel(_ text: String) -> String {
+        var plain = text.trimmingCharacters(in: .whitespaces)
+        if plain.hasPrefix(">") { plain.removeFirst() }
+        plain = plain.trimmingCharacters(in: CharacterSet(charactersIn: " []_"))
+            .replacingOccurrences(of: "_", with: " ")
+        if plain == plain.uppercased(), plain.contains(where: \.isLetter) { plain = plain.capitalized }
+        return plain
+    }
     static func isDark(_ m: AppearanceMode) -> Bool { m == .dark }
     static func isCustomDark(_ m: AppearanceMode) -> Bool { m == .dark || m == .retro }
     static func isSeasonal(_ m: AppearanceMode) -> Bool { m == .seasonal }
@@ -120,17 +132,18 @@ enum Theme {
     static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         isSeasonal(m) ? season.accent.color : isRetro(m) ? retroPalette(rc).bright : .blue
     }
-    /// Today's date on its day pill: the accent, but a deeper blue in light mode (System,
-    /// Light), where the system blue is about 4:1 on the frosted header and small bold text
-    /// needs 4.5:1 (review finding 22). The pill's outline stays the accent.
-    static func todayDate(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+    /// A past day's date on its day pill (blue since 2026-11-15; today's is green): the
+    /// accent, but a deeper blue in light mode (System, Light), where the system blue is about
+    /// 4:1 on the frosted header and small bold text needs 4.5:1 (review finding 22). The
+    /// pill's outline stays the accent.
+    static func pastDayDate(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         switch m {
-        case .system, .light: Color(UIColor { $0.userInterfaceStyle == .dark ? .systemBlue : todayDateLight })
+        case .system, .light: Color(UIColor { $0.userInterfaceStyle == .dark ? .systemBlue : pastDayDateLight })
         case .dark, .retro, .seasonal: accent(m, rc: rc)
         }
     }
     /// #0060DF: 5.6:1 on white.
-    static let todayDateLight = UIColor(red: 0, green: 0x60 / 255.0, blue: 0xDF / 255.0, alpha: 1)
+    static let pastDayDateLight = UIColor(red: 0, green: 0x60 / 255.0, blue: 0xDF / 255.0, alpha: 1)
     /// Words and icons on a filled accent (a button, a picked day): dark where the accent is
     /// light (Retro, Seasonal at night), else white.
     static func onAccent(_ m: AppearanceMode) -> Color {

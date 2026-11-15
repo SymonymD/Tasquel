@@ -17,19 +17,19 @@ final class ThisWeekOnlyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 5))
     }
 
-    /// The switch in the card's edit mode shows the category is this week only, and a
-    /// carry-over task turns it off.
+    /// Just this week, beside Completed in the card's edit mode, shows the category is just
+    /// this week's, and a carry-over task turns it off.
     @MainActor
     func testCarryOverTaskTurnsThisWeekOnlyOff() throws {
         addThisWeekOnlyCategory("Trip")
-        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Trip, this week only")).firstMatch
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Trip, just this week")).firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 3))
         card.tap()
 
         app.editCard("Trip")
-        let toggle = app.switches["This week only"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
-        XCTAssertEqual(toggle.value as? String, "1")
+        let chip = app.descendants(matching: .any).matching(identifier: "Just this week chip").firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 3))
+        XCTAssertEqual(chip.value as? String, "On")
         attachScreenshot("Card edit mode")
         app.buttons["Done editing Trip"].tap()
 
@@ -65,12 +65,14 @@ final class ThisWeekOnlyUITests: XCTestCase {
         app.buttons["keyboard.chevron.compact.down"].tap()
 
         app.editCard("Work")
-        let toggle = app.switches["This week only"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
-        XCTAssertEqual(toggle.value as? String, "0")
-        XCTAssertTrue(app.staticTexts["Turning this on makes its carry-over and repeating tasks one-time."].exists)
-        toggle.switches.firstMatch.tap()
-        XCTAssertEqual(toggle.value as? String, "1")
+        let chip = app.descendants(matching: .any).matching(identifier: "Just this week chip").firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 3))
+        XCTAssertEqual(chip.value as? String, "Off")
+        XCTAssertTrue(app.staticTexts["Just this week would make its carry-over and repeating tasks one-time."].exists)
+        chip.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Just this week: it won't come back")).firstMatch
+            .waitForExistence(timeout: 3), "on, and its note says what that means")
+        XCTAssertEqual(chip.value as? String, "On")
         // The type and mode show outside edit mode (the clock takes their place in it).
         app.buttons["Done editing Work"].tap()
         XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].waitForExistence(timeout: 3))
@@ -108,21 +110,25 @@ final class ThisWeekOnlyUITests: XCTestCase {
 
     // MARK: Helpers
 
-    /// Edit ▸ Add Category, This week only on, and a new category named `name` (adding it
-    /// ends Edit).
+    /// Edit ▸ Add Category ▸ Create New Category, a name, Just this week on, Return to add
+    /// it; Done closes the sheet and ends Edit.
     @MainActor
     private func addThisWeekOnlyCategory(_ name: String) {
         app.buttons["Edit"].tap()
         let addCard = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Add Category")).firstMatch
         XCTAssertTrue(addCard.waitForExistence(timeout: 3))
         addCard.tap()
-        let toggle = app.switches["This week only"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
-        toggle.switches.firstMatch.tap()
         app.buttons["Create New Category"].tap()
         let field = app.textFields["Category name"]
         XCTAssertTrue(field.waitForExistence(timeout: 3))
-        field.typeText("\(name)\n")
+        field.typeText(name)
+        let toggle = app.switches.matching(NSPredicate(format: "label BEGINSWITH %@", "Just this week")).firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3), "beside Add Category in Create New")
+        XCTAssertEqual(toggle.value as? String, "0", "off to start")
+        toggle.switches.firstMatch.tap()
+        field.tap()
+        field.typeText("\n")
+        app.navigationBars["Add Category"].buttons["Done"].tap()
         XCTAssertTrue(app.navigationBars["Add Category"].waitForNonExistence(timeout: 3))
     }
 
