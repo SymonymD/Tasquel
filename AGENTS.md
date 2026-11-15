@@ -21,7 +21,7 @@ xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS
 xcodebuild -project Tasquel.xcodeproj -scheme Tasquel -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:TasquelTests/TasquelTests/testExample test
 ```
 
-Simulator: iPhone 17 Pro (iOS 26.3). The installed iOS 26.0 runtime is a beta (23A5276e) without a FoundationModels initializer the `@Generable` code links to, so the app dies at launch there (dyld "Symbol not found"); real iOS 26.0 has it. Check narrow screens on an iPhone SE created on 26.3 instead, and the minimum on a final 26.0 runtime. Files added to the `Tasquel/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
+Simulator: iPhone 17 Pro (iOS 26.3). The minimum, iOS 26.0, is the final release (23A343, installed 2026-11-14), and Tasquel launches there. It replaced a beta runtime (23A5276e) that lacked a FoundationModels initializer the `@Generable` code links to, so the app died at launch on it (dyld "Symbol not found"). A crash like that means a beta runtime, not an app bug. Check narrow screens on an iPhone SE created on 26.3. Files added to the `Tasquel/` folder are auto-discovered by the build system (`PBXFileSystemSynchronizedRootGroup`).
 
 ## Architecture
 
