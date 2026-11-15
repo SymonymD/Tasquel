@@ -89,7 +89,7 @@ struct CalendarEventsList: View {
     }
 
     private func dayTitle(_ date: Date) -> String {
-        let title = date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        let title = date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().locale(.gregorian))
         return retro ? title.uppercased() : title
     }
 }

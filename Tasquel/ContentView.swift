@@ -55,6 +55,11 @@ struct ContentView: View {
     /// The header's What's New pill's width, for the room the title gives it, and where it is.
     @State private var whatsNewButtonWidth: CGFloat = 0
     @State private var isWhatsNewOut = false
+    /// Each time the app is opened (launched, or back from a real trip away): in Thanksgiving
+    /// week the What's New pill waits for the turkey each time.
+    @State private var appOpens = 0
+    /// Open cards' lanes in iPad landscape, by card name, for every page (`CategoryGridLayout`).
+    @State private var laneMemory = CategoryLaneMemory()
     /// The week title's width at full size and the header row's, so the title moves over for
     /// What's New only if the pill wouldn't fit beside it (`weekTitleLeadingInset`).
     @State private var weekTitleNaturalWidth: CGFloat = 0
@@ -110,6 +115,9 @@ struct ContentView: View {
     @State private var houseMoveGeneration = 0
     /// The week's title: 5% under .title2's 22pt, and growing with Dynamic Type like it.
     @ScaledMetric(relativeTo: .title2) private var weekTitleSize: CGFloat = 20.9
+    /// The What's New pill's words: 9pt at the default size, growing with the text up to 13
+    /// (fixed at 9, they didn't grow at all, the 2026-11-15 review).
+    @ScaledMetric(relativeTo: .caption2) private var whatsNewTextSize: CGFloat = 9
 
     // Week paging (swipe or arrows): last/this/next week sit side by side.
     // Read only by PagerTrack, so dragging moves the pages without rebuilding them.
@@ -229,7 +237,9 @@ struct ContentView: View {
                             .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
                 }
-                .ignoresSafeArea(.container, edges: .bottom)
+                // The keyboard too: behind a sheet (Add Category on iPad, where the screen shows
+                // around it) the bar rode up on the sheet's keyboard (the 2026-11-15 review).
+                .ignoresSafeArea([.container, .keyboard], edges: .bottom)
 
                 // Just above the keyboard while it's up.
                 VStack(spacing: 0) {
@@ -317,6 +327,7 @@ struct ContentView: View {
         .onAppear {
             today = store.currentDate
             currentWeekStart = store.weekStartDay(containing: today)
+            appOpens += 1
             if store.persistenceError == nil && store.shouldShowWelcome {
                 showOnboarding = true
             } else {
@@ -345,7 +356,7 @@ struct ContentView: View {
             today = store.currentDate
             returnToCurrentWeekIfAway()
             currentWeekStart = store.weekStartDay(containing: today)
-            if wasAway { wiggleCardsWithTodaysTasks() }
+            if wasAway { wiggleCardsWithTodaysTasks(); appOpens += 1 }
             // Calendars may have changed (or access revoked) while away. Not after Control
             // Center or the icon-change alert: reloading made an open events panel flash.
             // (Changes while the app is open arrive through EventKit's notification.)
@@ -392,6 +403,7 @@ struct ContentView: View {
         .background {
             sortOrderWatcher
             addedElsewhereFollower
+            columnsFollower
         }
         // Midnight (or a time zone change) while the app is open.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
@@ -804,16 +816,7 @@ struct ContentView: View {
     /// week (Debug `-demoTurkey`: any week).
     @ViewBuilder
     private var turkeyCameo: some View {
-        #if DEBUG
-        let demo = ProcessInfo.processInfo.arguments.contains("-demoTurkey")
-        #else
-        let demo = false
-        #endif
-        let isWeek = demo || Thanksgiving.isWeek(of: DayKey(today, in: store.calendar), firstWeekday: store.firstWeekday,
-                                                 calendar: store.calendar, region: Locale.current.region?.identifier)
-        // Not while What's New is out beside the mark: they'd share the spot.
-        if isWeek && !reduceMotion && store.persistenceError == nil && !store.showsWhatsNewButton
-            && (demo || !ChecklistStore.launchesWithThrowawayData) {
+        if turkeyRuns {
             let markMiddle = markLeadingInset + 22
             TurkeyCameo(retro: Theme.isRetro(theme), tint: Theme.textPrimary(theme, rc: rc),
                         markEdge: markMiddle + (Theme.isRetro(theme) ? 16.5 : 15.5),
@@ -821,6 +824,19 @@ struct ContentView: View {
                         hideX: markMiddle, outX: markMiddle + (Theme.isRetro(theme) ? 30 : 36))
                 .frame(width: markMiddle + 80, height: 44)
         }
+    }
+
+    /// The turkey runs each time the app opens: Thanksgiving week, motion allowed, real data
+    /// (Debug `-demoTurkey`: any week, any data).
+    private var turkeyRuns: Bool {
+        #if DEBUG
+        let demo = ProcessInfo.processInfo.arguments.contains("-demoTurkey")
+        #else
+        let demo = false
+        #endif
+        let isWeek = demo || Thanksgiving.isWeek(of: DayKey(today, in: store.calendar), firstWeekday: store.firstWeekday,
+                                                 calendar: store.calendar, region: Locale.current.region?.identifier)
+        return isWeek && !reduceMotion && store.persistenceError == nil && (demo || !ChecklistStore.launchesWithThrowawayData)
     }
 
     /// The header's "What's New?" (the user asked, 2026-11-14): after an update with a What's
@@ -850,7 +866,7 @@ struct ContentView: View {
                 whatsNewFromButton = last ? .lastTime : .again
             } label: {
                 Text(retro ? "[WHAT'S NEW?]" : "What's New?")
-                    .font(.system(size: 9, weight: .bold, design: retro ? .monospaced : .default))
+                    .font(.system(size: min(whatsNewTextSize, 13), weight: .bold, design: retro ? .monospaced : .default))
                     .lineLimit(1)
                     .fixedSize()
                     .foregroundStyle(retro ? Theme.textPrimary(theme, rc: rc) : Theme.onAccent(theme))
@@ -876,16 +892,24 @@ struct ContentView: View {
             }
             .allowsHitTesting(isWhatsNewOut && store.showsWhatsNewButton)
             .accessibilityHidden(!store.showsWhatsNewButton)
-            .task(id: store.showsWhatsNewButton) {
-                if store.showsWhatsNewButton {
+            .task(id: "\(store.showsWhatsNewButton)-\(appOpens)") {
+                guard store.showsWhatsNewButton else {
+                    withAnimation(whatsNewAnimation) { isWhatsNewOut = false }
+                    return
+                }
+                if turkeyRuns {
+                    // Thanksgiving week: the turkey first, each time the app opens (out 1.5 s
+                    // after, for 2.5 s), then the pill (the user's call, 2026-11-15: with the
+                    // pill first, updaters who left it never saw the turkey all week).
+                    withAnimation(whatsNewAnimation) { isWhatsNewOut = false }
+                    try? await Task.sleep(for: .seconds(4.4))
+                } else {
                     guard !isWhatsNewOut else { return }
                     // A moment after opening, so it's seen.
                     try? await Task.sleep(for: .seconds(0.9))
-                    guard !Task.isCancelled else { return }
-                    withAnimation(whatsNewAnimation) { isWhatsNewOut = true }
-                } else {
-                    withAnimation(whatsNewAnimation) { isWhatsNewOut = false }
                 }
+                guard !Task.isCancelled else { return }
+                withAnimation(whatsNewAnimation) { isWhatsNewOut = true }
             }
         }
     }
@@ -936,6 +960,7 @@ struct ContentView: View {
 
     private func collapseAllCards() {
         dismissKeyboard()  // see collapseCategory
+        laneMemory.lanes.removeAll()
         withAnimation(cardAnimation) {
             expandedCategoryKeys.removeAll()
             editingCategoryKeys.removeAll()
@@ -1485,7 +1510,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 8) {
                     // Expanded cards take a full row; other open cards remain open.
-                    CategoryGridLayout(spacing: 8, columns: gridColumns, halfWidthOpen: halfWidthOpen) {
+                    CategoryGridLayout(spacing: 8, columns: gridColumns, halfWidthOpen: halfWidthOpen, laneMemory: laneMemory) {
                         // First, in the top-left slot: at the grid's end it was below the screen
                         // with ten cards (the user, 2026-11-15). Card drags go by the cards'
                         // measured frames, so the tile ahead of them changes nothing there.
@@ -1573,6 +1598,7 @@ struct ContentView: View {
                             }
                             // Outside the modifiers above, where the grid layout can read it.
                             .categoryGridFullWidth(isExpanded || usesSingleColumn)
+                            .categoryGridCard(entry.category.id, name: "\(entry.id.name)\u{1F}\(entry.id.occurrence)")
                             // The card being opened or closed stays above neighbors sliding past it.
                             .zIndex(entry.id == lastToggledCategory ? 2 : isExpanded ? 1 : 0)
                         }
@@ -1723,6 +1749,16 @@ struct ContentView: View {
     /// Re-sorts at the calm moments `sortedNames` describes.
     /// A task just added to next week (its day had gone by this week): the screen goes there,
     /// as › would, and its card there shows the note (`AddTaskRowCard.handedOver`).
+    /// A new number of columns (an iPad turned, or its window resized) lays the open cards
+    /// out again as if opened in it: turned to portrait with cards opened in landscape's
+    /// lanes, closed cards sat alone in rows of three (the 2026-11-15 review).
+    private var columnsFollower: some View {
+        Color.clear.onChange(of: gridColumns) {
+            laneMemory.lanes.removeAll()
+            if !expandedCategoryKeys.isEmpty && !isEditing { reopenCards(expandedCategoryKeys) }
+        }
+    }
+
     private var addedElsewhereFollower: some View {
         Color.clear.onChange(of: store.addedElsewhere?.token) {
             guard let note = store.addedElsewhere, note.weekStart != store.selectedWeek?.startDay else { return }
@@ -1743,10 +1779,14 @@ struct ContentView: View {
         let token = UUID()
     }
 
-    /// "next week", or "the week of Dec 14".
+    /// "next week", or "the week of Dec 14", with the year when it isn't this year's ("the
+    /// week of Nov 6, 2028", as the week's title has it).
     private func weekPhrase(_ start: DayKey) -> String {
         if let currentWeekStart, start == currentWeekStart.adding(days: 7) { return "next week" }
-        return "the week of " + start.date(in: store.calendar).formatted(.dateTime.month(.abbreviated).day())
+        let date = start.date(in: store.calendar)
+        let style = start.year == store.currentDay.year ? Date.FormatStyle().month(.abbreviated).day().locale(.gregorian)
+            : Date.FormatStyle().month(.abbreviated).day().year().locale(.gregorian)
+        return "the week of " + date.formatted(style)
     }
 
     @ViewBuilder
@@ -2149,6 +2189,8 @@ struct ContentView: View {
         dismissKeyboard()
         editingCategoryKeys.remove(key)
         expandedCategoryKeys.remove(key)
+        // Closed by the user (not Edit, which reopens them): it opens again where it sits.
+        laneMemory.lanes["\(key.name)\u{1F}\(key.occurrence)"] = nil
         lastToggledCategory = key
         if !viewedWeekHasOpenCard { categoryDisplayOrder.removeAll() }
     }

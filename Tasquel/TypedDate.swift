@@ -53,11 +53,12 @@ struct TypedDate: Equatable {
         for candidate in found.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }) {
             var day = candidate.day
             if !candidate.hasYear {
-                // This year's by the store's clock, or next year's once gone by.
-                day = DayKey(year: today.year, month: day.month, day: day.day)
-                if day < today { day = DayKey(year: today.year + 1, month: day.month, day: day.day) }
-                // Feb 29 only in a year that has one.
-                guard DayKey(day.date(in: calendar), in: calendar) == day else { continue }
+                // The next time that day comes, by the store's clock: this year's, or a later
+                // one's once it has gone by (Feb 29 waits for a year that has one).
+                let (month, date) = (day.month, day.day)
+                guard let next = (0...4).lazy.map({ DayKey(year: today.year + $0, month: month, day: date) })
+                    .first(where: { $0 >= today && DayKey($0.date(in: calendar), in: calendar) == $0 }) else { continue }
+                day = next
             }
             let phrase = String(text[candidate.range]).trimmingCharacters(in: .whitespaces)
             guard day >= earliest, today.days(to: day) <= 366,
@@ -99,7 +100,9 @@ struct TypedDate: Equatable {
                   let first = Range(match.range(at: 1), in: text).flatMap({ Int(text[$0]) }),
                   let second = Range(match.range(at: 2), in: text).flatMap({ Int(text[$0]) }) else { return nil }
             let (month, day) = monthFirst ? (first, second) : (second, first)
-            var year = thisYear
+            // With no year typed, checked in a leap year: `find` picks the year (2/29 typed in
+            // 2027 is Feb 29 2028; built in 2027 first, it was never offered).
+            var year = 2028
             let yearRange = Range(match.range(at: 3), in: text)
             if let yearRange, let typed = Int(text[yearRange]) { year = typed < 100 ? 2000 + typed : typed }
             // Only a day the calendar has (not 2/30).

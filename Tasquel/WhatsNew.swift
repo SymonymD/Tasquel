@@ -133,8 +133,8 @@ struct WhatsNewSheet: View {
         VStack(spacing: 12) {
             if let fromButton {
                 Text(fromButton == .lastTime
-                     ? "That's the last time the What's New button shows. You can always find this in Settings ▸ What's New."
-                     : "You can also find this anytime in Settings ▸ What's New.")
+                     ? "That's the last time the What's New button shows. You can always find this in Settings ▸ Help ▸ What's New."
+                     : "You can also find this anytime in Settings ▸ Help ▸ What's New.")
                     .font(retro ? .system(.caption, design: .monospaced) : .footnote)
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
                     .multilineTextAlignment(.center)

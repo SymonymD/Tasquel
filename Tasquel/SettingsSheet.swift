@@ -29,6 +29,7 @@ struct SettingsSheet: View {
     @State private var showWhatsNew = false
     /// Notifications are off for Tasquel in iOS Settings (Expiration Reminders says so).
     @State private var notificationsDenied = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showTour = false
     @AppStorage(AppIconSwitcher.matchesThemeKey) private var iconMatchesTheme = true
 
@@ -88,7 +89,11 @@ struct SettingsSheet: View {
 
     // MARK: - Standard (System/Light/Dark) Settings
 
-    private var darkCardBg: Color? { Theme.hasOwnBackground(theme) && !Theme.isRetro(theme) ? Theme.cardFill(theme) : nil }
+    /// The rows' fill, for the light or dark in use.
+    private var rowBackground: Color? {
+        Theme.hasOwnBackground(theme) && !Theme.isRetro(theme)
+            ? Theme.cardFill(theme, scheme: store.colorScheme ?? systemColorScheme) : nil
+    }
 
     private var standardSettings: some View {
         List {
@@ -102,11 +107,11 @@ struct SettingsSheet: View {
                     Text("Uses the retro home-screen icon with the Retro theme. iOS confirms each icon change.")
                 }
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section("Week") {
                 weekStartRow
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section {
                 expiryRemindersToggle
             } header: {
@@ -114,7 +119,7 @@ struct SettingsSheet: View {
             } footer: {
                 Text(expiryRemindersFooter)
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section {
                 NavigationLink {
                     SavedCategoriesView(store: store)
@@ -127,7 +132,7 @@ struct SettingsSheet: View {
             } footer: {
                 Text("Manual: hold and drag cards to move them. Sorted cards rearrange only when you open the app, change week, or close every card, never while you're using them.")
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             // Hidden entirely while calendar integration is turned off.
             if FeatureAccess.isCalendarUnlocked {
                 Section {
@@ -137,7 +142,7 @@ struct SettingsSheet: View {
                 } footer: {
                     Text("Shows the week's events from the calendar button in the bottom bar. Events stay on your device and are never changed.")
                 }
-                .listRowBackground(darkCardBg)
+                .listRowBackground(rowBackground)
             }
             Section {
                 Button { showHelp = true } label: {
@@ -152,7 +157,7 @@ struct SettingsSheet: View {
             } header: {
                 Text("Help")
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section {
                 FeatureIdeasSurvey(store: store)
             } header: {
@@ -166,7 +171,7 @@ struct SettingsSheet: View {
             } footer: {
                 Text("Optional and anonymous: only your picks, your comment and the app version are sent.")
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section("Support") {
                 Link(destination: AppInfo.supportURL) {
                     Label("Support", systemImage: "lifepreserver")
@@ -175,15 +180,22 @@ struct SettingsSheet: View {
                     Label("Privacy Policy", systemImage: "hand.raised")
                 }
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
             Section("About") {
                 LabeledContent("Version", value: AppInfo.version())
                 LabeledContent("Build", value: AppInfo.build())
             }
-            .listRowBackground(darkCardBg)
+            .listRowBackground(rowBackground)
         }
         .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
         .background(Theme.hasOwnBackground(theme) ? Theme.background(theme) : Color.clear)
+        // The season's color for the rows' icons and links, as for its switches.
+        .tint(Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
+        // Seasonal only (its rows' fill differs between light and dark): the list is built
+        // again when light or dark changes, as nothing less redrew its rows, which kept their
+        // light fill under light words (the 2026-11-15 review). It goes back to the top then;
+        // in every other look it keeps its place.
+        .id(Theme.isSeasonal(theme) ? store.colorScheme ?? systemColorScheme : nil)
     }
 
     // MARK: - Retro Settings
@@ -351,7 +363,11 @@ struct SettingsSheet: View {
         }
     }
 
-    /// A notification the day before an expiring task's last day.
+    /// A notification the day before an expiring task's last day. With notifications off for
+    /// Tasquel, Open Settings follows it, as for calendars. Whether they're off is checked
+    /// again whenever the app comes back (after the permission prompt, or iOS Settings):
+    /// checked once, the footer missed a "Don't Allow" (the 2026-11-15 review).
+    @ViewBuilder
     private var expiryRemindersToggle: some View {
         Toggle(isOn: Binding(get: { store.remindsBeforeExpiry }, set: { on in
             store.setRemindsBeforeExpiry(on)
@@ -365,6 +381,21 @@ struct SettingsSheet: View {
         }
         .tint(retro || Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
         .task { notificationsDenied = await ExpiryNotifications.shared.isDenied() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { notificationsDenied = await ExpiryNotifications.shared.isDenied() }
+        }
+        if notificationsDenied && store.remindsBeforeExpiry {
+            Button(retro ? "> Open Settings" : "Open Settings") {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .accessibilityLabel("Open Settings")
+            .accessibilityHint("Turns on notifications for Tasquel")
+            .font(retro ? Theme.bodyFont(theme) : .body)
+            .modifier(PlainButtonInRetro(isRetro: retro))
+        }
     }
 
     private var expiryRemindersFooter: String {

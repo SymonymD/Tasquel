@@ -7,6 +7,10 @@ struct AddCategorySheet: View {
     /// Name, symbol, and whether the category is for this week only.
     var onAdd: ((String, String, Bool) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// At accessibility sizes Edit goes under the heading and Added / + under the name: beside
+    /// them the words broke mid-word, "Cate- / gories", "Er- / rands" (the 2026-11-15 review).
+    private var stacks: Bool { dynamicTypeSize.isAccessibilitySize }
     @State private var isCreatingNew = false
     @State private var newName = ""
     @State private var newSymbol = "folder"
@@ -67,7 +71,10 @@ struct AddCategorySheet: View {
         }
         .emojiPickerHost()
         .fontDesign(Theme.isRetro(store.appearanceMode) ? .monospaced : nil)
-        .tint(Theme.isRetro(store.appearanceMode) ? Theme.accent(store.appearanceMode, rc: store.retroColor) : nil)
+        // Retro's and the season's own color, not system blue (Seasonal's Create New and Edit
+        // stayed blue, the 2026-11-15 review).
+        .tint(Theme.isRetro(store.appearanceMode) || Theme.isSeasonal(store.appearanceMode)
+              ? Theme.accent(store.appearanceMode, rc: store.retroColor) : nil)
     }
 
     private var createSection: some View {
@@ -84,7 +91,7 @@ struct AddCategorySheet: View {
                     TextField("Category name", text: $newName)
                         .focused($isNameFocused)
                         .submitLabel(.done)
-                        .onSubmit(createNew)
+                        .onSubmit { createNew() }
                 }
                 if isNewNameTaken {
                     Text(nameTakenMessage)
@@ -161,9 +168,9 @@ struct AddCategorySheet: View {
             } header: {
                 // Edit beside the heading, where it's seen: at the list's end, below every saved
                 // category, it went unnoticed (the user, 2026-11-15).
-                HStack {
+                (stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())) {
                     Text("Saved Categories")
-                    Spacer()
+                    if !stacks { Spacer() }
                     Button(isEditingSaved ? "Done" : "Edit") {
                         withAnimation { isEditingSaved.toggle() }
                     }
@@ -188,14 +195,16 @@ struct AddCategorySheet: View {
             .transition(.opacity)
     }
 
-    /// Done adds a category being typed rather than dropping it; with nothing typed it
-    /// just closes. A name that's taken keeps the sheet open, showing why.
+    /// Done adds a category being typed rather than dropping it, and closes; with nothing
+    /// typed it just closes. A name that's taken keeps the sheet open, showing why. (After an
+    /// add from Done the sheet stayed open, "Added Garden · add another, or tap Done", the
+    /// 2026-11-15 review.)
     private func finish() {
         guard isCreatingNew, !ChecklistStore.cleanName(newName).isEmpty else {
             dismiss()
             return
         }
-        createNew()
+        if createNew() { dismiss() }
     }
 
     /// A saved category to add; swipe to remove it.
@@ -207,10 +216,10 @@ struct AddCategorySheet: View {
             // Color.primary, not .primary: in a button that's its tint, and the ones that
             // could be added showed blue, which read as nothing in particular (the user,
             // 2026-11-15). A + says they can be added.
-            HStack {
+            (stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())) {
                 Label { Text(template.name) } icon: { CategoryIcon(symbol: template.symbol) }
                     .foregroundStyle(alreadyAdded ? Color.secondary : Color.primary)
-                Spacer()
+                if !stacks { Spacer() }
                 if alreadyAdded {
                     Text("Added")
                         .font(.caption)
@@ -250,10 +259,13 @@ struct AddCategorySheet: View {
             : "\(name) is already in this week. Choose another name."
     }
 
-    private func createNew() {
+    /// False, with nothing added, when the name is empty or taken.
+    @discardableResult
+    private func createNew() -> Bool {
         let name = ChecklistStore.cleanName(newName)
-        guard !name.isEmpty, !isNewNameTaken else { return }
+        guard !name.isEmpty, !isNewNameTaken else { return false }
         add(name: name, symbol: newSymbol, isNew: true)
+        return true
     }
 
     /// A new category is also kept in Saved Categories, also one added for this week

@@ -553,6 +553,18 @@ extension Calendar {
     }
 }
 
+extension Locale {
+    /// The phone's language and region with the Gregorian calendar, for every date shown:
+    /// the weeks are Gregorian, so the dates are too. With a region whose calendar is another
+    /// (Saudi Arabia's Islamic one), the week's title read "Week of 29 Jumada I" over day
+    /// pills numbered 9 … 15 (the 2026-11-15 review; the user's default, Gregorian everywhere).
+    static var gregorian: Locale {
+        var components = Locale.Components(locale: .autoupdatingCurrent)
+        components.calendar = .gregorian
+        return Locale(components: components)
+    }
+}
+
 // MARK: - Day
 
 /// A calendar date with no time of day or time zone, saved as "2026-10-19". Weeks are
@@ -667,9 +679,9 @@ struct Week: Codable, Identifiable, Equatable {
     /// the year when it isn't this year. (A numeric "10/5/26" reads as 10 May outside the US.)
     var displayTitle: String { displayTitle() }
 
-    /// The year is compared in the calendar the date is shown in, so a Hebrew or Islamic
-    /// device calendar shows it exactly when its own year differs.
-    func displayTitle(now: Date = Date(), locale: Locale = .current, calendar: Calendar = .current) -> String {
+    /// Shown in the Gregorian calendar, like every date (`Locale.gregorian`), in the phone's
+    /// language; the year is shown when it isn't this year's.
+    func displayTitle(now: Date = Date(), locale: Locale = .current, calendar: Calendar = .weekDates()) -> String {
         var style = Date.FormatStyle(locale: locale, calendar: calendar).month(.abbreviated).day()
         if calendar.component(.year, from: now) != calendar.component(.year, from: startDate) { style = style.year() }
         return "Week of \(startDate.formatted(style))"

@@ -45,6 +45,7 @@ struct CategoryGridCard: View {
     @State private var nameError: String?
     @FocusState private var isNameFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Collapsed → expanded sizes; scaled with Dynamic Type. Expanded sizes include
     // the 15% enlargement applied to everything inside an expanded card.
@@ -75,18 +76,25 @@ struct CategoryGridCard: View {
                     .foregroundStyle(Theme.destructive(theme))
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // At accessibility sizes the chip goes under the line: beside it, it ran off the
+            // card and squeezed the line to nothing (the 2026-11-15 review).
+            let chipUnder = isRenaming && dynamicTypeSize.isAccessibilitySize
+            let completedLine = chipUnder ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            completedLine {
                 completionLine
                     .accessibilityLabel("\(category.completedCount) of \(category.totalCount) complete\(category.isThisWeekOnly ? ", just this week" : "")\(category.isPinned ? ", pinned" : "")")
                     .modifier(AnimatableFont(size: isExpanded ? expandedCaptionSize : collapsedCaptionSize, design: design))
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    .lineLimit(1)
+                    // Two lines at accessibility sizes in the card's edit mode, where "· Just this
+                    // week" made it "Completed: 1/4 · J…".
+                    .lineLimit(chipUnder ? 2 : 1)
                     .minimumScaleFactor(0.8)
                 // In the card's own edit mode, up by the checkmark and the same size as this
                 // line, so no row below moves as editing starts (the user, 2026-11-15: the
                 // switch at the card's bottom, "This week only", wasn't clear).
                 if isRenaming {
-                    Spacer(minLength: 0)
+                    if !chipUnder { Spacer(minLength: 0) }
                     justThisWeekChip
                         .modifier(AnimatableFont(size: expandedCaptionSize, design: design))
                 }
@@ -311,8 +319,9 @@ struct CategoryGridCard: View {
                 Text(retro ? "just_this_week" : "Just this week")
             }
             .foregroundStyle(on ? Theme.accent(theme, rc: rc) : Theme.textSecondary(theme, rc: rc))
-            .lineLimit(1)
-            .fixedSize()
+            // On its own line at accessibility sizes, where it may wrap to stay on the card.
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
             .contentShape(Rectangle())
             .touchTarget()
         }

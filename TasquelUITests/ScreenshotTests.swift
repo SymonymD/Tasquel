@@ -77,7 +77,76 @@ final class ScreenshotTests: XCTestCase {
         snap("07-dark")
     }
 
+    /// Seasonal, one 1.1 feature a season, each on a Wednesday of that season (holiday marks
+    /// follow the demo's today; the season's colors come from `-demoSeason`). Spring and summer
+    /// light, fall and winter dark: Seasonal follows the device's setting, which the host switches.
+    @MainActor
+    func testSeasonalScreenshots() throws {
+        if UIDevice.current.userInterfaceIdiom == .pad { useFullScreenApps() }
+        let seasonal = ["-demoDaysAndPins", "-demoSeason"]
+
+        // 8. Spring: days for tasks ("Today", "Tue · late", the day strip's dates).
+        systemAppearance("light")
+        var app = launch(appearance: "seasonal", today: "2026-04-15", extra: seasonal + ["spring"])
+        open("Appointments", in: app)
+        snap("08-spring-days")
+
+        // 9. Summer: a task's date, in its calendar.
+        app = launch(appearance: "seasonal", today: "2026-07-15", extra: seasonal + ["summer"])
+        open("Errands", in: app)
+        optionsButton(for: "Plan Mom's birthday", in: app).tap()
+        let date = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Date:")).firstMatch
+        XCTAssertTrue(date.waitForExistence(timeout: 3))
+        date.tap()
+        XCTAssertTrue(app.buttons["Set"].waitForExistence(timeout: 3))
+        snap("09-summer-dates")
+
+        // 10. Fall, in Thanksgiving week (the feathered mark): pinned cards and their rings.
+        systemAppearance("dark")
+        app = launch(appearance: "seasonal", today: "2026-11-25", extra: seasonal + ["fall"])
+        snap("10-fall-pins")
+
+        // 11. Winter, under the holiday lights: Smart Add reads a date and offers to set it.
+        app = launch(appearance: "seasonal", today: "2026-12-16", extra: seasonal + ["winter", "-smartAddRules"])
+        open("Appointments", in: app)
+        let field = app.addTaskField
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("Dentist December 18")
+        app.buttons["Smart Add"].tap()
+        XCTAssertTrue(app.buttons["Undo Smart Add"].waitForExistence(timeout: 10))
+        let keyboardDone = app.buttons["keyboard.chevron.compact.down"]
+        if keyboardDone.exists { keyboardDone.tap() }
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Set date to")).firstMatch
+            .waitForExistence(timeout: 3))
+        snap("11-winter-smart-add")
+
+        systemAppearance("light")
+    }
+
     // MARK: Helpers
+
+    /// The type/mode button on the row showing `title` (each row's reads "Task options: …").
+    @MainActor
+    private func optionsButton(for title: String, in app: XCUIApplication) -> XCUIElement {
+        let name = app.staticTexts[title].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        let buttons = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:")).allElementsBoundByIndex
+        let row = name.frame.midY
+        return buttons.min { abs($0.frame.midY - row) < abs($1.frame.midY - row) } ?? buttons[0]
+    }
+
+    /// Has the host switch the simulator to light or dark (`xcrun simctl ui … appearance`).
+    private func systemAppearance(_ style: String) {
+        let request = shotDirectory!.appending(path: "appearance")
+        try? style.write(to: request, atomically: true, encoding: .utf8)
+        let deadline = Date().addingTimeInterval(30)
+        while FileManager.default.fileExists(atPath: request.path), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: request.path), "the host didn't switch to \(style)")
+        Thread.sleep(forTimeInterval: 1)
+    }
 
     /// iPadOS 26 windowed apps show a resize handle in the corner; full-screen apps don't.
     /// Settings ▸ Multitasking & Gestures ▸ Full Screen Apps.
@@ -105,10 +174,10 @@ final class ScreenshotTests: XCTestCase {
     }
 
     @MainActor
-    private func launch(appearance: String = "light", extra: [String] = []) -> XCUIApplication {
+    private func launch(appearance: String = "light", today day: String? = nil, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        // DEMO_TODAY (from the script): the day the demo week treats as today.
-        let today = ProcessInfo.processInfo.environment["DEMO_TODAY"].map { ["-demoToday", $0] } ?? []
+        // DEMO_TODAY (from the script): the day the demo week treats as today, unless given.
+        let today = (day ?? ProcessInfo.processInfo.environment["DEMO_TODAY"]).map { ["-demoToday", $0] } ?? []
         app.launchArguments = ["-demoData", "-fakeCalendar", "-demoAppearance", appearance] + today + extra
         app.launch()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch

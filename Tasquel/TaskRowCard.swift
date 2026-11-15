@@ -345,7 +345,10 @@ struct TaskRowCard: View {
                     } else {
                         // One tap renames. The whole width up to the icons is the target, not just
                         // the letters; the day and date marks after the name are their own button.
-                        HStack(alignment: .lastTextBaseline, spacing: 8) {
+                        // The day or date mark beside the name, or under it (`stacksMark`).
+                        let nameAndMark = stacksMark ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                            : AnyLayout(HStackLayout(alignment: .lastTextBaseline, spacing: 8))
+                        nameAndMark {
                             titleText
                                 .font(Theme.isRetro(theme) ? .expandedCard(size: 16, design: .monospaced) : .expandedCard(size: 16))
                                 // All the lines it needs: beside the icons, a row could otherwise get
@@ -414,6 +417,7 @@ struct TaskRowCard: View {
                                 .transition(reduceMotion ? .identity : .revealFromLeading)
                                 .focused($isSubtaskFieldFocused)
                                 .submitLabel(.next)
+                                .id(subtaskFieldID)
                                 .onChange(of: newSubtaskTitle) { _, text in submitTypedSubtask(text) }
                                 // An empty field closes when the keyboard does.
                                 .onChange(of: isSubtaskFieldFocused) { _, focused in
@@ -752,14 +756,32 @@ struct TaskRowCard: View {
     private var stacksIcons: Bool {
         if dynamicTypeSize.isAccessibilitySize { return true }
         guard rowWidth > 0, iconsWidth > 0 else { return false }
-        let besideIcons = rowWidth - leadingWidth - 10 - 10 - iconsWidth  // the row's two gaps
-        // The day and date marks sit beside the name (8pt apart), so every line of the name
-        // has that much less room: counted as one more word, "Send invoice" next to
-        // "Fri · late" and edit mode's four icons broke as "invoic / e" (2026-11-14).
-        let besideMark = besideIcons - (markText == nil ? 0 : markWidth + 8)
         let widest = max(TaskRowCard.widestWord(of: titleWords, retro: Theme.isRetro(theme)),
                          showsDuplicate ? Text.duplicateMarkWidth(retro: Theme.isRetro(theme)) : 0)
-        return besideMark < widest
+        return nameRoom(iconsBeside: true) < widest
+    }
+
+    /// The width the name has: beside the icons, or the whole row when they're under it.
+    private func nameRoom(iconsBeside: Bool) -> CGFloat {
+        rowWidth - leadingWidth - 10 - (iconsBeside ? 10 + iconsWidth : 0)  // the row's gaps
+    }
+
+    /// The day or date mark goes on a line of its own under the name unless the whole name
+    /// and the mark fit on one line, and always at accessibility sizes. Beside a name that
+    /// wraps, it took its width from every line: at the largest size "Plan Mom's birthday"
+    /// read "Pl / an / M / o / m's", and on an SE a long name beside "Sun · late" ran to
+    /// seven lines (the 2026-11-15 review). So the mark never squeezes the name, and the
+    /// icons' rule (`stacksIcons`) needn't count it.
+    private var stacksMark: Bool {
+        guard markText != nil else { return false }
+        if dynamicTypeSize.isAccessibilitySize { return true }
+        guard rowWidth > 0 else { return false }
+        let retro = Theme.isRetro(theme)
+        // The name's line also holds "⧉ Duplicate" and the pin (`titleText`).
+        let line = TaskRowCard.lineWidth(of: titleWords.joined(separator: " "), retro: retro)
+            + (showsDuplicate ? 6 + Text.duplicateMarkWidth(retro: retro) : 0)
+            + (showsPinMark ? 6 + (retro ? TaskRowCard.lineWidth(of: "[PIN]", retro: true) : 14) : 0)
+        return line + 8 + markWidth > nameRoom(iconsBeside: !stacksIcons && iconsWidth > 0)
     }
 
     /// The name's pieces that can't break: its words, and a folded list's count ("2 of 5").
@@ -773,10 +795,15 @@ struct TaskRowCard: View {
 
     /// How wide the widest of `words` is in a task name's font, plus a little for rounding.
     static func widestWord(of words: [String], retro: Bool) -> CGFloat {
+        let widest = words.map { lineWidth(of: $0, retro: retro) }.max() ?? 0
+        return widest.rounded(.up) + 2
+    }
+
+    /// How wide `text` is on one line in a task name's font.
+    static func lineWidth(of text: String, retro: Bool) -> CGFloat {
         let size = expandedCardScaled(16)
         let font = retro ? UIFont.monospacedSystemFont(ofSize: size, weight: .regular) : UIFont.systemFont(ofSize: size)
-        let widest = words.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        return widest.rounded(.up) + 2
+        return (text as NSString).size(withAttributes: [.font: font]).width
     }
 
     /// The task's name; done tasks are struck through, like done sub-tasks. A folded list
@@ -860,7 +887,7 @@ struct TaskRowCard: View {
         guard let lastDay = task.expiresOn else { return nil }
         // The date itself too ("Nov 28"): an icon alone left new users unsure what the date
         // was, or that there was one (four of six testers, 2026-11-14).
-        let shown = lastDay.date(in: store.calendar).formatted(.dateTime.month(.abbreviated).day())
+        let shown = lastDay.date(in: store.calendar).formatted(.dateTime.month(.abbreviated).day().locale(.gregorian))
         let retro = Theme.isRetro(theme)
         return Text("\(Image(systemName: "calendar"))\u{00A0}\(retro ? shown.uppercased() : shown)")
             .font(.expandedCard(.caption1, weight: .semibold, design: retro ? .monospaced : .default))
@@ -1026,7 +1053,7 @@ struct TaskRowCard: View {
     private var expiryDescription: String {
         guard let end = task.expiresOn else { return "" }
         let days = store.currentDay.days(to: end)
-        let date = end.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let date = end.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day().locale(.gregorian))
         switch days {
         case ..<1: return "expires today"
         case 1: return "expires tomorrow"
@@ -1504,7 +1531,17 @@ struct TaskRowCard: View {
         let kept = typed.lines.filter { !addSubtask($0) }
         newSubtaskTitle = typed.leftover(keeping: kept)
         if typed.lines.isEmpty && typed.rest.isEmpty { isSubtaskFieldFocused = false }
+        // The field moves down as items go in above it; keep it in view, as Add Task does
+        // (100 pasted lines left it 3,000pt below the screen, the 2026-11-15 review).
+        if !typed.lines.isEmpty, let gridScroll {
+            DispatchQueue.main.async {
+                guard isSubtaskFieldFocused else { return }
+                withAnimation(.snappy(duration: 0.25)) { gridScroll.scrollTo(subtaskFieldID) }
+            }
+        }
     }
+
+    private var subtaskFieldID: String { "add-item-\(task.id)" }
 
     /// `typed`: a line already taken out of the field (Return), instead of the field's text.
     /// Returns whether it was added. Refused (the week changed before the words landed:
@@ -2465,8 +2502,10 @@ struct AddTaskRowCard: View {
             // (2026-11-15; it had 10 seconds).
             guard addNote?.typedDate == nil else { return }
             // 8 seconds: at 4, Undo was gone before the user saw what Smart Add had made
-            // (2026-11-15).
-            try? await Task.sleep(for: .seconds(8))
+            // (2026-11-15). One for a task that went into another week starts after the
+            // pop-up saying so (6 s, over this note): it left 2 s to reach Undo (the
+            // 2026-11-15 review).
+            try? await Task.sleep(for: .seconds(addNote?.nextWeek != nil ? 14 : 8))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy(duration: 0.25)) {
                 // Taking its place away would move the field up under the next task being
@@ -2629,7 +2668,11 @@ struct AddTaskRowCard: View {
                                 onSelectMode: { newMode = $0; pickedMode = true },
                                 onAdd: newTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : {
                                     showOptions = false
-                                    addTask(keepTyping: true)
+                                    // Once the popup has closed: it hands the keyboard back to
+                                    // this field as it goes, and a task for another week takes
+                                    // the screen there, which left that keyboard up with no
+                                    // field to type in (the 2026-11-15 review).
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { addTask(keepTyping: true) }
                                 },
                                 onDone: { showOptions = false },
                                 isThisWeekOnlyCategory: store.selectedWeek?.categories.first { $0.id == categoryID }?.isThisWeekOnly == true,
@@ -2682,7 +2725,7 @@ struct AddTaskRowCard: View {
         HStack(spacing: 8) {
             Image(systemName: "calendar")
                 .foregroundStyle(Theme.expirySet(theme, rc: rc))
-            Text("Until \(typedDate.day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))?")
+            Text("Until \(typedDate.day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().locale(.gregorian)))?")
                 .foregroundStyle(Theme.textSecondary(theme, rc: rc))
             Button { setTypedDate(typedDate, for: result) } label: {
                 Text(Theme.isRetro(theme) ? "[SET_DATE]" : "Set Date")
@@ -2724,7 +2767,7 @@ struct AddTaskRowCard: View {
 
     /// "Monday, December 15".
     private static func spokenDate(_ day: DayKey) -> String {
-        day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day())
+        day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day().locale(.gregorian))
     }
 
     private func addNoteLine(_ result: AddNote) -> some View {
@@ -2900,9 +2943,10 @@ struct AddTaskRowCard: View {
                 // The screen goes there, and the note with it (`handOver`).
                 addNote = nil
                 let why = parsed.lastDay != nil ? "the week of its date"
-                    : parsed.day.map { "as \(Weekday.name($0, short: false)) had gone by" } ?? "another week"
+                    : parsed.day.map { $0 == tomorrowWeekday ? "as tomorrow is in next week" : "as \(Weekday.name($0, short: false)) had gone by" }
+                    ?? "another week"
                 handOver(added, to: nextWeek, text: outcome.text, message: "Added \(summary) · here, \(why)", isSmartAdd: true,
-                         detail: Self.handOverDetail(lastDay: parsed.lastDay, day: parsed.day))
+                         detail: Self.handOverDetail(lastDay: parsed.lastDay, day: parsed.day, tomorrow: parsed.day == tomorrowWeekday))
             } else {
                 addNote = AddNote(taskID: added, text: outcome.text,
                                   message: "Added \(summary)" + (isDuplicate ? " · already in this card" : ""),
@@ -2915,7 +2959,7 @@ struct AddTaskRowCard: View {
         // Smart Add may have finished after the keyboard went (Done while it worked).
         closeFieldIfIdle()
         guard added != nil else { return }
-        if !awaitsTarget && nextWeek == nil { keepFieldInView() }
+        if nextWeek != nil { isFocused = false } else if !awaitsTarget { keepFieldInView() }
         smartAddCount += 1
         pickedType = false
         pickedMode = false
@@ -2928,13 +2972,21 @@ struct AddTaskRowCard: View {
 
     /// "Thursday had already gone by, so “Call dentist” is here, in next week", said in next
     /// week's card, where the screen has gone with it.
-    private static func nextWeekMessage(_ title: String, day: Int) -> String {
-        "\(Weekday.name(day, short: false)) had already gone by, so “\(title)” is here, in next week"
+    private static func nextWeekMessage(_ title: String, day: Int, tomorrow: Bool) -> String {
+        tomorrow ? "Tomorrow is in next week, so “\(title)” is here"
+            : "\(Weekday.name(day, short: false)) had already gone by, so “\(title)” is here, in next week"
+    }
+
+    /// Tomorrow's weekday: on the week's last day, a task for it goes into next week, and is
+    /// said to be for tomorrow, not for a day gone by (the 2026-11-15 review: "Call mom
+    /// tomorrow" on a Sunday said Monday "had already gone by").
+    private var tomorrowWeekday: Int {
+        store.calendar.component(.weekday, from: store.currentDay.adding(days: 1).date(in: store.calendar))
     }
 
     /// "“Zoo trip” is here, in the week of its date, Mon, Dec 14", said in that week's card.
     private static func datesWeekMessage(_ title: String, lastDay: DayKey, calendar: Calendar) -> String {
-        let shown = lastDay.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let shown = lastDay.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().locale(.gregorian))
         return "“\(title)” is here, in the week of its date, \(shown)"
     }
 
@@ -2948,8 +3000,9 @@ struct AddTaskRowCard: View {
     }
 
     /// Why a new task went into another week, for the pop-up as the screen follows it.
-    private static func handOverDetail(lastDay: DayKey?, day: Int?) -> String {
+    private static func handOverDetail(lastDay: DayKey?, day: Int?, tomorrow: Bool) -> String {
         if lastDay != nil { return "A one-time task goes into the week of its date." }
+        if tomorrow { return "Tomorrow is the first day of next week." }
         return day.map { "\(Weekday.name($0, short: false)) had already gone by this week." } ?? ""
     }
 
@@ -3032,9 +3085,9 @@ struct AddTaskRowCard: View {
                     // The screen goes there, and the note with it (`handOver`).
                     addNote = nil
                     let message = task.lastDay.map { Self.datesWeekMessage(title, lastDay: $0, calendar: store.calendar) }
-                        ?? task.day.map { Self.nextWeekMessage(title, day: $0) } ?? "“\(title)” is here"
+                        ?? task.day.map { Self.nextWeekMessage(title, day: $0, tomorrow: $0 == tomorrowWeekday) } ?? "“\(title)” is here"
                     handOver(added, to: nextWeek, text: title, message: message, isSmartAdd: false,
-                             detail: Self.handOverDetail(lastDay: task.lastDay, day: task.day))
+                             detail: Self.handOverDetail(lastDay: task.lastDay, day: task.day, tomorrow: task.day == tomorrowWeekday))
                 } else {
                     addNote = isDuplicateInCard(added)
                         ? AddNote(taskID: added, text: title, message: "“\(title)” is already in this card",
@@ -3054,8 +3107,11 @@ struct AddTaskRowCard: View {
         pickedMode = false
         newDate = nil
         newDateIsWeek = false
-        // Not when it went into next week: the screen goes there, closing the keyboard.
-        if keepTyping && !awaitsInput && nextWeek == nil {
+        // Not when it went into another week: the screen goes there, so the keyboard goes
+        // first, while this field can still give it up.
+        if nextWeek != nil {
+            isFocused = false
+        } else if keepTyping && !awaitsInput {
             isFocused = true
             keepFieldInView()
         }

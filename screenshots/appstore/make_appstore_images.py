@@ -29,6 +29,11 @@ SHOTS = [
     ("05-calendar-events", "Your calendar,\nalongside", "See the week’s events without\nleaving your tasks."),
     ("06-retro", "Go retro", "A terminal theme in six phosphor\ncolors, with a matching icon."),
     ("07-dark", "Easy on the eyes", "Light, Dark, or\nfollow your device."),
+    # Seasonal (scripts/app-store-screenshots.sh … seasonal): one 1.1 feature a season.
+    ("08-spring-days", "A day for\nevery task", "Today’s tasks say Today, and\nmissed ones are marked late."),
+    ("09-summer-dates", "Give it a date", "It stays until its date, and a\nreminder comes the day before."),
+    ("10-fall-pins", "Pin what\nmatters", "Keep two cards first, with\nrings that fill as you go."),
+    ("11-winter-smart-add", "Type a date,\nit’s set", "Smart Add spots the date\nand offers to set it."),
 ]
 
 DEVICES = {

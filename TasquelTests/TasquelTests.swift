@@ -2178,9 +2178,14 @@ struct LogicTestFixesTests {
     func thanksgivingWeek() {
         #expect(Thanksgiving.day(in: 2026, region: "US") == DayKey(year: 2026, month: 11, day: 26))
         #expect(Thanksgiving.day(in: 2027, region: "US") == DayKey(year: 2027, month: 11, day: 25))
+        #expect(Thanksgiving.day(in: 2026, region: "PR") == DayKey(year: 2026, month: 11, day: 26), "US territories too")
         #expect(Thanksgiving.day(in: 2026, region: "CA") == DayKey(year: 2026, month: 10, day: 12))
-        #expect(Thanksgiving.day(in: 2026, region: nil) == DayKey(year: 2026, month: 11, day: 26), "elsewhere, the US's")
         let calendar = Calendar(identifier: .gregorian)
+        // Only where it's commonly celebrated (the user, 2026-11-15): elsewhere no week, no turkey.
+        for region in ["GB", "AU", "DE", "JP", "BR"] as [String?] + [nil] {
+            #expect(Thanksgiving.day(in: 2026, region: region) == nil, "none in \(region ?? "no region")")
+            #expect(!Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 26), firstWeekday: 2, calendar: calendar, region: region))
+        }
         // Monday weeks: Nov 23 to 29.
         #expect(Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 23), firstWeekday: 2, calendar: calendar, region: "US"))
         #expect(Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 29), firstWeekday: 2, calendar: calendar, region: "US"))
@@ -2494,6 +2499,9 @@ struct SeasonTests {
         #expect(HolidayMark.of(DayKey(year: 2026, month: 10, day: 12), firstWeekday: Week.monday,
                                calendar: .weekDates(in: TimeZone(identifier: "America/Toronto")!), region: "CA") == .thanksgiving,
                 "Canada's in October")
+        #expect(HolidayMark.of(DayKey(year: 2026, month: 11, day: 26), firstWeekday: Week.monday,
+                               calendar: .weekDates(in: TimeZone(identifier: "Europe/London")!), region: "GB") == nil,
+                "no turkey's tail where Thanksgiving isn't celebrated")
     }
 
     @Test("The mark wears string lights the week before Christmas's week and that week, confetti the week after")
@@ -3595,6 +3603,69 @@ func smartAddHints(text: String, title: String, type: TaskType, mode: TaskMode, 
 @Test func threeColumnRows() {
     #expect(CategoryGridLayout.rows(fullWidth: [false, false, false, false, false], columns: 3) == [[0, 1, 2], [3, 4]])
     #expect(CategoryGridLayout.rows(fullWidth: [false, true, false, false, false, false], columns: 3) == [[0], [1], [2, 3, 4], [5]])
+}
+
+/// Four columns (iPad landscape), open cards half the width: the lanes as the grid lays them
+/// out pass after pass. Closed cards are 80 tall; open ones 400 + 50 per card index.
+@MainActor
+private struct LaneGrid {
+    let layout = CategoryGridLayout(spacing: 8, columns: 4, halfWidthOpen: true)
+    let cards = (0..<6).map { _ in UUID() }
+    var lanes: [UUID: Int] = [:]
+
+    /// Each card's frame with `open` (card indices) open, carrying the lanes over.
+    mutating func pass(open: Set<Int>) -> [CGRect] {
+        let wide: CGFloat = (1000 - 8 * 3) / 4 * 2 + 8
+        return layout.laneFrames(open: cards.indices.map(open.contains), cards: cards, width: 1000,
+                                 lanes: &lanes) { i, w in w >= wide ? 400 + 50 * CGFloat(i) : 80 }.frames
+    }
+}
+
+@Test("Four columns: an open card stays in its lane when another card opens or closes")
+@MainActor func openCardKeepsItsLane() {
+    var grid = LaneGrid()
+    // The first card opened (Work, second) takes the left lane; Errands (first) goes right.
+    let workAlone = grid.pass(open: [1])
+    #expect(workAlone[1].minX == 0 && workAlone[1].minY == 0)
+    #expect(workAlone[0].minX > 400)
+    // Errands opens where it sits, on the right; Work doesn't move.
+    let both = grid.pass(open: [0, 1])
+    #expect(both[1] == workAlone[1])
+    #expect(both[0].minX > 400 && both[0].minY == 0)
+    // Errands closes; Work still doesn't move.
+    let workAgain = grid.pass(open: [1])
+    #expect(workAgain[1] == workAlone[1])
+    // Every pass the same with nothing changing.
+    #expect(grid.pass(open: [1]) == workAgain)
+}
+
+@Test("Four columns: opened together, cards go in order into the shorter lane, left on a tie")
+@MainActor func cardsOpenedTogetherTakeTheShorterLane() {
+    var grid = LaneGrid()
+    let frames = grid.pass(open: [0, 1])
+    #expect(frames[0].minX == 0 && frames[1].minX > 400)
+    // Closing every card forgets the lanes: opened again together, the same.
+    _ = grid.pass(open: [])
+    #expect(grid.lanes.isEmpty)
+    _ = grid.pass(open: [1])
+    _ = grid.pass(open: [])
+    #expect(grid.pass(open: [0, 1]) == frames)
+}
+
+@Test("Four columns: a card opening above an open card in its lane pushes it down, not across")
+@MainActor func openCardStaysInLaneBelowANewOne() {
+    var grid = LaneGrid()
+    _ = grid.pass(open: [0])
+    // Card 4 opens on the right, below closed card 1.
+    let before = grid.pass(open: [0, 4])
+    #expect(before[0].minX == 0 && before[4].minX > 400)
+    #expect(before[1].minX > 400 && before[1].maxY < before[4].minY)
+    // Card 1 opens where it sits, above card 4, which moves down its lane (the left one
+    // is shorter there now, but it stays).
+    let after = grid.pass(open: [0, 1, 4])
+    #expect(after[0] == before[0])
+    #expect(after[1].minX == before[4].minX && after[1].minY == 0)
+    #expect(after[4].minX == before[4].minX && after[4].minY > before[4].minY)
 }
 
 // MARK: - Polish Batch

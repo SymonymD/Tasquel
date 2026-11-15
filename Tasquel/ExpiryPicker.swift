@@ -167,7 +167,7 @@ struct ExpiryPicker: View {
             .disabled(month <= first)
             .accessibilityLabel("Previous month")
             Spacer()
-            Text(month.formatted(.dateTime.month(.wide).year()))
+            Text(month.formatted(.dateTime.month(.wide).year().locale(.gregorian)))
                 .font(.system(.subheadline, design: design).weight(.semibold))
                 .foregroundStyle(Theme.textPrimary(theme, rc: rc))
             Spacer()
@@ -242,7 +242,7 @@ struct ExpiryPicker: View {
             }
             .buttonStyle(.plain)
             .disabled(lastDay < earliest)
-            .accessibilityLabel("Week of \(start.formatted(.dateTime.month(.wide).day()))")
+            .accessibilityLabel("Week of \(start.formatted(.dateTime.month(.wide).day().locale(.gregorian)))")
             .accessibilityAddTraits(isPicked ? .isSelected : [])
         } else {
             HStack(spacing: 0) {
@@ -251,7 +251,7 @@ struct ExpiryPicker: View {
                     Button { picked = key } label: { dayLabel(day, isPicked: picked == key) }
                         .buttonStyle(.plain)
                         .disabled(key < earliest)
-                        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().locale(.gregorian)))
                         .accessibilityAddTraits(picked == key ? .isSelected : [])
                 }
             }
@@ -266,7 +266,7 @@ struct ExpiryPicker: View {
             : key < earliest ? Theme.textTertiary(theme, rc: rc).opacity(0.5)
             : isToday ? accent
             : isInMonth ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc)
-        return Text(day.formatted(.dateTime.day()))
+        return Text(day.formatted(.dateTime.day().locale(.gregorian)))
             .font(.system(.body, design: design).weight(isToday || isPicked ? .bold : .regular))
             .monospacedDigit()
             .foregroundStyle(color)
@@ -280,9 +280,9 @@ struct ExpiryPicker: View {
     /// "Until Thu, Dec 25, then it's gone", for a week "Until Sun, Dec 28 (week of Dec 22)".
     private var summary: String {
         guard let picked else { return wholeWeek ? "Pick the task's last week" : "Pick the task's last day" }
-        let last = picked.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let last = picked.date(in: calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().locale(.gregorian))
         guard wholeWeek else { return "Until \(last), then it's gone" }
-        let start = picked.adding(days: -6).date(in: calendar).formatted(.dateTime.month(.abbreviated).day())
+        let start = picked.adding(days: -6).date(in: calendar).formatted(.dateTime.month(.abbreviated).day().locale(.gregorian))
         return "Until \(last) (week of \(start)), then it's gone"
     }
 }

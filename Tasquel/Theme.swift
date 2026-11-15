@@ -78,6 +78,13 @@ enum Theme {
         case .system, .light: Color(.systemBackground)
         }
     }
+    /// The card fill fixed for `scheme` (Seasonal's only differs): a List row's background
+    /// kept a dynamic color's light value when the sheet went dark (Settings, 2026-11-15).
+    static func cardFill(_ m: AppearanceMode, scheme: ColorScheme?) -> Color {
+        guard isSeasonal(m), let scheme else { return cardFill(m) }
+        return Color(UIColor(hex: scheme == .dark ? season.card.dark : season.card.light))
+    }
+
     static func cardFill(_ m: AppearanceMode) -> Color {
         switch m {
         case .retro: Color(white: 0.06)

@@ -1,0 +1,134 @@
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewEverydayTests testUndoAfterFoldKeepsTheFold]' passed (40.221 seconds).
+ui-recheck.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEverydayTests.swift:454: error: -[TasquelUITests.ReviewEverydayTests testWrappedRenameFieldStaysAboveKeyboard] :
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewEverydayTests testWrappedRenameFieldStaysAboveKeyboard]' failed (53.989 seconds).
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewRegressionTests testCheckingAfterDeleteStillEndsUndo]' passed (16.897 seconds).
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewRegressionTests testGoalStepEndsUndoRenameKeepsIt]' passed (28.900 seconds).
+ui-recheck.log:<unknown>:0: error: -[TasquelUITests.ReviewRegressionTests testJourneyFoldReorderRenameRelaunch] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Expect predicate `BLOCKPREDICATE(0x600000d21410)`".
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewRegressionTests testJourneyFoldReorderRenameRelaunch]' failed (33.423 seconds).
+ui-recheck.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:475: error: -[TasquelUITests.ReviewRegressionTests testRenameSavedByWeekSwipeAndEditButton
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRenameSavedByWeekSwipeAndEditButton]' failed (26.237 seconds).
+ui-recheck.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:442: error: -[TasquelUITests.ReviewRegressionTests testShortRenameDoesNotJumpCard] : XCTAs
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewRegressionTests testShortRenameDoesNotJumpCard]' failed (36.102 seconds).
+ui-recheck.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsWeekTests.swift:37: error: -[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards] 
+ui-recheck.log:<unknown>:0: error: -[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards] : Failed to tap Button (First Match): No matches found for first query match sequence: `Descendants matching type Button` -> `Elements matching predicate 'label CONTAINS "Sort Cards"'`, gi
+ui-recheck.log:Test Case '-[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards]' failed (14.859 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewAccessUITests.swift:350: error: -[TasquelUITests.ReviewAccessSettingsUITests testAssistiveDisplaySettingsKeepLayout] : X
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewAccessSettingsUITests testAssistiveDisplaySettingsKeepLayout] : Failed to get matching snapshot: No matches found for first query match sequence: `Descendants matching type Switch` -> `Elements matching predicate '"Button Shapes" IN identifiers'`, gi
+ui.log:Test Case '-[TasquelUITests.ReviewAccessSettingsUITests testAssistiveDisplaySettingsKeepLayout]' failed (58.253 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testEditModeAtLargestTextSizeKeepsButtonsOnScreen]' passed (16.704 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewAccessUITests.swift:189: error: -[TasquelUITests.ReviewAccessUITests testEditModeHandleHiddenAndSwitchLabeled] : XCTAsse
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewAccessUITests.swift:191: error: -[TasquelUITests.ReviewAccessUITests testEditModeHandleHiddenAndSwitchLabeled] : XCTAsse
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewAccessUITests testEditModeHandleHiddenAndSwitchLabeled] : Failed to get matching snapshot: No matches found for Elements matching predicate '"This week only" IN identifiers' from input {(
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testEditModeHandleHiddenAndSwitchLabeled]' failed (50.021 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testExploreAXXXXL]' passed (65.595 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testExploreDefaultSize]' passed (65.219 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testExploreXXXL]' passed (38.499 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewAccessUITests.swift:92: error: -[TasquelUITests.ReviewAccessUITests testFoldedCountFitsAtLargestTextSize] : XCTAssertLes
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewAccessUITests.swift:93: error: -[TasquelUITests.ReviewAccessUITests testFoldedCountFitsAtLargestTextSize] : XCTAssertLes
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testFoldedCountFitsAtLargestTextSize]' failed (15.991 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testFoldedCountSingularItem]' passed (21.472 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testFoldedListHidesItemsFromVoiceOver]' passed (13.583 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewAccessUITests testRenameFieldsAreLabeled]' passed (23.264 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testBackgroundWhileTypingItem]' passed (13.984 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testBottomBarAfterOnboardingThenRelaunch]' passed (24.026 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testBottomBarClearsBottomEdgeOnHomeButtonIPhone]' passed (8.460 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testBottomBarSitsAtBottomAfterOnboarding]' passed (21.832 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testFoldedCountZeroOneAndManyItems]' passed (64.714 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testFoldedListKeepsTitleAndButtonsAtLargestText]' passed (17.556 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:582: error: -[TasquelUITests.ReviewEdgeTests testFoldSetInNextWeekStaysAfterFoldingThisWeek] : XCTAssert
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testFoldSetInNextWeekStaysAfterFoldingThisWeek]' failed (21.513 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testFoldWhileRenamingItemSavesIt]' passed (16.644 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testFoldWhileRenamingListTitle]' passed (18.957 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testForceQuitRightAfterFoldAndRename]' passed (40.336 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:709: error: -[TasquelUITests.ReviewEdgeTests testGermanDecimalCommaGoal] : XCTAssertTrue failed
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewEdgeTests testGermanDecimalCommaGoal] : Failed to get matching snapshot: No matches found for first query match sequence: `Descendants matching type TextField` -> `Elements matching predicate 'identifier BEGINSWITH "Target" OR label BEGINSWITH "Targe
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testGermanDecimalCommaGoal]' failed (23.459 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:171: error: -[TasquelUITests.ReviewEdgeTests testLongListTitleBesideFoldedCount] : XCTAssertLessThanOrEq
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testLongListTitleBesideFoldedCount]' failed (28.731 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testLongListTitleBesideFoldedCountLargestText]' passed (37.071 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testPasteLinesIntoAddItemAddsOneItemPerLine]' passed (35.503 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testPasteLinesIntoAddTaskAddsOneTaskPerLine]' passed (30.599 seconds).
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewEdgeTests testPickerFitsWithKeyboardInThisWeekOnlyCard] : Failed to tap Switch (First Match): No matches found for first query match sequence: `Descendants matching type Switch` -> `Elements matching predicate '"This week only" IN identifiers'` -> `D
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testPickerFitsWithKeyboardInThisWeekOnlyCard]' failed (9.716 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testRenamePasteMultilineJoins]' passed (17.885 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testReorderAutoScrollUpOnSmallScreen]' passed (46.294 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testReturnMidWordInRenameAddsNoSpace]' passed (26.723 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testRightToLeftFoldedList]' passed (11.932 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:457: error: -[TasquelUITests.ReviewEdgeTests testTravelKiritimatiToPagoPago] : XCTAssertTrue failed - st
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:458: error: -[TasquelUITests.ReviewEdgeTests testTravelKiritimatiToPagoPago] : XCTAssertEqual failed: ("
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:459: error: -[TasquelUITests.ReviewEdgeTests testTravelKiritimatiToPagoPago] : XCTAssertEqual failed: ("
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:465: error: -[TasquelUITests.ReviewEdgeTests testTravelKiritimatiToPagoPago] : XCTAssertEqual failed: ("
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testTravelKiritimatiToPagoPago]' failed (42.419 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testUndoDeleteKeepsLaterFold]' passed (19.946 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEdgeTests.swift:481: error: -[TasquelUITests.ReviewEdgeTests testWeekBoundaryRolloverAcrossZones] : XCTAssertTrue failed
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewEdgeTests testWeekBoundaryRolloverAcrossZones] : Failed to tap Switch (First Match): No matches found for first query match sequence: `Descendants matching type Switch` -> `Elements matching predicate '"This week only" IN identifiers'` -> `Descendant
+ui.log:Test Case '-[TasquelUITests.ReviewEdgeTests testWeekBoundaryRolloverAcrossZones]' failed (13.410 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testDeleteWhileRenamingKeepsUndo]' passed (33.955 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testFoldedListCardSurvivesWeeksAndRelaunch]' passed (69.191 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEverydayTests.swift:476: error: -[TasquelUITests.ReviewEverydayTests testFoldedListTitleFitsInEditMode] : XCTAssertLessT
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testFoldedListTitleFitsInEditMode]' failed (27.155 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testHalfTypedTaskThenWeekSwipe]' passed (21.482 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testRenameLongTaskSubtaskAndItem]' passed (90.411 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testReorderTallListBelowTasksKeepsOrder]' passed (63.624 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testSmartAddSessionGoalAndList]' passed (23.697 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEverydayTests.swift:272: error: -[TasquelUITests.ReviewEverydayTests testThisWeekOnlyOnOffAcrossWeeksAndRelaunch] : XCTA
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testThisWeekOnlyOnOffAcrossWeeksAndRelaunch]' failed (35.423 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEverydayTests.swift:178: error: -[TasquelUITests.ReviewEverydayTests testUndoAfterFoldKeepsTheFold] : XCTAssertTrue fail
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testUndoAfterFoldKeepsTheFold]' failed (36.744 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewEverydayTests.swift:453: error: -[TasquelUITests.ReviewEverydayTests testWrappedRenameFieldStaysAboveKeyboard] : XCTAsse
+ui.log:Test Case '-[TasquelUITests.ReviewEverydayTests testWrappedRenameFieldStaysAboveKeyboard]' failed (56.099 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:337: error: -[TasquelUITests.ReviewRegressionTests testCheckingAfterDeleteStillEndsUndo] : XCTAsse
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testCheckingAfterDeleteStillEndsUndo]' failed (15.374 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:352: error: -[TasquelUITests.ReviewRegressionTests testGoalStepEndsUndoRenameKeepsIt] : XCTAssertT
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testGoalStepEndsUndoRenameKeepsIt]' failed (16.257 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testHeaderOnIPhoneUnchanged]' passed (29.026 seconds).
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewRegressionTests testJourneyFoldReorderRenameRelaunch] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Expect predicate `BLOCKPREDICATE(0x600000d810e0)`".
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testJourneyFoldReorderRenameRelaunch]' failed (33.067 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:390: error: -[TasquelUITests.ReviewRegressionTests testRenameFieldScrollingAroundTheKeyboard] : XC
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRenameFieldScrollingAroundTheKeyboard]' failed (18.965 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:473: error: -[TasquelUITests.ReviewRegressionTests testRenameSavedByWeekSwipeAndEditButton] : XCTA
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRenameSavedByWeekSwipeAndEditButton]' failed (26.379 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:79: error: -[TasquelUITests.ReviewRegressionTests testRepeatingGoalStepWhileThisWeekOnlyStillFollo
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRepeatingGoalStepWhileThisWeekOnlyStillFollowsItsTask]' failed (17.168 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:236: error: -[TasquelUITests.ReviewRegressionTests testRowsAtAccessibilityXXXL] : XCTAssertGreater
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRowsAtAccessibilityXXXL]' failed (20.771 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRowsAtDefaultSize]' passed (73.829 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testRowsAtXXXL]' passed (73.865 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:440: error: -[TasquelUITests.ReviewRegressionTests testShortRenameDoesNotJumpCard] : XCTAssertEqua
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testShortRenameDoesNotJumpCard]' failed (36.440 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:79: error: -[TasquelUITests.ReviewRegressionTests testThisWeekOnlyRenameSurvivesOffAndRelaunch] : 
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testThisWeekOnlyRenameSurvivesOffAndRelaunch]' failed (16.597 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testUndoSubtaskDeleteThenFoldKeepsFoldAndCount]' passed (19.614 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewRegressionTests.swift:79: error: -[TasquelUITests.ReviewRegressionTests testUntouchedCopyFollowsAfterThisWeekOnlyOnOff] 
+ui.log:Test Case '-[TasquelUITests.ReviewRegressionTests testUntouchedCopyFollowsAfterThisWeekOnlyOnOff]' failed (20.278 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsRowsTests testFeatureIdeasTickAndComment]' passed (24.552 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsRowsTests.swift:17: error: -[TasquelUITests.ReviewSettingsRowsTests testHelpListEntryDescribesFolding] : XCTAsse
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewSettingsRowsTests testHelpListEntryDescribesFolding] : Failed to tap "> How to Use Tasquel" Button: No matches found for Elements matching predicate '"> How to Use Tasquel" IN identifiers' from input {(
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsRowsTests testHelpListEntryDescribesFolding]' failed (58.787 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsRowsTests.swift:137: error: -[TasquelUITests.ReviewSettingsRowsTests testMatchAppIconToTheme] : XCTAssertFalse f
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsRowsTests testSupportAndPrivacyLinksOpenSafari]' passed (43.435 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsRowsTests.swift:88: error: -[TasquelUITests.ReviewSettingsRowsTests testVersionMatchesProject] : XCTAssertTrue f
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsRowsTests.swift:89: error: -[TasquelUITests.ReviewSettingsRowsTests testVersionMatchesProject] : XCTAssertTrue f
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsRowsTests testVersionMatchesProject]' failed (28.258 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsRowsTests testWelcomeTourFromSettings]' passed (36.159 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsSystemDarkTests.swift:55: error: -[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpe
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsSystemDarkTests.swift:55: error: -[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpe
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsSystemDarkTests.swift:23: error: -[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpe
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsSystemDarkTests.swift:26: error: -[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpe
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsSystemDarkTests.swift:55: error: -[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpe
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsSystemDarkTests testSystemDarkModeSwitchWhileOpen]' failed (94.168 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeDark]' passed (45.760 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeLight]' passed (46.716 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroAmber]' passed (37.996 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroBlue]' passed (38.231 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroGreen]' passed (51.041 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroPurple]' passed (38.371 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroRed]' passed (38.252 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeRetroWhite]' passed (38.248 seconds).
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsThemeTests testThemeSystemLight]' passed (46.894 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsWeekTests.swift:37: error: -[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards] : XCTAss
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards] : Failed to tap Button (First Match): No matches found for first query match sequence: `Descendants matching type Button` -> `Elements matching predicate 'label CONTAINS "Sort Cards"'`, given inpu
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsWeekTests testFoldingIsNotAnEditForSortCards]' failed (15.188 seconds).
+ui.log:/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/3a12228a-12a9-4d7a-ac59-5b0e1bbb8e3b/scratchpad/applereview-2026-11-15/Baseline/project/TasquelUITests/ReviewSettingsWeekTests.swift:127: error: -[TasquelUITests.ReviewSettingsWeekTests testWeekStartKeepsFoldedListsAndThisWeekOnl
+ui.log:<unknown>:0: error: -[TasquelUITests.ReviewSettingsWeekTests testWeekStartKeepsFoldedListsAndThisWeekOnly] : Failed to tap Switch (First Match): No matches found for first query match sequence: `Descendants matching type Switch` -> `Elements matching predicate '"This week only" IN identifiers
+ui.log:Test Case '-[TasquelUITests.ReviewSettingsWeekTests testWeekStartKeepsFoldedListsAndThisWeekOnly]' failed (40.380 seconds).

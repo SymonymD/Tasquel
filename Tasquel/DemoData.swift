@@ -44,12 +44,37 @@ extension ChecklistStore {
                 weeks[wi].categories[ci].tasks[ti].expirySetOn = currentDay.adding(days: -2)
             }
         }
+        // `-demoDaysAndPins` (the Seasonal screenshots): 1.1's days, a late task and pins.
+        if arguments.contains("-demoDaysAndPins") { addDemoDaysAndPins(in: wi) }
         // `-demoFirstCard <name>` puts that card first, so it opens at the top.
         if let index = arguments.firstIndex(of: "-demoFirstCard"), arguments.indices.contains(index + 1),
            let ci = weeks[wi].categories.firstIndex(where: { $0.name == arguments[index + 1] }) {
             weeks[wi].categories.insert(weeks[wi].categories.remove(at: ci), at: 0)
         }
         save()
+    }
+
+    /// Days on a few tasks (one today, one late, one ahead, one done), Errands and Fitness
+    /// pinned, and Groceries pinned in Errands.
+    private func addDemoDaysAndPins(in wi: Int) {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = .current
+        func weekday(_ day: DayKey) -> Int { gregorian.component(.weekday, from: day.date(in: gregorian)) }
+        let yesterday = currentDay.adding(days: -1)
+        let days: [String: Int?] = [
+            "Call the vet": weekday(currentDay),
+            "Car service": yesterday >= weeks[wi].startDay ? weekday(yesterday) : nil,
+            "Drop off donations": 7,  // Saturday
+            "Weekly 1:1 notes": 2,    // Monday
+        ]
+        for ci in weeks[wi].categories.indices {
+            weeks[wi].categories[ci].isPinned = ["Errands", "Fitness"].contains(weeks[wi].categories[ci].name)
+            for ti in weeks[wi].categories[ci].tasks.indices {
+                let title = weeks[wi].categories[ci].tasks[ti].title
+                if let day = days[title] { weeks[wi].categories[ci].tasks[ti].dayOfWeek = day }
+                if title == "Groceries" { weeks[wi].categories[ci].tasks[ti].isPinned = true }
+            }
+        }
     }
 
     private static func demoTasks(for category: String) -> [ChecklistTask] {

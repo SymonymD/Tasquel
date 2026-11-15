@@ -312,12 +312,12 @@ struct WeekPickerCalendar: View {
             HStack {
                 Button("Cancel", action: onCancel)
                 Spacer(minLength: 8)
-                Text("Week of \(weekStart.formatted(.dateTime.month(.abbreviated).day().year()))")
+                Text("Week of \(weekStart.formatted(.dateTime.month(.abbreviated).day().year().locale(.gregorian)))")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .accessibilityLabel("Picked: week of \(weekStart.formatted(.dateTime.month(.wide).day().year()))")
+                    .accessibilityLabel("Picked: week of \(weekStart.formatted(.dateTime.month(.wide).day().year().locale(.gregorian)))")
                 Spacer(minLength: 8)
                 Button("Go", action: onGo)
                     .fontWeight(.semibold)
@@ -330,7 +330,7 @@ struct WeekPickerCalendar: View {
 
     private func monthView(_ month: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(month.formatted(.dateTime.month(.wide).year()))
+            Text(month.formatted(.dateTime.month(.wide).year().locale(.gregorian)))
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                 .padding(.horizontal, 6)
@@ -400,13 +400,13 @@ struct WeekPickerCalendar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Week of \(start.formatted(.dateTime.month(.wide).day().year()))")
+        .accessibilityLabel("Week of \(start.formatted(.dateTime.month(.wide).day().year().locale(.gregorian)))")
         .accessibilityAddTraits(isPicked ? .isSelected : [])
     }
 
     private func dayCell(_ day: Date, isInMonth: Bool, mark: CalendarMark?) -> some View {
         let isToday = calendar.isDate(day, inSameDayAs: today)
-        return Text(day.formatted(.dateTime.day()))
+        return Text(day.formatted(.dateTime.day().locale(.gregorian)))
             .font(isToday ? .body.weight(.bold) : .body)
             .monospacedDigit()
             .foregroundStyle(isToday ? accent : isInMonth ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))

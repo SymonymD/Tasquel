@@ -246,7 +246,7 @@ struct TaskOptionsPicker: View {
 
     /// "Thu, Dec 3".
     private static func dateText(_ day: DayKey) -> String {
-        day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().locale(.gregorian))
     }
 
     /// Any, then the days in the week's order, one letter each (two rows at accessibility
@@ -359,13 +359,16 @@ struct OptionButtonLabel: View {
     var alignment: HorizontalAlignment = .center
     var isEnabled = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The icon's column grows with the text: a fixed 22pt let the symbols spill over their
+    /// rows' borders at the largest sizes (the 2026-11-15 review).
+    @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 22
 
     var body: some View {
         HStack(spacing: 8) {
             if alignment == .center { Spacer(minLength: 0) }
             Image(systemName: symbol)
                 .foregroundStyle(isEnabled ? color : Theme.textTertiary(theme, rc: rc))
-                .frame(width: 22)
+                .frame(width: iconWidth)
             Text(title)
                 .foregroundStyle(isEnabled ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc))
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)

@@ -656,7 +656,7 @@ final class GoalUITests: XCTestCase {
         button.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Days for Tasks")).firstMatch
             .waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["You can also find this anytime in Settings ▸ What's New."].exists)
+        XCTAssertTrue(app.staticTexts["You can also find this anytime in Settings ▸ Help ▸ What's New."].exists)
         app.buttons["Continue"].tap()
         XCTAssertTrue(button.waitForExistence(timeout: 3), "still there after once")
         button.tap()
@@ -728,7 +728,10 @@ final class GoalUITests: XCTestCase {
         field.typeText("Call dentist\n")
         // The screen goes with it to next week, where its note is (2026-11-15: left behind
         // on this week, it seemed to vanish).
-        let note = app.staticTexts["Monday had already gone by, so “Call dentist” is here, in next week"]
+        // On a Sunday, Monday is tomorrow, and it's said so (the 2026-11-15 review).
+        let isSunday = Calendar(identifier: .gregorian).component(.weekday, from: Date()) == 1
+        let note = app.staticTexts[isSunday ? "Tomorrow is in next week, so “Call dentist” is here"
+                                            : "Monday had already gone by, so “Call dentist” is here, in next week"]
         XCTAssertTrue(note.waitForExistence(timeout: 5), "next week's card says where it is")
         XCTAssertNotEqual(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch.label,
                           thisWeek, "next week is on screen")
@@ -741,7 +744,7 @@ final class GoalUITests: XCTestCase {
 
         // A pop-up says so, where it can't be missed; OK closes it.
         XCTAssertTrue(app.staticTexts["Added to next week"].exists, "the pop-up says where the screen went")
-        XCTAssertTrue(app.staticTexts["Monday had already gone by this week."].exists)
+        XCTAssertTrue(app.staticTexts[isSunday ? "Tomorrow is the first day of next week." : "Monday had already gone by this week."].exists)
         app.buttons["Moved OK"].tap()
         XCTAssertTrue(app.staticTexts["Added to next week"].waitForNonExistence(timeout: 3))
 

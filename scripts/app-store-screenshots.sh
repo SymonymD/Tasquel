@@ -3,7 +3,9 @@
 # a clean status bar, and runs ScreenshotTests, taking each picture with
 # `xcrun simctl io <device> screenshot` when the test asks (see ScreenshotTests.swift).
 # Saves to screenshots/iphone/ and screenshots/ipad/ and checks the sizes.
-# Usage: scripts/app-store-screenshots.sh [iphone|ipad]   (default: both)
+# Usage: scripts/app-store-screenshots.sh [iphone|ipad|both] [main|seasonal]
+#   main (default): the seven shots, 01-07. seasonal: four in the Seasonal look, 08-11, one
+#   1.1 feature a season (testSeasonalScreenshots), which asks the host to switch light/dark.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -48,10 +50,14 @@ capture() {
 
     TEST_RUNNER_SHOT_DIR="$signal" TEST_RUNNER_DEMO_TODAY="$DEMO_TODAY" xcodebuild -project Tasquel.xcodeproj -scheme Tasquel \
         -destination "id=$udid" -derivedDataPath "$DERIVED" -parallel-testing-enabled NO \
-        -only-testing:TasquelUITests/ScreenshotTests test > "$signal/xcodebuild.log" 2>&1 &
+        -only-testing:"TasquelUITests/ScreenshotTests/$TEST" test > "$signal/xcodebuild.log" 2>&1 &
     local test_pid=$!
 
     while kill -0 "$test_pid" 2>/dev/null; do
+        if [[ -f "$signal/appearance" ]]; then
+            xcrun simctl ui "$udid" appearance "$(cat "$signal/appearance")"
+            rm "$signal/appearance"
+        fi
         if [[ -f "$signal/ready" ]]; then
             local shot
             shot=$(cat "$signal/ready")
@@ -76,5 +82,10 @@ capture() {
 }
 
 which=${1:-both}
+case ${2:-main} in
+    main) TEST=testAppStoreScreenshots ;;
+    seasonal) TEST=testSeasonalScreenshots ;;
+    *) echo "usage: $0 [iphone|ipad|both] [main|seasonal]" >&2; exit 2 ;;
+esac
 [[ $which == ipad ]] || capture iphone "$IPHONE" 1320x2868
-[[ $which == iphone ]] || { capture ipad "$IPAD" 2064x2752 && erase_ipad_date screenshots/ipad/0*.png; }
+[[ $which == iphone ]] || { capture ipad "$IPAD" 2064x2752 && erase_ipad_date screenshots/ipad/[0-9]*.png; }

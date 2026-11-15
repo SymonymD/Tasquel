@@ -1,0 +1,318 @@
+[
+  {
+    "didFinalSync" : false,
+    "id" : "64CC4559-D8C9-4ED9-9C7C-C117CCF1A432",
+    "startDay" : "2026-11-16",
+    "startDate" : "2026-11-16T05:00:00Z",
+    "categories" : [
+      {
+        "symbol" : "cart",
+        "id" : "13E7E622-A6EC-4A2D-B10D-265373721026",
+        "tasks" : [
+          {
+            "isUserEdited" : false,
+            "id" : "4D9DBFB0-AA89-4873-A9C1-EEE2542FD184",
+            "isCompleted" : false,
+            "isListFolded" : true,
+            "mode" : "carryOver",
+            "taskType" : "list",
+            "title" : "Groceries",
+            "subtasks" : [
+              {
+                "id" : "59879648-A374-4A6F-B937-E4ACFAA844AD",
+                "isCompleted" : false,
+                "title" : "Eggs"
+              },
+              {
+                "id" : "C0736AA8-BA66-4A3B-8B5D-5DD3E2410482",
+                "isCompleted" : false,
+                "title" : "Bread"
+              }
+            ],
+            "carriedFrom" : "37D23E52-10CA-41FC-B90F-276F0219CD58"
+          }
+        ],
+        "name" : "Errands",
+        "isThisWeekOnly" : false
+      },
+      {
+        "symbol" : "calendar.badge.clock",
+        "id" : "2A5E0017-54C6-4EB6-BEF3-B73A8E906EF6",
+        "tasks" : [
+
+        ],
+        "name" : "Appointments",
+        "isThisWeekOnly" : false
+      },
+      {
+        "symbol" : "briefcase",
+        "id" : "A7994F36-0F96-4F9D-A3FA-7F6E91E06D5E",
+        "tasks" : [
+          {
+            "isUserEdited" : true,
+            "id" : "B5B7D62C-2C94-4604-936C-321B570F1A22",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Report v2",
+            "subtasks" : [
+              {
+                "title" : "Review",
+                "id" : "08C4B37E-FFFE-44C2-B227-FB09DD0EB3DC",
+                "isCompleted" : false
+              }
+            ],
+            "carriedFrom" : "4C4FED5A-DA52-47EA-B6BB-09E78C5DCC45"
+          },
+          {
+            "isUserEdited" : false,
+            "id" : "612ECF04-AA8D-4C84-8718-003401738000",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Call mom",
+            "subtasks" : [
+
+            ],
+            "carriedFrom" : "1712E3E8-8081-432D-8A14-B09C3433B677"
+          },
+          {
+            "isUserEdited" : false,
+            "id" : "2C3D25FA-573F-4248-A41A-9511281D3412",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Call mom",
+            "subtasks" : [
+
+            ],
+            "carriedFrom" : "25EDCB91-32F0-49A0-97BA-DF1F5BAA8938"
+          }
+        ],
+        "name" : "Work",
+        "isThisWeekOnly" : false
+      },
+      {
+        "symbol" : "figure.run",
+        "id" : "252ACA16-6BD4-4CB7-80D2-D900C6819244",
+        "tasks" : [
+          {
+            "isUserEdited" : false,
+            "goalUnitKind" : "quantity",
+            "id" : "FA8B192C-7626-41E4-973E-671D49122915",
+            "isCompleted" : false,
+            "goalTarget" : 7,
+            "isListFolded" : false,
+            "goalProgress" : 0,
+            "mode" : "repeating",
+            "taskType" : "goal",
+            "subtasks" : [
+
+            ],
+            "title" : "Run",
+            "repeatsFrom" : "16865BC6-5F1F-4F4A-8BCF-64A306F685F5"
+          }
+        ],
+        "name" : "Fitness",
+        "isThisWeekOnly" : false
+      }
+    ],
+    "dismissedCarryOvers" : [
+      "00035C7E-48C3-4DFB-91BC-1727E079F709"
+    ]
+  },
+  {
+    "didFinalSync" : true,
+    "id" : "1E9F5927-29CC-48CD-BE4F-2563B06E6C1D",
+    "startDay" : "2026-11-09",
+    "startDate" : "2026-11-09T05:00:00Z",
+    "categories" : [
+      {
+        "name" : "Errands",
+        "symbol" : "cart",
+        "id" : "3BAAC180-2BB3-4C59-84D1-C58F7ABC9CF2",
+        "tasks" : [
+          {
+            "isUserEdited" : true,
+            "isCompleted" : false,
+            "id" : "37D23E52-10CA-41FC-B90F-276F0219CD58",
+            "isListFolded" : true,
+            "mode" : "carryOver",
+            "taskType" : "list",
+            "subtasks" : [
+              {
+                "title" : "Milk",
+                "isCompleted" : true,
+                "id" : "3DF25E1F-F791-4366-8A7F-D1FABF1A1D12"
+              },
+              {
+                "title" : "Eggs",
+                "isCompleted" : false,
+                "id" : "9450E42F-52F0-40A1-9C5E-D3120A0D6046"
+              },
+              {
+                "title" : "Bread",
+                "isCompleted" : false,
+                "id" : "790F419C-A06E-4B2B-AA67-E65A48D9D492"
+              }
+            ],
+            "title" : "Groceries"
+          }
+        ],
+        "isThisWeekOnly" : false
+      },
+      {
+        "name" : "Appointments",
+        "symbol" : "calendar.badge.clock",
+        "id" : "C3CE0080-10A1-42A3-9D6B-99DFAA57328C",
+        "tasks" : [
+
+        ],
+        "isThisWeekOnly" : false
+      },
+      {
+        "name" : "Work",
+        "symbol" : "briefcase",
+        "id" : "F9441C88-48C1-4055-830A-EEDBFB02DE8F",
+        "tasks" : [
+          {
+            "isUserEdited" : true,
+            "id" : "4C4FED5A-DA52-47EA-B6BB-09E78C5DCC45",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Report",
+            "subtasks" : [
+              {
+                "title" : "Draft",
+                "id" : "9FD7A012-27C3-4932-9509-CE767913CD53",
+                "isCompleted" : true
+              },
+              {
+                "title" : "Review",
+                "id" : "459E9237-2A6E-4D0A-B02F-2CDDC0AA514D",
+                "isCompleted" : false
+              }
+            ]
+          },
+          {
+            "isUserEdited" : true,
+            "id" : "1712E3E8-8081-432D-8A14-B09C3433B677",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Call mom",
+            "subtasks" : [
+
+            ]
+          },
+          {
+            "isUserEdited" : true,
+            "id" : "25EDCB91-32F0-49A0-97BA-DF1F5BAA8938",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Call mom",
+            "subtasks" : [
+
+            ]
+          },
+          {
+            "isUserEdited" : true,
+            "id" : "E212EA36-54AB-4C1E-A887-0C8FC4C596BB",
+            "isCompleted" : true,
+            "isListFolded" : false,
+            "mode" : "carryOver",
+            "taskType" : "checkbox",
+            "title" : "Email the boss",
+            "subtasks" : [
+
+            ]
+          },
+          {
+            "isUserEdited" : true,
+            "id" : "00035C7E-48C3-4DFB-91BC-1727E079F709",
+            "isCompleted" : false,
+            "isListFolded" : false,
+            "mode" : "repeating",
+            "taskType" : "checkbox",
+            "title" : "Standup",
+            "subtasks" : [
+
+            ]
+          }
+        ],
+        "isThisWeekOnly" : false
+      },
+      {
+        "name" : "Fitness",
+        "symbol" : "figure.run",
+        "id" : "1DD70C42-99E1-4C09-9EC3-619A3B57A72D",
+        "tasks" : [
+          {
+            "isUserEdited" : true,
+            "goalUnitKind" : "quantity",
+            "id" : "16865BC6-5F1F-4F4A-8BCF-64A306F685F5",
+            "isCompleted" : false,
+            "goalTarget" : 7,
+            "isListFolded" : false,
+            "goalProgress" : 3,
+            "mode" : "repeating",
+            "taskType" : "goal",
+            "subtasks" : [
+
+            ],
+            "title" : "Run"
+          }
+        ],
+        "isThisWeekOnly" : false
+      },
+      {
+        "name" : "Trip",
+        "symbol" : "folder",
+        "id" : "F89E058C-C229-47D2-BD08-75D0E974DC2D",
+        "tasks" : [
+          {
+            "isUserEdited" : true,
+            "isCompleted" : false,
+            "id" : "A5E641E4-861A-4C9B-BE35-854DFE2CDD2E",
+            "modeBeforeThisWeekOnly" : {
+              "wasUserEdited" : true,
+              "mode" : "carryOver"
+            },
+            "isListFolded" : false,
+            "mode" : "oneTime",
+            "taskType" : "checkbox",
+            "title" : "Pack bag",
+            "subtasks" : [
+
+            ]
+          },
+          {
+            "isUserEdited" : true,
+            "isCompleted" : false,
+            "id" : "4D9CB971-A93A-45BA-984F-F6B9248D4DAB",
+            "modeBeforeThisWeekOnly" : {
+              "wasUserEdited" : true,
+              "mode" : "repeating"
+            },
+            "isListFolded" : false,
+            "mode" : "oneTime",
+            "taskType" : "checkbox",
+            "title" : "Book hotel",
+            "subtasks" : [
+
+            ]
+          }
+        ],
+        "isThisWeekOnly" : true
+      }
+    ]
+  }
+]

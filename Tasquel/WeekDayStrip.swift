@@ -77,7 +77,7 @@ struct WeekDayStrip: View {
 
     /// "Thursday, November 12", with "today" on today.
     private func dayLabel(_ day: DayKey, weekday: Int) -> String {
-        let date = day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let date = day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.wide).month(.wide).day().locale(.gregorian))
         return day == today ? "Today, \(date)" : date
     }
 
@@ -148,7 +148,7 @@ struct WeekDayStrip: View {
     /// Today's full date in this week, or whether the week is over or still to come.
     private var accessibilityText: String {
         if let index = days.firstIndex(of: today) {
-            return "Today, \(todayDate.formatted(date: .complete, time: .omitted)), day \(index + 1) of 7"
+            return "Today, \(todayDate.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(.gregorian))), day \(index + 1) of 7"
         }
         return today < weekStart ? "This week hasn't started" : "This week is over"
     }

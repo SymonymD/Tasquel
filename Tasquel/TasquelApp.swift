@@ -13,6 +13,7 @@ struct TasquelApp: App {
     // over each other's changes.
     @State private var store = ChecklistStore.makeDefault()
     @State private var calendarService = CalendarService.makeDefault()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         ExpiryNotifications.shared.start()
@@ -26,6 +27,10 @@ struct TasquelApp: App {
                 // The pending reminders follow the tasks: set, changed, checked off, deleted.
                 .onChange(of: store.expiryReminders, initial: true) { _, reminders in
                     ExpiryNotifications.shared.update(reminders)
+                }
+                // Back from iOS Settings, where notifications may have been turned on.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { ExpiryNotifications.shared.recheck() }
                 }
                 // Retro's DOS cursor in every text field.
                 .onChange(of: store.appearanceMode, initial: true) { _, mode in

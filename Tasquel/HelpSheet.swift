@@ -173,6 +173,8 @@ struct HelpSheet: View {
         }
         .scrollContentBackground(Theme.hasOwnBackground(theme) ? .hidden : .automatic)
         .contentMargins(.top, 0, for: .scrollContent)
+        // The season's color for the icons, not system blue (the 2026-11-15 review).
+        .tint(Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : nil)
     }
 
     private func retroPage(_ index: Int) -> some View {

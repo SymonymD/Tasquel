@@ -1,9 +1,16 @@
 import SwiftUI
 
-/// Thanksgiving: the day for a region (Canada's second Monday of October; elsewhere the US's
-/// fourth Thursday of November), and whether today is in its week (by the week-start setting).
+/// Thanksgiving: the day for a region, and whether today is in its week (by the week-start
+/// setting). Only where it's commonly celebrated (the user, 2026-11-15): the US and its
+/// territories on the fourth Thursday of November, Canada on the second Monday of October.
+/// Elsewhere (or with no region) there's no Thanksgiving week: no turkey, no feathered mark.
 enum Thanksgiving {
-    static func day(in year: Int, region: String?) -> DayKey {
+    /// The US and the territories with their own region codes: Puerto Rico, Guam, the US Virgin
+    /// Islands, American Samoa, the Northern Mariana Islands.
+    static let usRegions: Set<String> = ["US", "PR", "GU", "VI", "AS", "MP"]
+
+    static func day(in year: Int, region: String?) -> DayKey? {
+        guard let region, region == "CA" || usRegions.contains(region) else { return nil }
         let (month, weekday, nth) = region == "CA" ? (10, 2, 2) : (11, 5, 4)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -17,7 +24,8 @@ enum Thanksgiving {
         let weekStart = { (day: DayKey) in
             DayKey(Week.startOfWeek(containing: day.date(in: calendar), firstWeekday: firstWeekday, calendar: calendar), in: calendar)
         }
-        return weekStart(today) == weekStart(day(in: today.year, region: region))
+        guard let thanksgiving = day(in: today.year, region: region) else { return false }
+        return weekStart(today) == weekStart(thanksgiving)
     }
 }
 

@@ -36,6 +36,15 @@ final class ExpiryNotifications: NSObject, UNUserNotificationCenterDelegate {
         await center.notificationSettings().authorizationStatus == .denied
     }
 
+    /// Schedules what's wanted again, for when permission may have changed in iOS Settings
+    /// while Tasquel was away: `update` skips an unchanged list, so turning notifications on
+    /// there left tasks already dated without reminders until the next change (the
+    /// 2026-11-15 review).
+    func recheck() {
+        guard !ChecklistStore.launchesWithThrowawayData, let wanted else { return }
+        schedule(wanted)
+    }
+
     /// Makes the pending reminders exactly `reminders`.
     func update(_ reminders: [ExpiryReminder]) {
         guard !ChecklistStore.launchesWithThrowawayData, reminders != wanted else { return }
