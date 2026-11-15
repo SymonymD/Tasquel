@@ -52,7 +52,11 @@ struct ContentView: View {
     @State private var whatsNewFromButton: WhatsNewSheet.FromButton?
     /// The header's What's New pill's width, for the room the title gives it, and where it is.
     @State private var whatsNewButtonWidth: CGFloat = 0
-    @State private var whatsNewStage: WhatsNewStage = .hidden
+    @State private var isWhatsNewOut = false
+    /// The week title's width at full size and the header row's, so the title moves over for
+    /// What's New only if the pill wouldn't fit beside it (`weekTitleLeadingInset`).
+    @State private var weekTitleNaturalWidth: CGFloat = 0
+    @State private var weekTitleRowWidth: CGFloat = 0
     /// The bottom bar's height above the home indicator; the grid scrolls clear of it.
     @State private var bottomBarHeight: CGFloat = 68
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
@@ -806,8 +810,10 @@ struct ContentView: View {
     }
 
     /// The header's "What's New?" (the user asked, 2026-11-14): after an update with a What's
-    /// New, a small pill sneaks out from behind the mark, turkey style: a moment after the app
-    /// opens it peeks out a third, pauses, then slides the rest of the way (`whatsNewStage`). It
+    /// New, a small pill slides out from behind the mark a moment after the app opens, in one
+    /// springy move that grows and fades it in, as the header's house did (`isWhatsNewOut`;
+    /// it first peeked out a third and paused, which the user found less smooth). The title
+    /// moves over with it only if it must (`weekTitleLeadingInset`). It
     /// opens What's New, and once it's been opened twice (`ChecklistStore.showsWhatsNewButton`)
     /// it slides back behind the mark for good; Settings keeps What's New. Shown only right of
     /// the mark's ring, under the mark, so it comes from behind it. Half the size it was at
@@ -815,7 +821,7 @@ struct ContentView: View {
     /// (white words 5.6:1); Seasonal's accent; Retro's words in brackets.
     @ViewBuilder
     private var whatsNewButton: some View {
-        if store.persistenceError == nil && (store.showsWhatsNewButton || whatsNewStage != .hidden) {
+        if store.persistenceError == nil && (store.showsWhatsNewButton || isWhatsNewOut) {
             let retro = Theme.isRetro(theme)
             let fill: Color = Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : Color(Theme.todayDateLight)
             let markMiddle = markLeadingInset + 22
@@ -823,11 +829,8 @@ struct ContentView: View {
             let out = markLeadingInset + 44 - 2
             // Well behind until it's been measured, so it never shows at a guess.
             let hidden = markEdge - (whatsNewButtonWidth > 0 ? whatsNewButtonWidth : 200) - 2
-            let x = switch whatsNewStage {
-            case .hidden: hidden
-            case .peek: hidden + (out - hidden) * 0.35
-            case .out: out
-            }
+            // With Reduce Motion it only fades, in place.
+            let x = isWhatsNewOut || reduceMotion ? out : hidden
             Button {
                 let last = store.whatsNewOpenedFromButton()
                 whatsNewFromButton = last ? .lastTime : .again
@@ -847,6 +850,8 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("What's New?")
             .accessibilityHint("Shows what's new in this version")
+            .scaleEffect(isWhatsNewOut || reduceMotion ? 1 : 0.5, anchor: .leading)
+            .opacity(isWhatsNewOut ? 1 : 0)
             .offset(x: x)
             .frame(width: out + max(whatsNewButtonWidth, 1) + 4, alignment: .leading)
             .mask(alignment: .leading) {
@@ -855,37 +860,41 @@ struct ContentView: View {
                     Rectangle()
                 }
             }
-            .allowsHitTesting(whatsNewStage == .out && store.showsWhatsNewButton)
+            .allowsHitTesting(isWhatsNewOut && store.showsWhatsNewButton)
             .accessibilityHidden(!store.showsWhatsNewButton)
             .task(id: store.showsWhatsNewButton) {
                 if store.showsWhatsNewButton {
-                    guard whatsNewStage == .hidden else { return }
-                    if reduceMotion {
-                        withAnimation(.easeInOut(duration: 0.2)) { whatsNewStage = .out }
-                        return
-                    }
-                    // A moment after opening, so it's seen; each move starts and ends at rest,
-                    // so the steps can follow each other on timers without a hitch.
+                    guard !isWhatsNewOut else { return }
+                    // A moment after opening, so it's seen.
                     try? await Task.sleep(for: .seconds(0.9))
-                    withAnimation(.easeOut(duration: 0.3)) { whatsNewStage = .peek }
-                    try? await Task.sleep(for: .seconds(0.65))
-                    withAnimation(.spring(duration: 0.4, bounce: 0.2)) { whatsNewStage = .out }
+                    guard !Task.isCancelled else { return }
+                    withAnimation(whatsNewAnimation) { isWhatsNewOut = true }
                 } else {
-                    withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .easeIn(duration: 0.3)) { whatsNewStage = .hidden }
+                    withAnimation(whatsNewAnimation) { isWhatsNewOut = false }
                 }
             }
         }
     }
 
-    /// Where the header's What's New pill is: behind the mark, peeking out, or out.
-    enum WhatsNewStage { case hidden, peek, out }
-
-    /// The room the title gives the pill while it's out.
-    private var whatsNewRoom: CGFloat {
-        whatsNewStage == .out ? max(0, whatsNewButtonWidth - 2 + 6) : 0
+    /// The week title's leading inset: clear of the mark, and of What's New while it's out.
+    /// The title stays centered while the pill fits beside it (most weeks on a Pro Max at
+    /// the default size; the user asked, 2026-11-14), moves over only as far as it must,
+    /// and shrinks once there's no more room (6.3" phones, the SE, larger text, Retro, a
+    /// title with a year).
+    private var weekTitleLeadingInset: CGFloat {
+        let base = markLeadingInset + 44
+        guard isWhatsNewOut, whatsNewButtonWidth > 0, weekTitleRowWidth > 0 else { return base }
+        // The pill's trailing edge (it's out at the mark's edge less 2pt), plus a gap.
+        let clear = markLeadingInset + 44 - 2 + whatsNewButtonWidth + 6
+        // The title is centered between the inset and 56pt from the trailing edge; this
+        // inset puts its leading edge at `clear`.
+        let needed = 2 * clear + weekTitleNaturalWidth - weekTitleRowWidth + 56
+        return min(clear, max(base, needed))
     }
+    /// The header house's spring (a little overshoot), a touch longer as the pill goes about
+    /// twice as far; a fade with Reduce Motion.
     private var whatsNewAnimation: Animation {
-        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4, bounce: 0.2)
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.5, bounce: 0.3)
     }
 
     /// One of the holiday mark's layers, centered on the mark (Retro's are templates, tinted
@@ -1290,17 +1299,34 @@ struct ContentView: View {
 
     /// The viewed week, between the Tasquel mark (back to this week) and Open/Close All.
     private var weekTitleRow: some View {
-        weekTitleText
-            .font(.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default))
+        let font = Font.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default)
+        // Measured without animating, so a new week's title or a rotation doesn't slide it.
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        return weekTitleText
+            .font(font)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             // Clear of the buttons on either side (the mark is 44pt wide), and of What's New
-            // while it's out (the title moves over for it, shrinking if it must).
+            // while it's out.
             .animation(whatsNewAnimation) { title in
-                title.padding(.leading, markLeadingInset + 44 + whatsNewRoom)
+                title.padding(.leading, weekTitleLeadingInset)
             }
             .padding(.trailing, 56)
             .frame(maxWidth: .infinity)
+            .background(alignment: .leading) {
+                weekTitleText
+                    .font(font)
+                    .fixedSize()
+                    .hidden()
+                    .accessibilityHidden(true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                        withTransaction(instant) { weekTitleNaturalWidth = width }
+                    }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                withTransaction(instant) { weekTitleRowWidth = width }
+            }
             .overlay(alignment: .leading) {
                 // The turkey and What's New first, so the mark is drawn over them.
                 ZStack(alignment: .leading) {

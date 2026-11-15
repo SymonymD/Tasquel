@@ -20,7 +20,7 @@ enum WhatsNew {
 
     static let items: [Item] = [
         Item(symbol: "calendar", title: "Days for Tasks",
-             detail: "Give a task a day of the week in its options. Tap a day at the top to see just that day's tasks. A task whose day has gone by is marked late.",
+             detail: "Give a task a day of the week in its options, or type “on Friday” in Smart Add. On its day it reads Today, and its card gives a little wiggle when you open the app. Tap a day at the top to see just that day's tasks. A task whose day has gone by is marked late.",
              color: .blue),
         Item(symbol: "clock", title: "Dates and Reminders",
              detail: "Give a task a last day, like a birthday or a gift list: it carries over until then, and a notification reminds you the day before. Smart Add spots dates you type.",
@@ -34,8 +34,11 @@ enum WhatsNew {
         Item(symbol: "square.on.square", title: "Duplicates Flagged",
              detail: "Tasks or list items with the same name in one card are marked, so nothing gets done twice.",
              color: .red),
+        Item(symbol: "delete.left", title: "Clear to Delete",
+             detail: "Clear a task's, sub-task's or list item's name and press Return to delete it. Undo brings it back.",
+             color: .purple),
         Item(symbol: "leaf.fill", title: "Seasonal Look",
-             detail: "Settings ▸ Appearance ▸ Seasonal changes Tasquel's colors with the season, and the logo dresses up for the holidays. Retro's text fields now look like DOS.",
+             detail: "Settings ▸ Appearance ▸ Seasonal changes Tasquel's colors with the season. In every look, the logo dresses up for the holidays, and Retro's text fields now look like DOS.",
              color: .mint),
         Item(symbol: "house.fill", title: "Back to This Week",
              detail: "On another week, tap the green house in the bottom bar. Go to Week now rings the days your tasks are dated or set for.",
@@ -43,6 +46,12 @@ enum WhatsNew {
         Item(symbol: "bolt.fill", title: "Faster",
              detail: "Scrolling, opening cards and checking off tasks are much quicker, even with lots of tasks.",
              color: .yellow),
+        Item(symbol: "questionmark.circle", title: "Help in Tabs",
+             detail: "Help is now in tabs (Weeks, Cards, Tasks, Types, Modes and Dates), so you can go straight to an answer. Swipe between them.",
+             color: .cyan),
+        Item(symbol: "sparkles", title: "And More",
+             detail: "Escape on a keyboard cancels a rename, and past weeks no longer push the cards down with a banner. Fixes for VoiceOver, iPad and smaller iPhones.",
+             color: .indigo),
     ]
 
     /// Whether version `a` is older than `b`, comparing numbers ("1.0.3" < "1.1" < "1.10").
