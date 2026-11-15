@@ -26,6 +26,7 @@ struct SettingsSheet: View {
     var systemColorScheme: ColorScheme? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showHelp = false
+    @State private var showWhatsNew = false
     /// Notifications are off for Tasquel in iOS Settings (Expiration Reminders says so).
     @State private var notificationsDenied = false
     @State private var showTour = false
@@ -69,6 +70,7 @@ struct SettingsSheet: View {
                 .sharedBackgroundVisibility(retro ? .hidden : .automatic)
             }
             .sheet(isPresented: $showHelp) { HelpSheet(store: store) }
+            .sheet(isPresented: $showWhatsNew) { WhatsNewSheet(store: store) }
             .sheet(isPresented: $showTour) {
                 // Sheets don't inherit the app's appearance.
                 OnboardingSheet(store: store, calendar: calendar, isReplay: true)
@@ -140,6 +142,9 @@ struct SettingsSheet: View {
             Section {
                 Button { showHelp = true } label: {
                     Label("How to Use Tasquel", systemImage: "questionmark.circle")
+                }
+                Button { showWhatsNew = true } label: {
+                    Label("What's New in \(WhatsNew.version)", systemImage: "gift")
                 }
                 Button { showTour = true } label: {
                     Label("Show Welcome Tour", systemImage: "sparkles")
@@ -219,6 +224,10 @@ struct SettingsSheet: View {
                 retroSection("HELP") {
                     Button { showHelp = true } label: {
                         retroLinkLabel("> How to Use Tasquel")
+                    }
+                    .buttonStyle(.plain)
+                    Button { showWhatsNew = true } label: {
+                        retroLinkLabel("> What's New in \(WhatsNew.version)")
                     }
                     .buttonStyle(.plain)
                     Button { showTour = true } label: {
@@ -355,7 +364,7 @@ struct SettingsSheet: View {
     }
 
     private var expiryRemindersFooter: String {
-        let what = "A notification at 9 AM the day before a task's last day (set with the clock in a card's edit mode)."
+        let what = "A notification at 9 AM the day before a task's date, its last day (set with the calendar in its type and mode options, or the clock in a card's edit mode)."
         return notificationsDenied && store.remindsBeforeExpiry
             ? what + " Notifications are off for Tasquel: turn them on in the Settings app." : what
     }

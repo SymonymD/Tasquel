@@ -234,6 +234,27 @@ final class SmartAddUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:")).count
     }
 
+    /// A written-out date ("Exam 12/15") isn't a goal's numbers: the task is added as typed,
+    /// and the note asks "Until …?" with Set Date, which makes it the task's date (a one-time
+    /// task then carries over until it) and takes it out of the name (2026-11-14).
+    @MainActor
+    func testTypedDateIsOfferedAndSetOnlyWhenAsked() throws {
+        let date = Calendar.current.date(byAdding: .day, value: 20, to: Date())!
+        let parts = Calendar.current.dateComponents([.month, .day], from: date)
+        let typed = "Exam \(parts.month!)/\(parts.day!)"
+        typeInFitness(typed)
+        app.buttons["Smart Add"].tap()
+        let setDate = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Set date to")).firstMatch
+        XCTAssertTrue(setDate.waitForExistence(timeout: 10), "the date is offered")
+        XCTAssertTrue(app.staticTexts[typed].exists, "added as typed until it's set")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, One-Time"].exists, "not a goal")
+        setDate.tap()
+        XCTAssertTrue(app.staticTexts["Exam"].waitForExistence(timeout: 3), "the date leaves the name")
+        let checkbox = app.buttons.matching(NSPredicate(format: "label == %@ AND value BEGINSWITH %@", "Complete Exam", "expires in 20 days")).firstMatch
+        XCTAssertTrue(checkbox.exists, "and is its last day")
+        XCTAssertTrue(app.buttons["Task options: Checkbox, Carry Over"].exists, "a one-time task dated after this week carries over")
+    }
+
     private var fitnessCard: XCUIElement {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Fitness,")).firstMatch
     }

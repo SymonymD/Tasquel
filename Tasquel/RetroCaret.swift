@@ -12,13 +12,8 @@ enum RetroCaret {
     static func install() {
         guard !isInstalled else { return }
         isInstalled = true
-        exchange(UITextView.self, #selector(UITextView.caretRect(for:)), #selector(UITextView.retroCaretRect(for:)))
-        exchange(UITextField.self, #selector(UITextField.caretRect(for:)), #selector(UITextField.retroCaretRect(for:)))
-    }
-
-    private static func exchange(_ type: AnyClass, _ original: Selector, _ replacement: Selector) {
-        guard let a = class_getInstanceMethod(type, original), let b = class_getInstanceMethod(type, replacement) else { return }
-        method_exchangeImplementations(a, b)
+        MethodSwap.exchange(UITextView.self, #selector(UITextView.caretRect(for:)), #selector(UITextView.retroCaretRect(for:)))
+        MethodSwap.exchange(UITextField.self, #selector(UITextField.caretRect(for:)), #selector(UITextField.retroCaretRect(for:)))
     }
 
     /// The underscore in the character cell where the bar would stand: as wide as a character

@@ -47,17 +47,65 @@ struct TaskOptionsPicker: View {
     var onSelectDay: ((Int?) -> Void)? = nil
     /// The weekday weeks start on, for the row's order.
     var firstWeekday = 2
+    /// The task's date (its last day, `expiresOn`; `dateIsWeek` when a whole week was
+    /// picked); `onSelectDate` shows the Date row, whose calendar (`ExpiryPicker`, on a page
+    /// of its own) starts at `earliestDate`. Nil from `onSelectDate`: no date.
+    var date: DayKey? = nil
+    var dateIsWeek = false
+    var earliestDate: DayKey? = nil
+    var today: DayKey? = nil
+    var taskTitle = ""
+    /// The first day of the task's week, for what a date after it means.
+    var weekStart: DayKey? = nil
+    var onSelectDate: ((DayKey?, Bool) -> Void)? = nil
+
+    /// Opened from the date's mark next to the task's name: the calendar first, and Set,
+    /// Cancel or Remove close it all (`onDateDone`) rather than going back to the options.
+    var startsOnDate = false
+    var onDateDone: (() -> Void)? = nil
 
     @State private var pendingType: TaskType?
+    @State private var isPickingDate = false
+    @State private var leftStartingDate = false
+
+    private var picksDate: Bool { isPickingDate || (startsOnDate && !leftStartingDate) }
+
+    private func finishDate() {
+        if let onDateDone { onDateDone() } else {
+            isPickingDate = false
+            leftStartingDate = true
+        }
+    }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // Scrolls when it's taller than the screen (accessibility text sizes).
-        ViewThatFits(in: .vertical) {
-            content
-            ScrollView { content }
+        Group {
+            if picksDate, let onSelectDate, let earliestDate, let today {
+                // The date's calendar, in place of the options until Set or Cancel.
+                ExpiryPicker(
+                    taskTitle: taskTitle.isEmpty ? "New task" : taskTitle, current: date, currentIsWeek: dateIsWeek,
+                    earliest: earliestDate, today: today, firstWeekday: firstWeekday, theme: theme, rc: rc,
+                    onSet: { day, week in
+                        onSelectDate(day, week)
+                        finishDate()
+                    },
+                    onRemove: {
+                        onSelectDate(nil, false)
+                        finishDate()
+                    },
+                    onCancel: finishDate,
+                    title: "Until",
+                    noteFor: { Self.thisWeekOnlyNote(for: $0, weekStart: weekStart, isThisWeekOnly: isThisWeekOnlyCategory) }
+                )
+            } else {
+                // Scrolls when it's taller than the screen (accessibility text sizes).
+                ViewThatFits(in: .vertical) {
+                    content
+                    ScrollView { content }
+                }
+                .padding(16)
+            }
         }
-        .padding(16)
         .frame(minWidth: 300)
         // A keyboard that's up (typing a new task) mustn't push the options out of the
         // popover: in landscape on iPad it pushed the first rows off the top.
@@ -104,10 +152,17 @@ struct TaskOptionsPicker: View {
                 }
             }
             if let onSelectDay { dayRow(onSelectDay) }
-            Text(hint)
-                .font(Theme.isRetro(theme) ? .system(.footnote, design: .monospaced) : .footnote)
-                .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                .fixedSize(horizontal: false, vertical: true)
+            // A warning looks like one (a gray line that changed its words went unseen).
+            Group {
+                if hintIsWarning {
+                    Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(hint)")
+                        .foregroundStyle(Theme.late(theme))
+                } else {
+                    Text(hint).foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                }
+            }
+            .font(Theme.isRetro(theme) ? .system(.footnote, design: .monospaced) : .footnote)
+            .fixedSize(horizontal: false, vertical: true)
             if let action = onAdd ?? onDone {
                 if Theme.isRetro(theme) {
                     // No fill in Retro: on the bright accent, the filled button's words vanished.
@@ -139,6 +194,18 @@ struct TaskOptionsPicker: View {
     /// says the card will too, in one line like the others: with the keyboard up, even one
     /// more line pushed Add Task out of the popover.
     private var hint: String {
+        // One line, like the others: with the keyboard up, a second pushed Add Task out.
+        if let date, onSelectDate != nil {
+            let until = Self.dateText(date)
+            let afterThisWeek = weekStart.map { date > $0.adding(days: 6) } ?? false
+            let cardComesBack = isThisWeekOnlyCategory && mode != .oneTime ? ", and this card comes back" : ""
+            return switch mode {
+            case .carryOver: "Carries over until \(until)\(cardComesBack)"
+            case .repeating: "Comes back every week until \(until)\(cardComesBack)"
+            // Picked after the date: it's gone with this week, before its date.
+            case .oneTime: afterThisWeek ? "Gone after this week, before \(until)" : "Until \(until), then it's gone"
+            }
+        }
         guard isThisWeekOnlyCategory else { return mode.hint }
         return switch mode {
         case .carryOver: "Carries over, and this card comes back next week"
@@ -147,26 +214,74 @@ struct TaskOptionsPicker: View {
         }
     }
 
+    /// In a This week only card, a date after this week makes the task carry over until
+    /// then, which brings the card back every week: the calendar says so before Set.
+    static func thisWeekOnlyNote(for day: DayKey, weekStart: DayKey?, isThisWeekOnly: Bool) -> String? {
+        guard isThisWeekOnly, let weekStart, day > weekStart.adding(days: 6) else { return nil }
+        return "It carries over until then, so this card will come back every week."
+    }
+
+    /// One-Time with a date after this week: it's gone before its date.
+    private var hintIsWarning: Bool {
+        guard mode == .oneTime, let date, onSelectDate != nil, let weekStart else { return false }
+        return date > weekStart.adding(days: 6)
+    }
+
+    /// A one-time or carry-over task's day and date are one choice: with a date, no day is
+    /// picked, and picking a day (or Any) takes the date away. A repeating task's day and
+    /// date go together (every Monday, until its date).
+    private var dateIsTheDay: Bool { date != nil && mode != .repeating && onSelectDate != nil }
+
+    /// "Thu, Dec 3".
+    private static func dateText(_ day: DayKey) -> String {
+        day.date(in: Calendar.weekDates()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
     /// Any, then the days in the week's order, one letter each (two rows at accessibility
-    /// sizes). VoiceOver hears each day's full name.
+    /// sizes), and with `onSelectDate` a calendar: the task's date (its last day), which the
+    /// hint then says. VoiceOver hears each day's full name. The calendar is in this row,
+    /// not a row of its own: with the keyboard up, a taller popover pushed Add Task out.
     private func dayRow(_ select: @escaping (Int?) -> Void) -> some View {
         column("Day") {
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: dynamicTypeSize.isAccessibilitySize ? 4 : 8)
+            let count = (dynamicTypeSize.isAccessibilitySize ? 4 : 8) + (onSelectDate != nil && !dynamicTypeSize.isAccessibilitySize ? 1 : 0)
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: count)
             LazyVGrid(columns: columns, spacing: 4) {
-                dayButton(Theme.isRetro(theme) ? "ANY" : "Any", label: "Any day", isSelected: day == nil) { select(nil) }
+                dayButton(Theme.isRetro(theme) ? "ANY" : "Any", label: "Any day", isSelected: day == nil && !dateIsTheDay) {
+                    pickDay(nil, select)
+                }
                 ForEach(Weekday.ordered(firstWeekday: firstWeekday), id: \.self) { weekday in
                     dayButton(Weekday.letter(weekday), label: Weekday.name(weekday, short: false),
-                              isSelected: day == weekday) { select(weekday) }
+                              isSelected: day == weekday && !dateIsTheDay) { pickDay(weekday, select) }
+                }
+                if onSelectDate != nil {
+                    dayButton("", icon: date == nil ? "calendar" : "calendar.badge.checkmark",
+                              label: date.map { "Date: \((dateIsWeek ? "week until " : "") + Self.dateText($0))" } ?? "Add a date",
+                              isSelected: date != nil) { isPickingDate = true }
+                        .accessibilityHint("Opens a calendar for the task's last day")
                 }
             }
         }
     }
 
-    private func dayButton(_ text: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    /// A day picked; for a one-time or carry-over task with a date, the date goes.
+    private func pickDay(_ day: Int?, _ select: (Int?) -> Void) {
+        let clearsDate = dateIsTheDay
+        select(day)
+        if clearsDate { onSelectDate?(nil, false) }
+    }
+
+    private func dayButton(_ text: String, icon: String? = nil, label: String, isSelected: Bool,
+                           action: @escaping () -> Void) -> some View {
         let accent = Theme.accent(theme, rc: rc)
         let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 8)
         return Button(action: action) {
-            Text(text)
+            Group {
+                if let icon {
+                    Image(systemName: icon)
+                } else {
+                    Text(text)
+                }
+            }
                 .font(Theme.isRetro(theme) ? .system(.subheadline, design: .monospaced) : .subheadline)
                 .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                 .lineLimit(1)

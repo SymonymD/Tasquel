@@ -229,6 +229,13 @@ struct CategoryGridCard: View {
                     .focused($isNameFocused)
                     .submitLabel(.done)
                     .onSubmit(commitName)
+                    // Escape (a hardware keyboard) puts the old name back.
+                    .onReceive(NotificationCenter.default.publisher(for: EscapeKey.pressed)) { _ in
+                        guard isNameFocused else { return }
+                        editedName = category.name
+                        nameError = nil
+                        isNameFocused = false
+                    }
                     .onChange(of: isNameFocused) { _, focused in
                         // Back in the field to try again: the last "why not" goes.
                         if focused { nameError = nil } else { commitName() }
@@ -515,14 +522,10 @@ private struct CollapsedCategoryContent: View {
                         Text(task.title)
                             .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced) : .caption2)
                             .foregroundStyle(Theme.textSecondary(theme, rc: rc)).lineLimit(1)
-                        if task.dayOfWeek != nil {
-                            // A task with a day: a small clock after its name (a long name
-                            // gives way first), colored like the open card's day label.
-                            Image(systemName: "clock")
-                                .font(.caption2.weight(.semibold))
-                                .imageScale(.small)
-                                .foregroundStyle(dayColor(task))
-                                .fixedSize()
+                        if task.dayOfWeek != nil || task.expiresOn != nil {
+                            // A task with a day or a date: a small mark after its name (a
+                            // long name gives way first), colored like the open card's.
+                            TaskTimeMark(task: task, color: dayColor(task))
                         }
                     }
                 }
@@ -550,11 +553,54 @@ private struct CollapsedCategoryContent: View {
     }
 }
 
+/// The small mark after a task's name in a closed card (the user's picks, 2026-11-14): a
+/// calendar for a task with a date, a calendar with its day's letters for a repeating task
+/// with a day, and a timer for any other task with a day (this week's, or until done).
+struct TaskTimeMark: View {
+    let task: ChecklistTask
+    let color: Color
+
+    var body: some View {
+        Group {
+            if task.expiresOn != nil {
+                Image(systemName: "calendar")
+            } else if task.mode == .repeating, let day = task.dayOfWeek {
+                DayCalendarGlyph(day: day)
+            } else {
+                Image(systemName: "timer")
+            }
+        }
+        .font(.caption2.weight(.semibold))
+        .imageScale(.small)
+        .foregroundStyle(color)
+        .fixedSize()
+        .accessibilityHidden(true)
+    }
+}
+
+/// A tiny calendar page with a day's first two letters ("Tu") for a repeating task's day.
+struct DayCalendarGlyph: View {
+    let day: Int
+
+    var body: some View {
+        Text(String(Weekday.name(day).prefix(2)))
+            .font(.system(size: 6.5, weight: .heavy))
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
+            .frame(width: 12, height: 8)
+            .padding(.top, 3)
+            .overlay(alignment: .top) { Rectangle().frame(height: 2.5) }
+            .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(lineWidth: 1) }
+    }
+}
+
 extension CollapsedCategoryContent {
     /// A day task's clock: green on its day until it's done, orange once its day has gone by
     /// unfinished, gray otherwise (as the open card's "Today" / "Tue · late" / "Fri").
     fileprivate func dayColor(_ task: ChecklistTask) -> Color {
         guard let weekStart, !isPastWeek else { return Theme.textSecondary(theme, rc: rc) }
+        // A date without a day: green until it's done, like the open card's clock.
+        if task.dayOfWeek == nil { return task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.expirySet(theme, rc: rc) }
         if task.isLate(inWeekStarting: weekStart, firstWeekday: store.firstWeekday, today: store.currentDay) {
             return Theme.late(theme)
         }
@@ -591,12 +637,26 @@ private struct ExpandedCategoryContent: View {
     /// task reads as one group.
     private var taskSpacing: CGFloat { 14 * expandedCardScale }
 
+    /// The order the tasks had when one's options or date calendar opened, kept until it
+    /// closes: a new day or date moved the task to the top or the end while it was being
+    /// chosen (the user, 2026-11-14). Then they move into place.
+    @State private var frozenOrder: [UUID]?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Pinned first, then by day (`shownTasks`), unless a task's options are open.
+    private var listedTasks: [ChecklistTask] {
+        let live = category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter)
+        guard let frozenOrder else { return live }
+        let byID = Dictionary(category.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return frozenOrder.compactMap { byID[$0] } + live.filter { !frozenOrder.contains($0.id) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: taskSpacing) {
             // Pinned first, then by day (`orderedTasks`); with a day picked in the day strip,
             // that day's and those with no day.
             let duplicates = category.duplicateTaskIDs
-            ForEach(category.shownTasks(firstWeekday: store.firstWeekday, day: dayFilter)) { task in
+            ForEach(listedTasks) { task in
                 let isLifted = reorder?.taskID == task.id
                 TaskRowCard(
                     task: task,
@@ -621,6 +681,11 @@ private struct ExpandedCategoryContent: View {
                 // Last, so the stack sees it: before the measuring, the rows it passed while the
                 // grid scrolled were drawn over it.
                 .zIndex(isLifted ? 1 : 0)
+                .environment(\.freezesTaskOrder) { open in
+                    withAnimation(open || reduceMotion ? nil : .snappy(duration: 0.25)) {
+                        frozenOrder = open ? listedTasks.map(\.id) : nil
+                    }
+                }
             }
 
             // Adding is off while the card is in edit mode. The This week only switch takes
@@ -904,6 +969,9 @@ extension EnvironmentValues {
     @Entry var isCardOpen = true
     /// The width of the week's grid of cards (an open card's width), once measured.
     @Entry var cardGridWidth: CGFloat? = nil
+    /// Told when a task's options or date calendar open (true) and close (false): its card
+    /// keeps its order meanwhile (see `ExpandedCategoryContent.frozenOrder`).
+    @Entry var freezesTaskOrder: (Bool) -> Void = { _ in }
     /// The day picked in the week's day strip (1 Sunday … 7 Saturday): cards show that day's
     /// tasks and the ones with no day, and tasks added get that day. Nil: every task.
     @Entry var taskDayFilter: Int? = nil

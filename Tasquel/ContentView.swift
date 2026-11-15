@@ -45,8 +45,14 @@ struct ContentView: View {
     /// While the keyboard is up, the bottom bar turns into a Done button.
     @State private var isKeyboardVisible = false
     private var isSheetPresented: Bool {
-        showSettings || showAddCategory || showDatePicker || showOnboarding
+        showSettings || showAddCategory || showDatePicker || showOnboarding || whatsNewFromButton != nil
     }
+    /// What's New, opened from the header's button (`whatsNewButton`), and whether that was
+    /// the button's last time.
+    @State private var whatsNewFromButton: WhatsNewSheet.FromButton?
+    /// The header's What's New pill's width, for the room the title gives it, and where it is.
+    @State private var whatsNewButtonWidth: CGFloat = 0
+    @State private var whatsNewStage: WhatsNewStage = .hidden
     /// The bottom bar's height above the home indicator; the grid scrolls clear of it.
     @State private var bottomBarHeight: CGFloat = 68
     /// The screen's bottom safe area (home indicator), which the flush bar covers.
@@ -80,6 +86,20 @@ struct ContentView: View {
     /// The bottom bar's Edit side (the wider of Edit and Done), which the Settings side
     /// matches so the week selector stays centered.
     @State private var editSideWidth: CGFloat = 80
+    /// The bottom row's width and the week selector's, for the bar's house (`barHouse`).
+    @State private var barContentWidth: CGFloat = 0
+    /// The selector's three buttons, without the capsule's padding.
+    @State private var weekButtonsWidth: CGFloat = 0
+    /// The selector's and the house's glass, so the house can grow out of the selector.
+    @Namespace private var barGlass
+    /// The house's glass still blends with the selector's: while it comes out, until it
+    /// lets go (`houseBlend`), and while it goes back in.
+    @State private var houseAttached = true
+    /// Where the bar's house is in its moves (`moveBarHouse`), and on which side.
+    @State private var houseStage: BarHouseStage = .inside
+    @State private var houseStageSide: BarHouseSide = .left
+    /// Counts moves, so the steps of one left over aren't played after the next.
+    @State private var houseMoveGeneration = 0
     /// The week's title: 5% under .title2's 22pt, and growing with Dynamic Type like it.
     @ScaledMetric(relativeTo: .title2) private var weekTitleSize: CGFloat = 20.9
 
@@ -247,7 +267,8 @@ struct ContentView: View {
                           theme: theme, rc: rc, showsEvents: showsEventsToggle,
                           eventsWeek: (arrivingWeek ?? store.selectedWeek)?.startDay,
                           onSelectWeek: { changeWeek(to: $0) },
-                          onSwipeWeek: { changeWeek(by: $0, velocity: $1) }) { week in
+                          onSwipeWeek: { changeWeek(by: $0, velocity: $1) },
+                          marks: { store.calendarMarks(weekStartingOn: $0) }) { week in
                 eventsList(for: week)
             }
             // Full height on iPad, where half a form sheet cut the content off.
@@ -255,8 +276,10 @@ struct ContentView: View {
             .preferredColorScheme(store.colorScheme)
         }
         .sheet(isPresented: $showSettings) {
-            // The main screen follows the device in System mode, so its scheme is the device's.
-            SettingsSheet(store: store, calendar: calendarService, systemColorScheme: colorScheme)
+            // The phone's own light or dark, for a look that follows it (System, Seasonal). Not
+            // the main screen's: just after leaving Light it was still light, and Settings
+            // kept light sections under Seasonal's night text (2026-11-14).
+            SettingsSheet(store: store, calendar: calendarService, systemColorScheme: deviceColorScheme)
         }
         .sheet(isPresented: $showAddCategory) {
             AddCategorySheet(store: store) { name, symbol, thisWeekOnly in
@@ -270,6 +293,11 @@ struct ContentView: View {
         .sheet(isPresented: $showOnboarding) {
             OnboardingSheet(store: store, calendar: calendarService)
                 .interactiveDismissDisabled()
+        }
+        .sheet(item: $whatsNewFromButton, onDismiss: {
+            withAnimation(whatsNewAnimation) { store.finishWhatsNewFromButton() }
+        }) { fromButton in
+            WhatsNewSheet(store: store, fromButton: fromButton)
         }
         .onAppear {
             today = store.currentDate
@@ -340,7 +368,10 @@ struct ContentView: View {
         .onChange(of: pendingWeekDate) { _, date in
             guard let date else { return }
             pendingWeekDate = nil
-            withAnimation(.easeInOut(duration: 0.2)) { store.navigateToDate(date) }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                store.navigateToDate(date)
+                refreshSortOrder()  // in its own order at once (see `changeWeek`)
+            }
             isChangingWeek = false
         }
         .background { sortOrderWatcher }
@@ -553,6 +584,9 @@ struct ContentView: View {
             settle.disablesAnimations = true
             withTransaction(settle) {
                 store.navigateToDate(date)
+                // Its order at once, as it slid in (`gridEntries`): left to `onChange`, a
+                // frame could show it in the old week's order.
+                refreshSortOrder()
                 pagerTarget = nil
                 arrivingWeek = nil
                 pager.offset = 0
@@ -747,6 +781,113 @@ struct ContentView: View {
         }
     }
 
+    /// Thanksgiving week's turkey (`TurkeyCameo`), in a strip from the screen's edge past the
+    /// mark: it hides behind the mark's middle and comes out 36pt right of it. Only in that
+    /// week (Debug `-demoTurkey`: any week).
+    @ViewBuilder
+    private var turkeyCameo: some View {
+        #if DEBUG
+        let demo = ProcessInfo.processInfo.arguments.contains("-demoTurkey")
+        #else
+        let demo = false
+        #endif
+        let isWeek = demo || Thanksgiving.isWeek(of: DayKey(today, in: store.calendar), firstWeekday: store.firstWeekday,
+                                                 calendar: store.calendar, region: Locale.current.region?.identifier)
+        // Not while What's New is out beside the mark: they'd share the spot.
+        if isWeek && !reduceMotion && store.persistenceError == nil && !store.showsWhatsNewButton
+            && (demo || !ChecklistStore.launchesWithThrowawayData) {
+            let markMiddle = markLeadingInset + 22
+            TurkeyCameo(retro: Theme.isRetro(theme), tint: Theme.textPrimary(theme, rc: rc),
+                        markEdge: markMiddle + (Theme.isRetro(theme) ? 16.5 : 15.5),
+                        // Retro's title starts sooner ("> Week…"): less far out there.
+                        hideX: markMiddle, outX: markMiddle + (Theme.isRetro(theme) ? 30 : 36))
+                .frame(width: markMiddle + 80, height: 44)
+        }
+    }
+
+    /// The header's "What's New?" (the user asked, 2026-11-14): after an update with a What's
+    /// New, a small pill sneaks out from behind the mark, turkey style: a moment after the app
+    /// opens it peeks out a third, pauses, then slides the rest of the way (`whatsNewStage`). It
+    /// opens What's New, and once it's been opened twice (`ChecklistStore.showsWhatsNewButton`)
+    /// it slides back behind the mark for good; Settings keeps What's New. Shown only right of
+    /// the mark's ring, under the mark, so it comes from behind it. Half the size it was at
+    /// first (the user's ask); its tap area is still 44pt tall. The deeper blue of today's date
+    /// (white words 5.6:1); Seasonal's accent; Retro's words in brackets.
+    @ViewBuilder
+    private var whatsNewButton: some View {
+        if store.persistenceError == nil && (store.showsWhatsNewButton || whatsNewStage != .hidden) {
+            let retro = Theme.isRetro(theme)
+            let fill: Color = Theme.isSeasonal(theme) ? Theme.accent(theme, rc: rc) : Color(Theme.todayDateLight)
+            let markMiddle = markLeadingInset + 22
+            let markEdge = markMiddle + (retro ? 16.5 : 15.5)
+            let out = markLeadingInset + 44 - 2
+            // Well behind until it's been measured, so it never shows at a guess.
+            let hidden = markEdge - (whatsNewButtonWidth > 0 ? whatsNewButtonWidth : 200) - 2
+            let x = switch whatsNewStage {
+            case .hidden: hidden
+            case .peek: hidden + (out - hidden) * 0.35
+            case .out: out
+            }
+            Button {
+                let last = store.whatsNewOpenedFromButton()
+                whatsNewFromButton = last ? .lastTime : .again
+            } label: {
+                Text(retro ? "[WHAT'S NEW?]" : "What's New?")
+                    .font(.system(size: 9, weight: .bold, design: retro ? .monospaced : .default))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .foregroundStyle(retro ? Theme.textPrimary(theme, rc: rc) : Theme.onAccent(theme))
+                    .padding(.horizontal, retro ? 1 : 6)
+                    .padding(.vertical, 3)
+                    .background { if !retro { Capsule().fill(fill) } }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { whatsNewButtonWidth = $0 }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("What's New?")
+            .accessibilityHint("Shows what's new in this version")
+            .offset(x: x)
+            .frame(width: out + max(whatsNewButtonWidth, 1) + 4, alignment: .leading)
+            .mask(alignment: .leading) {
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: markEdge)
+                    Rectangle()
+                }
+            }
+            .allowsHitTesting(whatsNewStage == .out && store.showsWhatsNewButton)
+            .accessibilityHidden(!store.showsWhatsNewButton)
+            .task(id: store.showsWhatsNewButton) {
+                if store.showsWhatsNewButton {
+                    guard whatsNewStage == .hidden else { return }
+                    if reduceMotion {
+                        withAnimation(.easeInOut(duration: 0.2)) { whatsNewStage = .out }
+                        return
+                    }
+                    // A moment after opening, so it's seen; each move starts and ends at rest,
+                    // so the steps can follow each other on timers without a hitch.
+                    try? await Task.sleep(for: .seconds(0.9))
+                    withAnimation(.easeOut(duration: 0.3)) { whatsNewStage = .peek }
+                    try? await Task.sleep(for: .seconds(0.65))
+                    withAnimation(.spring(duration: 0.4, bounce: 0.2)) { whatsNewStage = .out }
+                } else {
+                    withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .easeIn(duration: 0.3)) { whatsNewStage = .hidden }
+                }
+            }
+        }
+    }
+
+    /// Where the header's What's New pill is: behind the mark, peeking out, or out.
+    enum WhatsNewStage { case hidden, peek, out }
+
+    /// The room the title gives the pill while it's out.
+    private var whatsNewRoom: CGFloat {
+        whatsNewStage == .out ? max(0, whatsNewButtonWidth - 2 + 6) : 0
+    }
+    private var whatsNewAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4, bounce: 0.2)
+    }
+
     /// One of the holiday mark's layers, centered on the mark (Retro's are templates, tinted
     /// by the caller; the others keep their own colors).
     @ViewBuilder
@@ -759,6 +900,15 @@ struct ContentView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+    }
+
+    /// Light or dark as the phone is set, whatever this screen was told: the screen's traits
+    /// aren't overridden as a window's are. The environment's scheme while the screen
+    /// follows the phone, otherwise.
+    private var deviceColorScheme: ColorScheme {
+        let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+        guard let style = screen?.traitCollection.userInterfaceStyle, style != .unspecified else { return colorScheme }
+        return style == .dark ? .dark : .light
     }
 
     private func collapseAllCards() {
@@ -790,12 +940,27 @@ struct ContentView: View {
                 }
             weekNavButton("chevron.right", label: "Next week") { changeWeek(by: 1) }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { weekButtonsWidth = $0 }
         .foregroundStyle(Theme.textPrimary(theme, rc: rc))
-        .padding(.horizontal, 6)
-        .modifier(BarBackground(shape: Theme.isRetro(theme) ? AnyShape(RoundedRectangle(cornerRadius: 2)) : AnyShape(Capsule()),
-                                theme: theme, rc: rc))
+        // A little wider while the house is in it; once the house has let go, the edge it
+        // left through draws in, slowly, the buttons and the other edge staying where they
+        // are. Only its glass's shape changes, never its layout: as padding, the row
+        // re-centering it hitched (and both edges at once on a quick spring read as a
+        // twitch, 2026-11-14).
+        .padding(.horizontal, 6 + Self.selectorSpare)
+        .modifier(SelectorBackground(inset: (leading: selectorDrawnIn == .left ? Self.selectorSpare : 0,
+                                             trailing: selectorDrawnIn == .right ? Self.selectorSpare : 0),
+                                     theme: theme, rc: rc, glassNamespace: barGlass))
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: selectorDrawnIn)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
+
+    /// How much wider the selector is on this week, given up once the house is out.
+    private static let selectorSpare: CGFloat = 6
+
+    /// The selector's edge drawn in once the house has let go through it; it widens again
+    /// as the house rejoins.
+    private var selectorDrawnIn: BarHouseSide? { barHouseSide == nil || houseAttached ? nil : houseStageSide }
 
     private func weekNavButton(_ symbol: String, label: String, color: Color? = nil,
                                action: @escaping () -> Void) -> some View {
@@ -814,12 +979,13 @@ struct ContentView: View {
 
     /// The bottom row of buttons, each with its own background (Liquid Glass, or Retro's
     /// boxes) and no bar behind them, so taps between them reach the cards. They sit
-    /// above the home indicator.
+    /// above the home indicator, or 8pt above the screen's edge on a phone with a Home
+    /// button (no indicator), as far as the space above them.
     private var bottomBar: some View {
         bottomBarContent
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, homeIndicatorInset)
+            .padding(.bottom, max(homeIndicatorInset, 8))
     }
 
     /// The keyboard's Done, at the right just above the keyboard.
@@ -892,8 +1058,14 @@ struct ContentView: View {
 
             // The week selector (the Tasquel mark at the top goes back to this week, as Go
             // to Today here did; today's date is in the day strip). It takes the room it can.
-            weekNavigationBar
-                .layoutPriority(1)
+            // The house grows out of the selector's glass, a drop of it pulling away
+            // (`GlassEffectContainer` blends glass this close; `glassEffectID` morphs it).
+            GlassEffectContainer(spacing: houseAttached && !reduceMotion ? Self.houseBlend : 0) {
+                weekNavigationBar
+                    .background { barHouse }
+            }
+            .layoutPriority(1)
+            .onChange(of: barHouseSide) { _, side in moveBarHouse(to: side) }
 
             Spacer(minLength: 4)
 
@@ -904,7 +1076,7 @@ struct ContentView: View {
             ZStack(alignment: .trailing) {
                 editLabel(editing: false).hidden()
                 editLabel(editing: true).hidden()
-                if !isPastWeek {
+                if !shownWeekIsPast {
                     Button {
                         withAnimation(.snappy(duration: 0.25)) { isEditing.toggle() }
                     } label: {
@@ -926,12 +1098,176 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isEditing ? "Done Editing" : "Edit")
+                    .transition(.opacity)
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: shownWeekIsPast)
             .frame(minWidth: Self.barButtonSize, minHeight: Self.barButtonSize, alignment: .trailing)
             .fixedSize()
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { editSideWidth = $0 }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { barContentWidth = $0 }
+    }
+
+    /// The week on screen: the one arriving while paging, else the selected one.
+    private var shownWeek: Week? { arrivingWeek ?? store.selectedWeek }
+    private var shownWeekIsPast: Bool { shownWeek.map(store.isPastWeek) ?? false }
+
+    /// Where the bar's house is: left of the selector on a later week, at Edit's place on an
+    /// earlier one (Edit isn't there then), none on this week.
+    private enum BarHouseSide { case left, right }
+    /// Inside the selector's middle, just inside its edge, at its place.
+    private enum BarHouseStage { case inside, atEdge, out }
+    private var barHouseSide: BarHouseSide? {
+        guard store.persistenceError == nil, let week = shownWeek else { return nil }
+        return store.isFutureWeek(week) ? .left : store.isPastWeek(week) ? .right : nil
+    }
+
+    /// How near the house's glass blends with the selector's while attached: a neck of
+    /// glass between them that stretches and then lets go.
+    private static let houseBlend: CGFloat = 20
+
+    /// Between Settings and the selector (drawn in), ~44pt on an SE, ~58 on a 17 Pro.
+    private var barHouseRoom: CGFloat {
+        barContentWidth / 2 - weekButtonsWidth / 2 - 6 - Self.barButtonSize
+    }
+
+    /// The bar's other buttons' size at Edit's place. On the left, that size where it fits,
+    /// smaller where it doesn't.
+    private func barHouseSize(_ side: BarHouseSide) -> CGFloat {
+        guard side == .left else { return Self.barButtonSize }
+        return min(Self.barButtonSize, max(36, barHouseRoom - 2 * 6))
+    }
+
+    /// From the selector's middle to the house's middle: left, centered in the room between
+    /// Settings and the selector; right, at the row's end where Edit is.
+    private func barHouseOffset(_ side: BarHouseSide) -> CGFloat {
+        switch side {
+        case .left: return Self.barButtonSize + barHouseRoom / 2 - barContentWidth / 2
+        case .right: return barContentWidth / 2 - Self.barButtonSize / 2
+        }
+    }
+
+    /// The bar's house's moves (the user's design, 2026-11-14). Out: from the selector's
+    /// middle it zips inside to the selector's edge on its side, then pushes out through it,
+    /// growing, joined by a neck of glass; once out the neck lets go and the selector draws
+    /// in. Back: it rejoins the selector at that edge and slips into the middle. To the
+    /// other side: into the middle, then out the other way. Reduce Motion: it fades in
+    /// and out in place.
+    private func moveBarHouse(to side: BarHouseSide?) {
+        houseMoveGeneration += 1
+        let generation = houseMoveGeneration
+        func later(_ delay: Double, _ step: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard generation == houseMoveGeneration else { return }
+                step()
+            }
+        }
+        if reduceMotion {
+            if let side { houseStageSide = side }
+            houseAttached = side == nil
+            withAnimation(.easeInOut(duration: 0.2)) { houseStage = side == nil ? .inside : .out }
+            return
+        }
+        withAnimation(.easeIn(duration: 0.15)) { houseAttached = true }
+        func comeOut(_ side: BarHouseSide) {
+            houseStageSide = side  // in the middle, so nothing moves
+            withAnimation(.easeIn(duration: 0.12)) { houseStage = .atEdge }
+            switch side {
+            case .left:
+                later(0.12) { withAnimation(.spring(duration: 0.45, bounce: 0.15)) { houseStage = .out } }
+                later(0.45) { withAnimation(.easeOut(duration: 0.2)) { houseAttached = false } }
+            case .right:
+                // Out of the selector slowly, then quickly over to Edit's place, easing out
+                // (the user's ask, 2026-11-14: one spring went too fast). One curve, slow at
+                // first: as two steps, the second starting on a timer, it hitched between them.
+                later(0.12) { withAnimation(.timingCurve(0.6, 0, 0.2, 1, duration: 0.6)) { houseStage = .out } }
+                // As it pulls away (~0.15s into the curve), as on the left: the selector drawing
+                // in once the house had settled, half a second after it let go, looked like a
+                // twitch of its own (the user, 2026-11-14).
+                later(0.12 + 0.16) { withAnimation(.easeOut(duration: 0.2)) { houseAttached = false } }
+            }
+        }
+        switch (side, houseStage) {
+        case (nil, .inside):
+            break
+        case (nil, _):
+            withAnimation(.spring(duration: 0.3, bounce: 0)) { houseStage = .atEdge }
+            later(0.22) { withAnimation(.easeOut(duration: 0.12)) { houseStage = .inside } }
+        case (let side?, .inside):
+            comeOut(side)
+        case (let side?, _):
+            withAnimation(.easeInOut(duration: 0.2)) { houseStage = .inside }
+            later(0.2) { comeOut(side) }
+        }
+    }
+
+    /// The house's size at a stage: 70% inside the selector, growing to full as it comes out.
+    private func barHouseDrawnSize(_ stage: BarHouseStage, _ side: BarHouseSide) -> CGFloat {
+        stage == .inside || stage == .atEdge ? barHouseSize(side) * 0.7 : barHouseSize(side)
+    }
+
+    /// From the selector's middle to the house's middle at a stage.
+    private func barHouseX(_ stage: BarHouseStage, _ side: BarHouseSide) -> CGFloat {
+        let direction: CGFloat = side == .left ? -1 : 1
+        // The selector's half width while the house is in it.
+        let wideHalf = weekButtonsWidth / 2 + 6 + Self.selectorSpare
+        let size = barHouseDrawnSize(stage, side)
+        switch stage {
+        case .inside: return 0
+        case .atEdge: return direction * (wideHalf - size / 2 - 3)
+        case .out: return barHouseOffset(side)
+        }
+    }
+
+    /// Back to this week, in the bottom bar (the user asked, 2026-11-14): on a later week it
+    /// comes out of the selector to its left, on an earlier week to the right, all the way
+    /// to where Edit is, and on this week it's back inside the selector (`moveBarHouse`).
+    /// Green like the header's house; Retro's box like Settings, hidden behind the selector.
+    /// Always there, hidden inside the selector on this week (to VoiceOver and taps too): a
+    /// glass container drops a glass view the moment it's removed, so the house couldn't go
+    /// back in if it were removed. Placed by layout (`position`), not `offset`: VoiceOver's
+    /// stand-in button takes the layout's place.
+    private var barHouse: some View {
+        let side = houseStageSide
+        let stage = reduceMotion ? .out : houseStage
+        let size = barHouseDrawnSize(stage, side)
+        let x = barHouseX(stage, side)
+        return GeometryReader { selector in
+            ZStack {
+                // VoiceOver's and UI tests' button, where the house is once out (the glass
+                // house has none of its own: always there, it couldn't be taken out of the
+                // tree, and a stand-in for it stayed in the selector's middle).
+                if barHouseSide != nil {
+                    Button { changeWeek(to: today) } label: {
+                        Color.clear
+                            .frame(width: max(barHouseSize(side), 44), height: max(barHouseSize(side), 44))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to This Week")
+                    .accessibilityIdentifier("Bar Back to This Week")
+                    .position(x: selector.size.width / 2 + barHouseOffset(side), y: selector.size.height / 2)
+                }
+                Button { changeWeek(to: today) } label: {
+                    // Drawn at its full size and scaled, so it grows smoothly (a font size jumps).
+                    BarHouseIcon(size: Self.barIconSize * barHouseSize(side) / Self.barButtonSize, color: Theme.expirySet(theme, rc: rc),
+                                 isOut: houseStage == .out)
+                        .scaleEffect(size / barHouseSize(side))
+                        .frame(width: size, height: size)
+                        .modifier(BarBackground(shape: Self.barButtonShape(theme), theme: theme, rc: rc,
+                                                glassID: "house", glassNamespace: barGlass))
+                        // A full 44pt to tap, also where it's drawn smaller.
+                        .frame(width: max(size, 44), height: max(size, 44))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hiddenFromVoiceOver()
+                .position(x: selector.size.width / 2 + x, y: selector.size.height / 2)
+            }
+        }
+        .opacity(reduceMotion && houseStage != .out ? 0 : 1)
+        .allowsHitTesting(barHouseSide != nil)
     }
 
     /// Edit or Done in words, not an icon: "Edit" says what it does, and a pencil is each
@@ -958,11 +1294,21 @@ struct ContentView: View {
             .font(.system(size: weekTitleSize, weight: .bold, design: Theme.isRetro(theme) ? .monospaced : .default))
             .lineLimit(1)
             .minimumScaleFactor(0.6)
-            // Clear of the buttons on either side (the mark is 44pt wide).
-            .padding(.leading, markLeadingInset + 44)
+            // Clear of the buttons on either side (the mark is 44pt wide), and of What's New
+            // while it's out (the title moves over for it, shrinking if it must).
+            .animation(whatsNewAnimation) { title in
+                title.padding(.leading, markLeadingInset + 44 + whatsNewRoom)
+            }
             .padding(.trailing, 56)
             .frame(maxWidth: .infinity)
-            .overlay(alignment: .leading) { homeButton }
+            .overlay(alignment: .leading) {
+                // The turkey and What's New first, so the mark is drawn over them.
+                ZStack(alignment: .leading) {
+                    turkeyCameo
+                    whatsNewButton
+                    homeButton
+                }
+            }
             .overlay(alignment: .trailing) { expandAllButton }
             .background { WindowControlsInsetReader { windowControlsInset = $0 } }
             .padding(.top, 8)
@@ -989,13 +1335,10 @@ struct ContentView: View {
                 // environment. VoiceOver reads the day aloud.)
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .padding(.horizontal, 16)
-            if isPastWeek {
-                // Past weeks can't be changed; say so before a tap does nothing.
-                Label(Theme.isRetro(theme) ? "PAST_WEEK // READ_ONLY" : "Past week · view only", systemImage: "lock")
-                    .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
-                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
-                    .padding(.bottom, -4)
-            } else if isEditing {
+            // No "Past week · view only" line (the user's call, 2026-11-14: it pushed the cards
+            // down); the house at Edit's place, the dimmed checkboxes and VoiceOver's title
+            // say it.
+            if isEditing && !isPastWeek {
                 Text(editModeHint)
                     .font(Theme.isRetro(theme) ? .system(.caption, design: .monospaced) : .caption)
                     .foregroundStyle(Theme.textSecondary(theme, rc: rc))
@@ -1025,6 +1368,7 @@ struct ContentView: View {
         let title = arrivingWeek?.displayTitle ?? store.selectedWeek?.displayTitle ?? "Tasquel"
         return Text(Theme.isRetro(theme) ? "> \(title)_" : title)
             .accessibilityLabel(title)
+            .accessibilityValue(shownWeekIsPast ? "Past week, view only" : "")
             .accessibilityAddTraits(.isHeader)
             .accessibilityActions {
                 if store.lastDelete != nil { Button("Undo delete") { undoDelete() } }
@@ -1236,8 +1580,32 @@ struct ContentView: View {
         return categoryKeys(for: week.categories).values.contains(where: expandedCategoryKeys.contains)
     }
 
-    /// Cards in display order: any reordering from expansion first, then the rest.
+    /// Cards in display order: any reordering from expansion first, then the rest. The
+    /// viewed week keeps its snapshot (`sortedNames`), so cards don't move while it's used; a
+    /// week beside it is laid out as it will be once it's the viewed week (its own sort,
+    /// open cards reopened on it as `refreshSortOrder` will), so nothing moves when it lands.
+    /// (With the viewed week's snapshot, cards it doesn't have went last on the page sliding
+    /// in, then jumped to their places once it stopped; the user saw it, 2026-11-14.)
     private func gridEntries(for week: Week) -> [CategoryGridEntry] {
+        let isViewed = week.id == store.selectedWeek?.id
+        let names = isViewed ? sortedNames : sortNames(for: week)
+        let entries = baseGridEntries(for: week, sortedBy: names)
+        let order: [CategoryLayoutKey]
+        if isViewed {
+            order = liveCardOrder ?? categoryDisplayOrder
+        } else if categoryDisplayOrder.isEmpty || names == sortedNames {
+            order = categoryDisplayOrder
+        } else {
+            order = reopenedOrder(entries, open: expandedCategoryKeys)
+        }
+        let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let ordered = order.compactMap { entriesByKey[$0] }
+        let orderedKeys = Set(ordered.map(\.id))
+        return ordered + entries.filter { !orderedKeys.contains($0.id) }
+    }
+
+    /// A week's cards sorted by `names` (empty: the week's own order), pinned cards first.
+    private func baseGridEntries(for week: Week, sortedBy names: [String]) -> [CategoryGridEntry] {
         let keysByID = categoryKeys(for: week.categories)
         var entries = week.categories.compactMap { category in
             keysByID[category.id].map { CategoryGridEntry(id: $0, category: category) }
@@ -1245,19 +1613,32 @@ struct ContentView: View {
         // Pinned cards come first, in the week's own order whatever the sort.
         let pinned = entries.filter(\.category.isPinned)
         entries.removeAll(where: \.category.isPinned)
-        if !sortedNames.isEmpty {
+        if !names.isEmpty {
             // Names not in the snapshot (added since) go last, in their arranged order.
-            let rank = Dictionary(sortedNames.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            let rank = Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
             entries = entries.enumerated()
                 .sorted { (rank[$0.element.id.name] ?? Int.max, $0.offset) < (rank[$1.element.id.name] ?? Int.max, $1.offset) }
                 .map(\.element)
         }
-        entries = pinned + entries
-        let entriesByKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
-        let order = week.id == store.selectedWeek?.id ? (liveCardOrder ?? categoryDisplayOrder) : categoryDisplayOrder
-        let ordered = order.compactMap { entriesByKey[$0] }
-        let orderedKeys = Set(ordered.map(\.id))
-        return ordered + entries.filter { !orderedKeys.contains($0.id) }
+        return pinned + entries
+    }
+
+    /// The names in sort order a week gets when it becomes the viewed one (empty: manual).
+    private func sortNames(for week: Week) -> [String] {
+        store.categorySort == .manual ? [] : store.sortedCategories(week.categories).map(\.name)
+    }
+
+    /// The display order `reopenCards` would give these entries: each open card opened in
+    /// turn, moved to the start of its row.
+    private func reopenedOrder(_ entries: [CategoryGridEntry], open keys: Set<CategoryLayoutKey>) -> [CategoryLayoutKey] {
+        var order = entries.map(\.id)
+        let pinned = Set(entries.filter(\.category.isPinned).map(\.id))
+        var opened: Set<CategoryLayoutKey> = []
+        for key in entries.map(\.id) where keys.contains(key) {
+            if let moved = orderOpening(key, in: order, pinned: pinned, open: opened) { order = moved }
+            opened.insert(key)
+        }
+        return order
     }
 
     /// Re-sorts at the calm moments `sortedNames` describes.
@@ -1298,8 +1679,7 @@ struct ContentView: View {
 
     /// Takes the current sort order (see `sortedNames`).
     private func refreshSortOrder() {
-        let week = store.selectedWeek
-        let names = store.categorySort == .manual ? [] : week.map { store.sortedCategories($0.categories).map(\.name) } ?? []
+        let names = store.selectedWeek.map(sortNames) ?? []
         guard names != sortedNames else { return }
         sortedNames = names
         // Open cards moved to the start of their rows go where the new order puts them
@@ -1339,22 +1719,28 @@ struct ContentView: View {
 
     private func expandCategory(_ key: CategoryLayoutKey, in week: Week) {
         let entries = gridEntries(for: week)
-        var order = entries.map(\.id)
         let pinned = Set(entries.filter(\.category.isPinned).map(\.id))
-        let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || expandedCategoryKeys.contains($0) },
-                                           columns: gridColumns)
-        if let row = rows.first(where: { $0.dropFirst().contains { order[$0] == key } }),
-           let index = row.first(where: { order[$0] == key }) {
-            // Never ahead of a pinned card: they keep the start of the grid.
-            let slot = pinned.contains(key) ? row[0] : (row.first { !pinned.contains(order[$0]) } ?? index)
-            if slot < index {
-                order.remove(at: index)
-                order.insert(key, at: slot)
-                categoryDisplayOrder = order
-            }
+        if let moved = orderOpening(key, in: entries.map(\.id), pinned: pinned, open: expandedCategoryKeys) {
+            categoryDisplayOrder = moved
         }
         expandedCategoryKeys.insert(key)
         lastToggledCategory = key
+    }
+
+    /// The order with `key` opened: moved to the start of its row (never ahead of a pinned
+    /// card: they keep the start of the grid), or nil where it stays. `open`: the cards
+    /// already open, each taking a full row.
+    private func orderOpening(_ key: CategoryLayoutKey, in order: [CategoryLayoutKey],
+                              pinned: Set<CategoryLayoutKey>, open: Set<CategoryLayoutKey>) -> [CategoryLayoutKey]? {
+        let rows = CategoryGridLayout.rows(fullWidth: order.map { usesSingleColumn || open.contains($0) }, columns: gridColumns)
+        guard let row = rows.first(where: { $0.dropFirst().contains { order[$0] == key } }),
+              let index = row.first(where: { order[$0] == key }) else { return nil }
+        let slot = pinned.contains(key) ? row[0] : (row.first { !pinned.contains(order[$0]) } ?? index)
+        guard slot < index else { return nil }
+        var moved = order
+        moved.remove(at: index)
+        moved.insert(key, at: slot)
+        return moved
     }
 
     // MARK: - Card Dragging
@@ -1754,6 +2140,68 @@ private struct PagerTrack<Content: View>: View {
 
 /// The events panel opening and closing in the bottom bar: it fades while its height
 /// grows from, or shrinks to, nothing, clipped so it never covers the bar's buttons.
+/// The bar's green house, faded while it's inside the selector: in once it's past the
+/// selector's icons, out before it reaches them going back.
+private struct BarHouseIcon: View {
+    let size: CGFloat
+    let color: Color
+    let isOut: Bool
+
+    var body: some View {
+        Image(systemName: "house.fill")
+            .font(.system(size: size))
+            .foregroundStyle(color)
+            .opacity(isOut ? 1 : 0)
+            .animation(isOut ? .easeIn(duration: 0.14).delay(0.16) : .easeOut(duration: 0.14), value: isOut)
+    }
+}
+
+/// A capsule (or Retro's box, `cornerRadius`) inset from its frame's sides, so it can draw
+/// in on one side, animated, without the view's layout changing.
+struct SideInsetCapsule: Shape {
+    var leading: CGFloat
+    var trailing: CGFloat
+    var cornerRadius: CGFloat?
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(leading, trailing) }
+        set { leading = newValue.first; trailing = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let inner = CGRect(x: rect.minX + leading, y: rect.minY, width: max(rect.width - leading - trailing, rect.height),
+                           height: rect.height)
+        if let cornerRadius { return Path(roundedRect: inner, cornerRadius: cornerRadius) }
+        return Capsule().path(in: inner)
+    }
+}
+
+/// The week selector's background: `BarBackground`'s, drawn in by `inset` on either side.
+private struct SelectorBackground: ViewModifier {
+    let inset: (leading: CGFloat, trailing: CGFloat)
+    let theme: AppearanceMode
+    let rc: RetroColor
+    let glassNamespace: Namespace.ID
+
+    func body(content: Content) -> some View {
+        let shape = SideInsetCapsule(leading: inset.leading, trailing: inset.trailing,
+                                     cornerRadius: Theme.isRetro(theme) ? 2 : nil)
+        if Theme.isRetro(theme) {
+            content
+                .background {
+                    shape.fill(Theme.cardFill(theme))
+                        .overlay(shape.stroke(Theme.cardBorder(theme, rc: rc), lineWidth: 1))
+                }
+                .contentShape(shape)
+        } else {
+            content
+                .glassEffect(.regular.interactive(), in: shape)
+                .glassEffectID("selector", in: glassNamespace)
+                .contentShape(shape)
+        }
+    }
+}
+
 /// A bottom bar button's own background: Liquid Glass, tinted when it's on, or in Retro a
 /// bordered box.
 private struct BarBackground: ViewModifier {
@@ -1763,14 +2211,19 @@ private struct BarBackground: ViewModifier {
     var tint: Color? = nil
     /// False where the view draws its own Retro box (Edit).
     var isRetroBoxed = true
+    /// For glass that morphs with other glass in a `GlassEffectContainer`.
+    var glassID: String? = nil
+    var glassNamespace: Namespace.ID? = nil
 
     init<S: Shape>(shape: S, theme: AppearanceMode, rc: RetroColor, tint: Color? = nil,
-                   isRetroBoxed: Bool = true) {
+                   isRetroBoxed: Bool = true, glassID: String? = nil, glassNamespace: Namespace.ID? = nil) {
         self.shape = AnyShape(shape)
         self.theme = theme
         self.rc = rc
         self.tint = tint
         self.isRetroBoxed = isRetroBoxed
+        self.glassID = glassID
+        self.glassNamespace = glassNamespace
     }
 
     func body(content: Content) -> some View {
@@ -1787,9 +2240,16 @@ private struct BarBackground: ViewModifier {
             }
         } else {
             let glass = tint.map { Glass.regular.tint($0) } ?? .regular
-            content
-                .glassEffect(glass.interactive(), in: shape)
-                .contentShape(shape)
+            if let glassID, let glassNamespace {
+                content
+                    .glassEffect(glass.interactive(), in: shape)
+                    .glassEffectID(glassID, in: glassNamespace)
+                    .contentShape(shape)
+            } else {
+                content
+                    .glassEffect(glass.interactive(), in: shape)
+                    .contentShape(shape)
+            }
         }
     }
 }

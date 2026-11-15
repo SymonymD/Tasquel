@@ -120,6 +120,17 @@ enum Theme {
     static func accent(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         isSeasonal(m) ? season.accent.color : isRetro(m) ? retroPalette(rc).bright : .blue
     }
+    /// Today's date on its day pill: the accent, but a deeper blue in light mode (System,
+    /// Light), where the system blue is about 4:1 on the frosted header and small bold text
+    /// needs 4.5:1 (review finding 22). The pill's outline stays the accent.
+    static func todayDate(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        switch m {
+        case .system, .light: Color(UIColor { $0.userInterfaceStyle == .dark ? .systemBlue : todayDateLight })
+        case .dark, .retro, .seasonal: accent(m, rc: rc)
+        }
+    }
+    /// #0060DF: 5.6:1 on white.
+    static let todayDateLight = UIColor(red: 0, green: 0x60 / 255.0, blue: 0xDF / 255.0, alpha: 1)
     /// Words and icons on a filled accent (a button, a picked day): dark where the accent is
     /// light (Retro, Seasonal at night), else white.
     static func onAccent(_ m: AppearanceMode) -> Color {

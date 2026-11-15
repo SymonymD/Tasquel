@@ -283,6 +283,141 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Bank"].waitForExistence(timeout: 2), "Done keeps the name")
     }
 
+    /// A date from the type and mode popup while adding a task (watching someone add a
+    /// birthday, 2026-11-14): the calendar opens in the popup, the date shows in its Date
+    /// row, a one-time task dated after this week turns Carry Over, and the task added has
+    /// the date as its last day.
+    @MainActor
+    func testDateFromTheOptionsPopup() throws {
+        let app = launchFresh(["-isolatedDataID", "date-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Birthday party")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New task options:")).firstMatch.tap()
+        let addDate = app.buttons["Add a date"]
+        XCTAssertTrue(addDate.waitForExistence(timeout: 3))
+        app.buttons["One-Time"].firstMatch.tap()
+        addDate.tap()
+        XCTAssertTrue(app.staticTexts["Until"].waitForExistence(timeout: 3), "the calendar opens in the popup")
+
+        // Ten days on: after this week.
+        let day = Calendar.current.date(byAdding: .day, value: 10, to: Date())!
+        if !Calendar.current.isDate(day, equalTo: Date(), toGranularity: .month) { app.buttons["Next month"].tap() }
+        app.buttons[day.formatted(.dateTime.weekday(.wide).month(.wide).day())].tap()
+        app.buttons["Set"].tap()
+        XCTAssertTrue(app.staticTexts["Until"].waitForNonExistence(timeout: 3), "back to the options")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Date: ")).firstMatch.exists, "the calendar says the date")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Carries over until ")).firstMatch.exists, "and so does the hint")
+        XCTAssertTrue(app.buttons["Add Task"].firstMatch.isHittable, "Add Task stays in the popover, keyboard and all")
+        XCTAssertTrue(app.buttons["Carry Over"].firstMatch.isSelected, "a one-time task dated after this week carries over")
+        // Picked back to One-Time, it warns: gone before its date.
+        app.buttons["One-Time"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Gone after this week")).firstMatch.waitForExistence(timeout: 2))
+        app.buttons["Carry Over"].firstMatch.tap()
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "date-in-popup"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        app.buttons["Add Task"].firstMatch.tap()
+        let checkbox = app.buttons.matching(NSPredicate(format: "label == %@ AND value BEGINSWITH %@", "Complete Birthday party", "expires in 10 days")).firstMatch
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 3), "added with the date as its last day")
+
+        // The calendar mark after its name opens the date's calendar; Cancel closes it all.
+        let mark = app.buttons["Change date of Birthday party"]
+        XCTAssertTrue(mark.waitForExistence(timeout: 3), "the mark is a button")
+        mark.tap()
+        XCTAssertTrue(app.staticTexts["Until"].waitForExistence(timeout: 3), "straight to the calendar")
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Until"].waitForNonExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["DAY"].exists, "closed, not back to the options")
+
+        // A day picked instead takes the date away: a day and a date are one choice.
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:"))
+        let row = app.staticTexts["Birthday party"].frame
+        options.allElementsBoundByIndex.min { abs($0.frame.midY - row.midY) < abs($1.frame.midY - row.midY) }!.tap()
+        app.buttons["Saturday"].firstMatch.tap()
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Change day of Birthday party"].waitForExistence(timeout: 3), "a day now, no date")
+        XCTAssertFalse(app.buttons["Change date of Birthday party"].exists)
+    }
+
+    /// A task given a day stays where it is while its options are open, and moves into place
+    /// (tasks with a day first) once they close (it jumped while being chosen; 2026-11-14).
+    @MainActor
+    func testOrderHoldsWhileOptionsAreOpen() throws {
+        let app = launchFresh(["-isolatedDataID", "orderhold-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Bank\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Gym\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+        XCTAssertLessThan(app.staticTexts["Bank"].frame.minY, app.staticTexts["Gym"].frame.minY)
+
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:"))
+        let gym = app.staticTexts["Gym"].frame
+        options.allElementsBoundByIndex.min { abs($0.frame.midY - gym.midY) < abs($1.frame.midY - gym.midY) }!.tap()
+        app.buttons["Monday"].firstMatch.tap()
+        sleep(1)
+        XCTAssertLessThan(app.staticTexts["Bank"].frame.minY, app.staticTexts["Gym"].frame.minY, "still below while choosing")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+        XCTAssertLessThan(app.staticTexts["Gym"].frame.minY, app.staticTexts["Bank"].frame.minY, "first once closed: a task with a day")
+    }
+
+    /// A task's date mark tapped while another task's name is being edited: the name saves,
+    /// the keyboard closes, then the calendar opens (it opened with the other field still
+    /// editable under it; the user, 2026-11-14).
+    @MainActor
+    func testMarkEndsRenameFirst() throws {
+        let app = launchFresh(["-isolatedDataID", "markrename-\(UUID().uuidString)"])
+        let openErrands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+        XCTAssertTrue(openErrands.waitForExistence(timeout: 5))
+        openErrands.tap()
+        let addTask = app.addTaskField
+        XCTAssertTrue(addTask.waitForExistence(timeout: 3))
+        addTask.tap()
+        addTask.typeText("Gifts\n")
+        Thread.sleep(forTimeInterval: 0.4)
+        addTask.typeText("Bank\n")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+
+        // Gifts gets a date from its options.
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Task options:"))
+        let gifts = app.staticTexts["Gifts"].frame
+        options.allElementsBoundByIndex.min { abs($0.frame.midY - gifts.midY) < abs($1.frame.midY - gifts.midY) }!.tap()
+        app.buttons["Add a date"].tap()
+        let day = Calendar.current.date(byAdding: .day, value: 10, to: Date())!
+        if !Calendar.current.isDate(day, equalTo: Date(), toGranularity: .month) { app.buttons["Next month"].tap() }
+        app.buttons[day.formatted(.dateTime.weekday(.wide).month(.wide).day())].tap()
+        app.buttons["Set"].tap()
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+
+        // Renaming Bank, then Gifts' calendar mark.
+        app.staticTexts["Bank"].tap()
+        let field = app.textFields["Task name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.typeText(" run")
+        app.buttons["Change date of Gifts"].tap()
+        XCTAssertTrue(app.staticTexts["Until"].waitForExistence(timeout: 3), "the calendar opens")
+        XCTAssertTrue(app.staticTexts["Bank run"].exists, "the name being edited was saved")
+        XCTAssertFalse(field.exists, "its field is gone")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "and the keyboard closed")
+        app.buttons["Cancel"].firstMatch.tap()
+    }
+
     /// In a card's edit mode the clock takes the type and mode's place: it sets a task's
     /// last day (a date or a week), shows it, and takes it away again.
     @MainActor
@@ -319,7 +454,7 @@ final class GoalUITests: XCTestCase {
 
         // Removed again.
         clock.tap()
-        app.buttons["Remove expiration"].tap()
+        app.buttons["Remove date"].tap()
         XCTAssertTrue(app.staticTexts["Expires"].waitForNonExistence(timeout: 3))
         XCTAssertEqual(clock.label, "Set expiration for Gifts")
 
@@ -371,7 +506,9 @@ final class GoalUITests: XCTestCase {
         }
         pickDay("Party", "Friday")
         pickDay("Gym", "Saturday")
-        XCTAssertTrue(["Friday", "today"].contains(app.staticTexts["Party"].value as? String ?? ""), "\"Friday\" (\"today\" on a Friday)")
+        // "Friday", "today" on a Friday, "Friday, late" after it.
+        let partyDay = app.staticTexts["Party"].value as? String ?? ""
+        XCTAssertTrue(partyDay.hasPrefix("Friday") || partyDay == "today", "Party's day is said (\(partyDay))")
         XCTAssertLessThan(app.staticTexts["Party"].frame.minY, app.staticTexts["Gym"].frame.minY, "Friday before Saturday")
         XCTAssertLessThan(app.staticTexts["Gym"].frame.minY, app.staticTexts["Bank"].frame.minY, "days before no day")
 
@@ -488,7 +625,46 @@ final class GoalUITests: XCTestCase {
         _ = app.settingsButton("How to Use Tasquel")
         help.tap()
         XCTAssertTrue(app.staticTexts["Navigate Weeks"].waitForExistence(timeout: 3))
+        // In tabs: Category Cards shows its own entries; a swipe goes to the next tab.
+        app.buttons["Category Cards"].tap()
+        XCTAssertTrue(app.staticTexts["Close All Cards"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Navigate Weeks"].isHittable, "the first tab's out of view")
+        app.staticTexts["Close All Cards"].swipeLeft()
+        XCTAssertTrue(app.staticTexts["Smart Add"].waitForExistence(timeout: 3), "Tasks")
+        XCTAssertTrue(app.buttons["Tasks"].isSelected)
         XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// After an update (`-demoWhatsNew`), "What's New?" beside the Tasquel mark opens What's
+    /// New; the second time is its last, saying Settings has it, and then it's gone.
+    /// Settings ▸ What's New opens it too.
+    @MainActor
+    func testWhatsNewButtonAndSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-isolatedData", "-demoWhatsNew"]
+        app.launch()
+        if app.staticTexts["Welcome to Tasquel"].waitForExistence(timeout: 3) { app.buttons["Skip"].tap() }
+        let button = app.buttons["What's New?"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        button.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Days for Tasks")).firstMatch
+            .waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["You can also find this anytime in Settings ▸ What's New."].exists)
+        app.buttons["Continue"].tap()
+        XCTAssertTrue(button.waitForExistence(timeout: 3), "still there after once")
+        button.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "That's the last time")).firstMatch
+            .waitForExistence(timeout: 3))
+        app.buttons["Continue"].tap()
+        XCTAssertTrue(button.waitForNonExistence(timeout: 3), "gone after twice")
+
+        app.buttons["Settings"].tap()
+        let row = app.settingsButton("What's New in 1.1")
+        row.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Days for Tasks")).firstMatch
+            .waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Settings ▸ What's New")).firstMatch.exists,
+                       "no note from Settings")
     }
 
     /// Deleting a card's only task while editing it brings the Add task row straight back,

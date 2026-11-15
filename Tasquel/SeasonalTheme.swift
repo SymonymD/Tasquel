@@ -314,13 +314,23 @@ private struct SeededRandom {
 // MARK: - Holiday marks
 
 /// The Tasquel mark's holiday look, in every appearance, by the app's weeks (the week-start
-/// setting): string lights for the week before Christmas's week and Christmas's week, then
-/// confetti for the week after, New Year's Eve's (or, when Christmas's week holds New Year's
-/// Eve too, New Year's Day's). Picked by today.
+/// setting): a turkey's tail fanned out behind it in Thanksgiving's week (`Thanksgiving`:
+/// the US's, or Canada's there); string lights for the week before Christmas's week and
+/// Christmas's week, then confetti for the week after, New Year's Eve's (or, when
+/// Christmas's week holds New Year's Eve too, New Year's Day's). Picked by today. Debug
+/// `-demoHoliday <thanksgiving|holidaySeason|newYear>` shows one on any day.
 enum HolidayMark: String {
-    case holidaySeason, newYear
+    case thanksgiving, holidaySeason, newYear
 
-    static func of(_ day: DayKey, firstWeekday: Int, calendar: Calendar) -> HolidayMark? {
+    static func of(_ day: DayKey, firstWeekday: Int, calendar: Calendar,
+                   region: String? = Locale.current.region?.identifier) -> HolidayMark? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-demoHoliday"), arguments.indices.contains(index + 1) {
+            return HolidayMark(rawValue: arguments[index + 1])
+        }
+        #endif
+        if Thanksgiving.isWeek(of: day, firstWeekday: firstWeekday, calendar: calendar, region: region) { return .thanksgiving }
         let weekStart = { (day: DayKey) in
             DayKey(Week.startOfWeek(containing: day.date(in: calendar), firstWeekday: firstWeekday, calendar: calendar), in: calendar)
         }
@@ -342,11 +352,13 @@ enum HolidayMark: String {
     /// color (tinted to Retro's), clear of the t: the lights hang under the brackets.
     struct Layers: Equatable {
         var behind: String?
-        var front: String
+        var front: String?
     }
 
     func layers(retro: Bool) -> Layers {
         switch (self, retro) {
+        case (.thanksgiving, false): Layers(behind: "ThanksgivingMarkBehind")
+        case (.thanksgiving, true): Layers(front: "ThanksgivingMarkRetro")
         case (.holidaySeason, false): Layers(front: "HolidaySeasonMarkFront")
         case (.newYear, false): Layers(behind: "NewYearMarkBehind", front: "NewYearMarkFront")
         case (.holidaySeason, true): Layers(front: "HolidaySeasonMarkRetro")

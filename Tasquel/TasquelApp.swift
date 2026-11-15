@@ -17,6 +17,7 @@ struct TasquelApp: App {
     init() {
         ExpiryNotifications.shared.start()
         RetroCaret.install()
+        EscapeKey.install()  // Escape cancels a rename
     }
 
     var body: some Scene {

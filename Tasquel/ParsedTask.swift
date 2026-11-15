@@ -23,6 +23,13 @@ struct ParsedTask: Equatable {
     var items: [String] = []
     /// The one weekday the words name ("on Friday", "every Monday"), 1 Sunday … 7 Saturday.
     var day: Int?
+    /// A date picked in the type and mode popup: the task's last day (`expiresOn`), a whole
+    /// week's with `lastDayIsWeek`.
+    var lastDay: DayKey?
+    var lastDayIsWeek = false
+    /// The mode was picked in the type and mode popup: the date's rule doesn't change it (a
+    /// One-Time picked after the date stays One-Time, with its warning).
+    var keepsMode = false
 }
 
 /// Turns typed words into a task. Nil when the words can't be worked out, in which case
@@ -50,6 +57,24 @@ extension ChecklistStore {
         guard !title.isEmpty, weekStart == nil || selectedWeek?.startDay == weekStart else { return nil }
         var task = ChecklistTask(title: title, mode: parsed.mode, taskType: parsed.type)
         task.dayOfWeek = parsed.day.flatMap { (1...7).contains($0) ? $0 : nil }
+        if let lastDay = parsed.lastDay {
+            task.expiresOn = lastDay
+            task.expirySetOn = currentDay
+            task.expiresWithWeek = parsed.lastDayIsWeek
+            // A date's rules, here for every way a task is added with one (the add row,
+            // Smart Add): a one-time task dated after its week carries over until then, and a
+            // date inside the week is its day (as `setTaskDate`).
+            if let start = selectedWeek?.startDay {
+                if !parsed.keepsMode { task.mode = ChecklistTask.dateMode(task.mode, lastDay: lastDay, weekStart: start) }
+                if let weekday = ChecklistTask.dateWeekday(lastDay, wholeWeek: parsed.lastDayIsWeek, weekStart: start, calendar: calendar) {
+                    task.dayOfWeek = weekday
+                } else if task.mode != .repeating {
+                    // A later week's date is its day: no day this week (a day and a date are
+                    // one choice, except a repeating task's day "until" its date).
+                    task.dayOfWeek = nil
+                }
+            }
+        }
         switch parsed.type {
         case .goal:
             // The unit is kept even without an amount, ready for the target to be typed.
@@ -90,6 +115,8 @@ enum TaskTextHints {
     static func refine(_ parsed: ParsedTask, from text: String) -> ParsedTask {
         var task = parsed
         let lower = text.lowercased()
+        // Amounts are found without numbers that name things ("Exam 3", "chapter 4 notes").
+        let amounts = withoutLabelNumbers(lower)
         // "Call Mom on Friday", "Gym every Monday": the task is for that day.
         if task.day == nil { task.day = weekdayNamed(lower) }
         var matched = true
@@ -102,7 +129,7 @@ enum TaskTextHints {
         let list = colonList(text)
         // "Meditate 10 min daily": the week's total, 70 minutes, even if the parser found
         // the day's amount.
-        if list == nil, task.type != .list, let daily = dailyAmount(lower) {
+        if list == nil, task.type != .list, let daily = dailyAmount(amounts) {
             task.type = .goal
             task.goalTarget = daily.value
             task.goalKind = daily.kind
@@ -113,7 +140,7 @@ enum TaskTextHints {
             if !matched { task.mode = .repeating }
             task.title = title(task.title, without: daily.phrase, unit: daily.unit)
             matched = true
-        } else if list == nil, task.type != .list, let sessions = sessionAmount(lower) {
+        } else if list == nil, task.type != .list, let sessions = sessionAmount(amounts) {
             // "Gym 3 times 45 min": 135 minutes, 45 at a time, over 3 days. Repeating only if
             // the words say how often ("3 times a week"), which the schedule rules read.
             task.type = .goal
@@ -128,7 +155,7 @@ enum TaskTextHints {
             matched = true
         }
         // "3x per week": a goal of 3, "daily" one of 7, unless the parser already found an amount.
-        if list == nil, let count = goalCount(lower), task.type != .list,
+        if list == nil, let count = goalCount(amounts), task.type != .list,
            task.type != .goal || task.goalTarget == nil {
             task.type = .goal
             task.goalTarget = Double(count)
@@ -139,7 +166,7 @@ enum TaskTextHints {
         if matched { task.title = cleanTitle(task.title, fallback: text) }
         // "Read 90 pages", "Practice piano 2 hours": a goal of that amount, unless one was found.
         if list == nil, task.type != .list, task.type != .goal || task.goalTarget == nil,
-           let amount = unitAmount(lower) {
+           let amount = unitAmount(amounts) {
             task.type = .goal
             task.goalTarget = amount.value
             task.goalKind = amount.kind
@@ -271,6 +298,18 @@ enum TaskTextHints {
             task.goalDays = nil
             task.type = .checkbox
         }
+        // "Exam 3", "chapter 4", "week 2": a number that names the thing, not an amount to
+        // reach (the model made "Exam 3" a goal of 3 named "Exam", and "exam 1" and "exam 2"
+        // two "Exam"s; 2026-11-14). Only when the rules find no amount in the words ("3x",
+        // "20 pages", "10 min daily" still make goals); the name keeps the number.
+        if task.type == .goal, hasLabelNumber(lower), case let rest = withoutLabelNumbers(lower),
+           !hasAmount(rest), goalCount(rest) == nil {
+            task.goalTarget = nil
+            task.goalStep = nil
+            task.goalDays = nil
+            task.type = .checkbox
+            task.title = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         // `refine` runs after, so a schedule it reads still wins.
         if task.mode != .oneTime, !hasScheduleCue(lower) {
             task.mode = .oneTime
@@ -286,7 +325,43 @@ enum TaskTextHints {
             let singular = wanted.replacingOccurrences(of: #"(es|s)$"#, with: "", options: .regularExpression)
             return !wanted.isEmpty && (words.contains(wanted) || (singular.count > 2 && words.contains(singular)))
         }
+        // A list with nothing named in it stays one only when it sounds like a collection
+        // ("Bugs", "Groceries", "Packing list", "v1.2", "Trip: …"); the model made "Test's
+        // birthday" an empty list.
+        if task.type == .list, task.items.isEmpty, !text.contains(":"), !soundsLikeAList(lower) {
+            task.type = .checkbox
+        }
         return task
+    }
+
+    /// A list's name: list words ("list", "groceries", "packing"), a plural ("Bugs",
+    /// "Errands"), or a version ("v1.2", a release's list).
+    private static func soundsLikeAList(_ text: String) -> Bool {
+        if text.contains(#/\b(list|lists|groceries|grocery|shopping|packing|pack|to-?dos?|items|supplies|ingredients|checklist)\b/#) {
+            return true
+        }
+        let last = text.split(whereSeparator: \.isWhitespace).last.map(String.init)?
+            .trimmingCharacters(in: CharacterSet.punctuationCharacters.subtracting(CharacterSet(charactersIn: "."))) ?? ""
+        if last.range(of: #"^v?\d+(\.\d+)+$"#, options: .regularExpression) != nil { return true }
+        let word = last.trimmingCharacters(in: .punctuationCharacters)
+        return word.count > 3 && word.hasSuffix("s") && !word.hasSuffix("ss") && !word.hasSuffix("'s")
+            && !word.hasSuffix("’s") && !word.hasSuffix("us") && !word.hasSuffix("is")
+    }
+
+    /// Numbers naming things: right after a word like exam, chapter or week ("Exam 3",
+    /// "ch. 4", "Room 204", "episode #2"). Such a number isn't an amount to reach.
+    /// Not after "a", "per" or "each" ("3x a week 45 min": "week" is the schedule), and
+    /// not before a unit ("week 45 min", "day 3x").
+    private static let labelNumber = #"(?<!(?:\ba|\ban|per|each|every|this|next|last|/)\s)\b(exam|test|quiz|midterm|final|chapter|ch|unit|week|wk|part|pt|lesson|module|lab|assignment|homework|hw|problem|round|level|room|rm|episode|ep|season|step|phase|day|session|class|section|sec|volume|vol|book|draft|version|grade|period|block|game|match|apartment|apt|suite|floor|gate|bus|route|flight|ticket|order|invoice|item|no|number)\.?\s*#?\s*\d+\b(?!\s*(?:x\b|times\b|min|mins\b|minutes?\b|hours?\b|hrs?\b|h\b|secs?\b|seconds?\b|%|pages?\b|miles?\b|mi\b|km\b|k\b|reps?\b|sets?\b|laps?\b|glass|cups?\b))"#
+
+    static func hasLabelNumber(_ text: String) -> Bool {
+        text.range(of: labelNumber, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// The words without numbers that name things, for finding amounts ("chapter 4 notes"
+    /// has none; "day 3 run 5 miles" has 5 miles).
+    static func withoutLabelNumbers(_ text: String) -> String {
+        text.replacingOccurrences(of: labelNumber, with: " ", options: [.regularExpression, .caseInsensitive])
     }
 
     /// Something in the words that gives a mode: a phrase the rules read ("weekly", "Mon,

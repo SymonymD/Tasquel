@@ -100,7 +100,7 @@ struct WeekDayStrip: View {
                 // As wide as its date needs ("22nd").
                 Text(Self.ordinal(day.day))
                     .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced).bold() : .caption2.bold())
-                    .foregroundStyle(accent)
+                    .foregroundStyle(Theme.todayDate(theme, rc: rc))
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 7)

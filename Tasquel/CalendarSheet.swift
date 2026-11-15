@@ -24,6 +24,8 @@ struct CalendarSheet<Events: View>: View {
 
     enum Side: Hashable { case events, weeks }
 
+    /// The marked days of the week starting on a day (`ChecklistStore.calendarMarks`).
+    let marks: (DayKey) -> [DayKey: CalendarMark]
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var side: Side
@@ -49,7 +51,10 @@ struct CalendarSheet<Events: View>: View {
 
     init(selectedDate: Date, firstWeekday: Int, today: Date, theme: AppearanceMode, rc: RetroColor,
          showsEvents: Bool, eventsWeek: DayKey?, onSelectWeek: @escaping (Date) -> Void,
-         onSwipeWeek: @escaping (Int, CGFloat) -> Bool, @ViewBuilder events: @escaping (DayKey) -> Events) {
+         onSwipeWeek: @escaping (Int, CGFloat) -> Bool,
+         marks: @escaping (DayKey) -> [DayKey: CalendarMark] = { _ in [:] },
+         @ViewBuilder events: @escaping (DayKey) -> Events) {
+        self.marks = marks
         self.firstWeekday = firstWeekday
         self.today = today
         self.theme = theme
@@ -89,6 +94,7 @@ struct CalendarSheet<Events: View>: View {
             Group {
                 if isPickingWeek {
                     WeekPickerCalendar(weekStart: $weekStart, firstWeekday: firstWeekday, today: today, theme: theme, rc: rc,
+                                       marks: marks,
                                        onCancel: { dismiss() },
                                        onGo: {
                                            onSelectWeek(weekStart)
@@ -244,6 +250,9 @@ struct WeekPickerCalendar: View {
     let today: Date
     let theme: AppearanceMode
     let rc: RetroColor
+    /// The marked days of the week starting on a day: a ring around a task's date (purple)
+    /// and around a day with a day task (green).
+    var marks: (DayKey) -> [DayKey: CalendarMark] = { _ in [:] }
     let onCancel: () -> Void
     let onGo: () -> Void
 
@@ -252,8 +261,10 @@ struct WeekPickerCalendar: View {
     @State private var months: [Date]
 
     init(weekStart: Binding<Date>, firstWeekday: Int, today: Date, theme: AppearanceMode, rc: RetroColor,
+         marks: @escaping (DayKey) -> [DayKey: CalendarMark] = { _ in [:] },
          onCancel: @escaping () -> Void, onGo: @escaping () -> Void) {
         _weekStart = weekStart
+        self.marks = marks
         self.firstWeekday = firstWeekday
         self.today = today
         self.theme = theme
@@ -369,11 +380,13 @@ struct WeekPickerCalendar: View {
     private func weekRow(_ start: Date, month: Date) -> some View {
         let isPicked = calendar.isDate(start, inSameDayAs: weekStart)
         let shape = RoundedRectangle(cornerRadius: Theme.isRetro(theme) ? 2 : 12)
+        let weekMarks = marks(DayKey(start, in: calendar))
         return Button { weekStart = start } label: {
             HStack(spacing: 0) {
                 ForEach(0..<7, id: \.self) { offset in
                     if let day = calendar.date(byAdding: .day, value: offset, to: start) {
-                        dayCell(day, isInMonth: calendar.isDate(day, equalTo: month, toGranularity: .month))
+                        dayCell(day, isInMonth: calendar.isDate(day, equalTo: month, toGranularity: .month),
+                                mark: weekMarks[DayKey(day, in: calendar)])
                     }
                 }
             }
@@ -391,7 +404,7 @@ struct WeekPickerCalendar: View {
         .accessibilityAddTraits(isPicked ? .isSelected : [])
     }
 
-    private func dayCell(_ day: Date, isInMonth: Bool) -> some View {
+    private func dayCell(_ day: Date, isInMonth: Bool, mark: CalendarMark?) -> some View {
         let isToday = calendar.isDate(day, inSameDayAs: today)
         return Text(day.formatted(.dateTime.day()))
             .font(isToday ? .body.weight(.bold) : .body)
@@ -400,6 +413,16 @@ struct WeekPickerCalendar: View {
             .frame(maxWidth: .infinity, minHeight: 40)
             .overlay {
                 if isToday { Circle().stroke(accent, lineWidth: 1.5).frame(width: 34, height: 34) }
+                // A task's date, or a day task's day, inside today's ring on today.
+                if let mark {
+                    Circle().stroke(markColor(mark), lineWidth: 2).frame(width: isToday ? 28 : 34, height: isToday ? 28 : 34)
+                }
             }
+    }
+
+    /// Purple for a task's date, green for a day task's day (Retro: bright and faint).
+    private func markColor(_ mark: CalendarMark) -> Color {
+        if Theme.isRetro(theme) { return mark == .date ? Theme.textPrimary(theme, rc: rc) : Theme.textTertiary(theme, rc: rc) }
+        return mark == .date ? Color(.systemPurple) : Theme.dotComplete(theme, rc: rc)
     }
 }

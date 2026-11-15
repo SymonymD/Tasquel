@@ -1885,6 +1885,399 @@ struct TaskDayTests {
     }
 }
 
+// MARK: - A task's date (the type and mode popup)
+
+struct TaskDateTests {
+    @Test("A one-time task dated after its week carries over; a date in its week leaves the mode and is its day")
+    func rules() {
+        let start = DayKey(year: 2099, month: 3, day: 2)  // a Monday
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        #expect(ChecklistTask.dateMode(.oneTime, lastDay: start.adding(days: 6), weekStart: start) == .oneTime, "its week's last day")
+        #expect(ChecklistTask.dateMode(.oneTime, lastDay: start.adding(days: 7), weekStart: start) == .carryOver, "the next week")
+        #expect(ChecklistTask.dateMode(.repeating, lastDay: start.adding(days: 30), weekStart: start) == .repeating)
+        #expect(ChecklistTask.dateMode(.carryOver, lastDay: start.adding(days: 30), weekStart: start) == .carryOver)
+        #expect(ChecklistTask.dateWeekday(start.adding(days: 3), wholeWeek: false, weekStart: start, calendar: calendar) == 5, "Thursday")
+        #expect(ChecklistTask.dateWeekday(start.adding(days: 3), wholeWeek: true, weekStart: start, calendar: calendar) == nil, "a week isn't a day")
+        #expect(ChecklistTask.dateWeekday(start.adding(days: 10), wholeWeek: false, weekStart: start, calendar: calendar) == nil, "a later week")
+    }
+
+    @Test("Dating a task sets its last day, and the mode and day the date calls for; no date changes only the date")
+    func setTaskDate() throws {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        let start = store.selectedWeek!.startDay
+        func task(_ id: UUID) -> ChecklistTask { store.selectedWeek!.categories[0].tasks.first { $0.id == id }! }
+
+        let birthday = try #require(store.addTask(categoryID: categoryID, title: "Mom's birthday", mode: .oneTime))
+        let later = start.adding(days: 17)
+        store.setTaskDate(categoryID: categoryID, taskID: birthday, lastDay: later)
+        #expect(task(birthday).expiresOn == later)
+        #expect(task(birthday).mode == .carryOver, "carries over until its date")
+        #expect(task(birthday).dayOfWeek == nil, "a later week's date isn't a day this week")
+
+        let call = try #require(store.addTask(categoryID: categoryID, title: "Call the bakery", mode: .oneTime))
+        let thisWeek = start.adding(days: 4)
+        store.setTaskDate(categoryID: categoryID, taskID: call, lastDay: thisWeek)
+        #expect(task(call).mode == .oneTime)
+        #expect(task(call).dayOfWeek == store.calendar.component(.weekday, from: thisWeek.date(in: store.calendar)))
+
+        let gym = try #require(store.addTask(categoryID: categoryID, title: "Gym", mode: .repeating))
+        store.setTaskDate(categoryID: categoryID, taskID: gym, lastDay: later)
+        #expect(task(gym).mode == .repeating, "repeats until its date")
+
+        store.setTaskDate(categoryID: categoryID, taskID: birthday, lastDay: nil)
+        #expect(task(birthday).expiresOn == nil)
+        #expect(task(birthday).mode == .carryOver, "taking the date away leaves the mode")
+    }
+
+    @Test("A date picked for a new task is its last day, set today")
+    func newTaskWithDate() throws {
+        let clock = TestClock(2099, 3, 4)
+        let store = makeIsolatedStore(clock: clock)
+        let categoryID = store.selectedWeek!.categories[0].id
+        var parsed = ParsedTask(title: "Mom's birthday", mode: .carryOver)
+        parsed.lastDay = store.currentDay.adding(days: 20)
+        let id = try #require(store.addParsedTask(parsed, categoryID: categoryID))
+        let task = try #require(store.selectedWeek!.categories[0].tasks.first { $0.id == id })
+        #expect(task.expiresOn == store.currentDay.adding(days: 20))
+        #expect(task.expirySetOn == store.currentDay)
+        #expect(!task.expiresWithWeek)
+    }
+}
+
+// MARK: - Dates in typed words (Smart Add)
+
+struct TypedDateTests {
+    private let calendar = Calendar.weekDates()
+    private var today: DayKey { DayKey(Date(), in: calendar) }
+    private func find(_ text: String, locale: Locale = Locale(identifier: "en_US")) -> TypedDate? {
+        TypedDate.find(in: text, earliest: today, today: today, calendar: calendar, locale: locale)
+    }
+
+    @Test("Short slash dates the system's detector passes over are found, month or day first as the region writes them")
+    func shortSlashDates() throws {
+        let exam = try #require(find("Exam 2/3"))
+        #expect(exam.day.month == 2 && exam.day.day == 3 && exam.day >= today)
+        #expect(exam.titleWithoutDate == "Exam")
+        #expect(exam.phrase == "2/3")
+        let british = try #require(find("Exam 2/3", locale: Locale(identifier: "en_GB")))
+        #expect(british.day.month == 3 && british.day.day == 2, "2 March in the UK")
+        let withYear = try #require(find("Exam 2/3/2027"))
+        #expect(withYear.day == DayKey(year: 2027, month: 2, day: 3) || withYear.day.year > 2027 || today > DayKey(year: 2027, month: 2, day: 3))
+        #expect(find("Exam 2/30") == nil, "not a real date")
+        #expect(find("Run 2.5 miles") == nil, "a decimal")
+        #expect(find("Squats 3-5 sets") == nil, "a range")
+    }
+
+    @Test("A written-out date is found, and taken out of the name with a joining word before it")
+    func writtenOutDates() throws {
+        let exam = try #require(find("Exam 12/15"))
+        #expect(exam.day.month == 12 && exam.day.day == 15 && exam.day >= today)
+        #expect(exam.titleWithoutDate == "Exam")
+        #expect(exam.phrase == "12/15")
+        let dentist = try #require(find("Dentist on Dec 3"))
+        #expect(dentist.day.month == 12 && dentist.day.day == 3)
+        #expect(dentist.titleWithoutDate == "Dentist")
+        let party = try #require(find("Party December 15th"))
+        #expect(party.day.month == 12 && party.day.day == 15)
+        #expect(party.titleWithoutDate == "Party")
+    }
+
+    @Test("A date that has gone by this year, typed without a year, is next year's")
+    func nextYear() throws {
+        let past = calendar.date(byAdding: .day, value: -3, to: Date())!
+        let parts = calendar.dateComponents([.month, .day], from: past)
+        let found = try #require(find("Taxes \(parts.month!)/\(parts.day!)"))
+        #expect(found.day.year == today.year + (found.day.month < today.month || (found.day.month == today.month && found.day.day < today.day) ? 1 : 0))
+        #expect(found.day >= today)
+    }
+
+    @Test("Not dates: words like today or a weekday, amounts, or words that are only a date")
+    func notDates() {
+        #expect(find("Run 3 miles today") == nil)
+        #expect(find("Call mom on Friday") == nil)
+        #expect(find("Read 20 pages") == nil)
+        #expect(find("Meeting at 5pm") == nil)
+        #expect(find("12/15") == nil, "nothing left to name the task")
+    }
+}
+
+// MARK: - Fixes from the 2026-11-14 logic test (reviews/logic-test-2026-11-14)
+
+@MainActor @Suite(.serialized)
+struct LogicTestFixesTests {
+    private func d(_ day: Int) -> DayKey { DayKey(year: 2099, month: 3, day: day) }  // Wed 4 March 2099; weeks from Monday
+
+    private final class Home {
+        let clock = TestClock(2099, 3, 4)
+        lazy var store = makeIsolatedStore(clock: clock)
+        func view(_ day: Int) {
+            store.navigateToDate(clock.calendar.date(from: DateComponents(year: 2099, month: 3, day: day, hour: 12))!)
+        }
+        func card(_ name: String) -> Tasquel.Category { store.selectedWeek!.categories.first { $0.name == name }! }
+        func add(_ name: String, _ title: String, _ mode: TaskMode = .carryOver) -> UUID {
+            store.addTask(categoryID: card(name).id, title: title, mode: mode)!
+        }
+    }
+
+    @Test("1, 8: \"until\" and \"due\" dates are their end, fractions aren't dates, the year is the store clock's, and a later week's view doesn't push a date a year on")
+    func typedDates() throws {
+        let calendar = Calendar.weekDates()
+        let today = d(4)
+        func find(_ text: String, earliest: DayKey? = nil) -> TypedDate? {
+            TypedDate.find(in: text, earliest: earliest ?? today, today: today, calendar: calendar, locale: Locale(identifier: "en_US"))
+        }
+        let run = try #require(find("Run 3x per week until 12/15"))
+        #expect(run.day == DayKey(year: 2099, month: 12, day: 15))
+        #expect(run.titleWithoutDate == "Run 3x per week")
+        let invoice = try #require(find("Invoice due 12/15"))
+        #expect(invoice.day == DayKey(year: 2099, month: 12, day: 15) && invoice.titleWithoutDate == "Invoice")
+        #expect(find("Run 3/4 mile") == nil)
+        #expect(find("Swim 1/2 mile 3x per week") == nil)
+        #expect(find("Read 2/3 of the book") == nil)
+        #expect(find("Exam 4/5")?.day == DayKey(year: 2099, month: 4, day: 5), "this year by the store's clock")
+        #expect(find("Exam 3/18", earliest: d(25)) == nil, "before the viewed week, not next year's")
+    }
+
+    @Test("3: reminders follow a saved later week as it will be: the new name, the new date, none once checked off")
+    func remindersFromLaterWeeksAsTheyWillBe() {
+        let home = Home(), store = home.store
+        store.addCategory(name: "Family", symbol: "person.2")
+        let mom = home.add("Family", "Mom's birthday", .oneTime)
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: mom, lastDay: d(25))
+        home.view(11)
+        _ = home.add("Family", "Wrap the gift", .oneTime)  // next week saved, its copy as it was
+        home.view(4)
+        store.renameTask(categoryID: home.card("Family").id, taskID: mom, newTitle: "Mom's 60th birthday")
+        #expect(store.expiryReminders.map(\.title) == ["Mom's 60th birthday expires tomorrow"])
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: mom, lastDay: d(26))
+        #expect(store.expiryReminders.map(\.day) == [d(25)])
+        store.toggleTask(categoryID: home.card("Family").id, taskID: mom)
+        #expect(store.expiryReminders.isEmpty, "checked off: none")
+    }
+
+    @Test("4: a renamed copy and its source get one reminder; two tasks with one name get one each")
+    func remindersByTaskNotName() throws {
+        let home = Home(), store = home.store
+        store.addCategory(name: "Family", symbol: "person.2")
+        let gifts = home.add("Family", "Gifts")
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: gifts, lastDay: d(18))
+        home.view(11)
+        let copy = try #require(home.card("Family").tasks.first { $0.carriedFrom == gifts })
+        store.renameTask(categoryID: home.card("Family").id, taskID: copy.id, newTitle: "Gifts (wrap them)")
+        home.view(4)
+        #expect(store.expiryReminders.count == 1)
+        let first = home.add("Family", "Call")
+        let second = home.add("Family", "Call")
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: first, lastDay: d(6))
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: second, lastDay: d(6))
+        #expect(store.expiryReminders.filter { $0.title == "Call expires tomorrow" }.count == 2)
+        store.toggleTask(categoryID: home.card("Family").id, taskID: first)
+        #expect(store.expiryReminders.filter { $0.title == "Call expires tomorrow" }.count == 1, "the second keeps its own")
+    }
+
+    @Test("5: sync and Undo never make a third pinned task or card")
+    func pinsStayTwo() {
+        let home = Home(), store = home.store
+        home.view(11)
+        for title in ["Bank", "Post office"] {
+            store.setTaskPinned(categoryID: home.card("Errands").id, taskID: home.add("Errands", title, .oneTime), pinned: true)
+        }
+        store.setCategoryPinned(categoryID: home.card("Work").id, pinned: true)
+        store.setCategoryPinned(categoryID: home.card("Fitness").id, pinned: true)
+        home.view(4)
+        for title in ["Groceries", "Pharmacy"] {
+            store.setTaskPinned(categoryID: home.card("Errands").id, taskID: home.add("Errands", title, .repeating), pinned: true)
+        }
+        store.addCategory(name: "School", symbol: "book")
+        store.setCategoryPinned(categoryID: home.card("School").id, pinned: true)
+        home.view(11)
+        #expect(home.card("Errands").pinnedTaskCount <= 2)
+        #expect(store.selectedWeek!.categories.filter(\.isPinned).count <= 2)
+
+        // A pin made while a pinned task's delete can be undone ends the Undo.
+        home.view(4)
+        let groceries = home.card("Errands").tasks.first { $0.title == "Groceries" }!.id
+        store.deleteTask(categoryID: home.card("Errands").id, taskID: groceries)
+        store.setTaskPinned(categoryID: home.card("Errands").id, taskID: home.add("Errands", "Stamps", .oneTime), pinned: true)
+        store.undoLastDelete()
+        #expect(home.card("Errands").pinnedTaskCount <= 2)
+    }
+
+    @Test("6: moving a date to a later week takes away the day the old date gave")
+    func redatingClearsTheOldDatesDay() {
+        let home = Home(), store = home.store
+        let bakery = home.add("Errands", "Call the bakery", .oneTime)
+        store.setTaskDate(categoryID: home.card("Errands").id, taskID: bakery, lastDay: d(5))
+        #expect(home.card("Errands").tasks.first { $0.id == bakery }?.dayOfWeek == 5, "Thursday")
+        store.setTaskDate(categoryID: home.card("Errands").id, taskID: bakery, lastDay: d(18))
+        #expect(home.card("Errands").tasks.first { $0.id == bakery }?.dayOfWeek == nil)
+    }
+
+    @Test("A day and a date are one choice for a one-time or carry-over task; a repeating task keeps its day until its date")
+    func dayOrDate() {
+        let home = Home(), store = home.store
+        let errands = home.card("Errands").id
+        func task(_ id: UUID) -> ChecklistTask? { home.card("Errands").tasks.first { $0.id == id } }
+        let party = home.add("Errands", "Party", .oneTime)
+        store.setTaskDay(categoryID: errands, taskID: party, day: 7)  // Saturday, picked
+        store.setTaskDate(categoryID: errands, taskID: party, lastDay: d(14))  // next Saturday
+        #expect(task(party)?.dayOfWeek == nil, "no \"Saturday\" (or \"Today\") beside a date next week")
+        let gym = home.add("Errands", "Gym", .repeating)
+        store.setTaskDay(categoryID: errands, taskID: gym, day: 2)  // Monday
+        store.setTaskDate(categoryID: errands, taskID: gym, lastDay: d(25))
+        #expect(task(gym)?.dayOfWeek == 2, "every Monday until its date")
+    }
+
+    @Test("Jumping weeks ahead finds a task dated there, though next week was saved before it existed")
+    func jumpAheadPastASavedWeek() {
+        let home = Home(), store = home.store
+        home.view(11)
+        _ = home.add("Errands", "Return books", .oneTime)  // next week saved, without Meeting
+        home.view(4)
+        let meeting = home.add("Errands", "Meeting", .oneTime)
+        store.setTaskDate(categoryID: home.card("Errands").id, taskID: meeting, lastDay: DayKey(year: 2099, month: 4, day: 1))
+        store.navigateToDate(home.clock.calendar.date(from: DateComponents(year: 2099, month: 3, day: 31, hour: 12))!)
+        #expect(home.card("Errands").tasks.contains { $0.title == "Meeting" }, "in its week (Mar 30 to Apr 5)")
+    }
+
+    @Test("Thanksgiving: the US's fourth Thursday of November, Canada's second Monday of October, and its week")
+    func thanksgivingWeek() {
+        #expect(Thanksgiving.day(in: 2026, region: "US") == DayKey(year: 2026, month: 11, day: 26))
+        #expect(Thanksgiving.day(in: 2027, region: "US") == DayKey(year: 2027, month: 11, day: 25))
+        #expect(Thanksgiving.day(in: 2026, region: "CA") == DayKey(year: 2026, month: 10, day: 12))
+        #expect(Thanksgiving.day(in: 2026, region: nil) == DayKey(year: 2026, month: 11, day: 26), "elsewhere, the US's")
+        let calendar = Calendar(identifier: .gregorian)
+        // Monday weeks: Nov 23 to 29.
+        #expect(Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 23), firstWeekday: 2, calendar: calendar, region: "US"))
+        #expect(Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 29), firstWeekday: 2, calendar: calendar, region: "US"))
+        #expect(!Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 22), firstWeekday: 2, calendar: calendar, region: "US"))
+        // Sunday weeks: Nov 22 to 28.
+        #expect(Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 22), firstWeekday: 1, calendar: calendar, region: "US"))
+        #expect(!Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 29), firstWeekday: 1, calendar: calendar, region: "US"))
+        #expect(!Thanksgiving.isWeek(of: DayKey(year: 2026, month: 11, day: 14), firstWeekday: 2, calendar: calendar, region: "US"))
+    }
+
+    @Test("The week calendar marks a task's date and a day task's day, in later weeks as they'll be")
+    func calendarMarks() {
+        let home = Home(), store = home.store
+        let errands = home.card("Errands").id
+        let meeting = home.add("Errands", "Meeting", .oneTime)
+        store.setTaskDate(categoryID: errands, taskID: meeting, lastDay: DayKey(year: 2099, month: 4, day: 1))
+        let gym = home.add("Errands", "Gym", .repeating)
+        store.setTaskDay(categoryID: errands, taskID: gym, day: 2)  // Mondays
+        let marks = store.calendarMarks(weekStartingOn: DayKey(year: 2099, month: 3, day: 30))
+        #expect(marks[DayKey(year: 2099, month: 4, day: 1)] == .date)
+        #expect(marks[DayKey(year: 2099, month: 3, day: 30)] == .day, "Monday's gym")
+        #expect(store.calendarMarks(weekStartingOn: DayKey(year: 2099, month: 2, day: 23)).isEmpty, "a past week never saved")
+    }
+
+    @Test("A mode picked before adding is kept: One-Time with a later date stays One-Time, with no day")
+    func keepsPickedMode() throws {
+        let home = Home(), store = home.store
+        var parsed = ParsedTask(title: "Test weeks out", mode: .oneTime)
+        parsed.lastDay = d(25)
+        parsed.day = 7
+        parsed.keepsMode = true
+        let id = try #require(store.addParsedTask(parsed, categoryID: home.card("Errands").id))
+        let task = try #require(home.card("Errands").tasks.first { $0.id == id })
+        #expect(task.mode == .oneTime)
+        #expect(task.dayOfWeek == nil)
+    }
+
+    @Test("7: a task added with a date gets the date's rules however it's added")
+    func addingWithADate() throws {
+        let home = Home(), store = home.store
+        let categoryID = home.card("Errands").id
+        func added(_ title: String, _ mode: TaskMode, _ lastDay: DayKey) throws -> ChecklistTask {
+            var parsed = ParsedTask(title: title, mode: mode)
+            parsed.lastDay = lastDay
+            let id = try #require(store.addParsedTask(parsed, categoryID: categoryID))
+            return try #require(home.card("Errands").tasks.first { $0.id == id })
+        }
+        #expect(try added("Mom's birthday", .oneTime, d(25)).mode == .carryOver, "dated after this week: carries over")
+        let bakery = try added("Bakery", .oneTime, d(5))
+        #expect(bakery.mode == .oneTime && bakery.dayOfWeek == 5, "this week: its day")
+        #expect(try added("Run", .repeating, d(25)).mode == .repeating, "Smart Add's mode stays")
+    }
+
+    @Test("10: Undo after midnight doesn't bring back a task past its last day")
+    func undoAfterMidnight() {
+        let home = Home(), store = home.store
+        store.addCategory(name: "Family", symbol: "person.2")
+        let bakery = home.add("Family", "Call the bakery", .oneTime)
+        store.setTaskDate(categoryID: home.card("Family").id, taskID: bakery, lastDay: d(6))
+        let dry = home.add("Errands", "Dry cleaning", .oneTime)
+        home.clock.now = home.clock.calendar.date(from: DateComponents(year: 2099, month: 3, day: 6, hour: 23))!
+        store.navigateToDate(home.clock.now)
+        store.deleteTask(categoryID: home.card("Errands").id, taskID: dry)
+        home.clock.now = home.clock.calendar.date(byAdding: .minute, value: 61, to: home.clock.now)!
+        store.navigateToDate(home.clock.now)
+        store.undoLastDelete()
+        #expect(home.card("Errands").tasks.contains { $0.id == dry })
+        #expect(!home.card("Family").tasks.contains { $0.id == bakery }, "gone the day after its last day")
+    }
+
+    @Test("11: in a This week only card, a date after this week is said to bring the card back")
+    func thisWeekOnlyNote() {
+        #expect(TaskOptionsPicker.thisWeekOnlyNote(for: d(18), weekStart: d(2), isThisWeekOnly: true) != nil)
+        #expect(TaskOptionsPicker.thisWeekOnlyNote(for: d(6), weekStart: d(2), isThisWeekOnly: true) == nil, "this week")
+        #expect(TaskOptionsPicker.thisWeekOnlyNote(for: d(18), weekStart: d(2), isThisWeekOnly: false) == nil)
+    }
+}
+
+// MARK: - Smart Add: numbers that name things, lists without items (2026-11-14)
+
+struct SmartAddNamingTests {
+    /// What Smart Add makes of `text` when the model answers `model`.
+    private func parse(_ text: String, _ model: ParsedTask) async throws -> ParsedTask {
+        try await AppleIntelligenceTaskParser.parse(text) { _ in model }
+    }
+
+    private func goal(_ title: String, _ target: Double, mode: TaskMode = .oneTime) -> ParsedTask {
+        var task = ParsedTask(title: title, type: .goal, mode: mode)
+        task.goalTarget = target
+        return task
+    }
+
+    @Test("A number naming the thing (\"Exam 3\", \"exam 1\") stays in the name, a checkbox, not a goal")
+    func labelNumbers() async throws {
+        let exam = try await parse("Exam 3", goal("Exam", 3))
+        #expect(exam.type == .checkbox && exam.goalTarget == nil)
+        #expect(exam.title == "Exam 3")
+        let first = try await parse("exam 1", goal("Exam", 1))
+        let second = try await parse("exam 2", goal("Exam", 2))
+        #expect(first.type == .checkbox && second.type == .checkbox)
+        #expect(first.title.lowercased() == "exam 1" && second.title.lowercased() == "exam 2", "two exams, not two \"Exam\"s")
+        #expect(try await parse("Chapter 4 notes", goal("Chapter notes", 4)).title == "Chapter 4 notes")
+        #expect(try await parse("Day 3 run 5 miles", goal("Run", 5)).type == .goal, "a real amount besides the label")
+    }
+
+    @Test("Real amounts still make goals")
+    func amountsStayGoals() async throws {
+        var pages = goal("Read", 20)
+        pages.goalKind = .custom
+        pages.goalUnit = "pages"
+        #expect(try await parse("Read 20 pages", pages).type == .goal)
+        #expect(try await parse("Gym 3x per week", goal("Gym", 3, mode: .repeating)).type == .goal)
+        #expect(try await parse("Meditate 10 min daily", goal("Meditate", 70, mode: .repeating)).type == .goal)
+    }
+
+    @Test("A list with nothing named is a list only when the words say so")
+    func emptyLists() async throws {
+        #expect(try await parse("Test's birthday", ParsedTask(title: "Test's birthday", type: .list)).type == .checkbox)
+        #expect(try await parse("Grocery list", ParsedTask(title: "Grocery list", type: .list)).type == .list)
+        #expect(try await parse("Packing", ParsedTask(title: "Packing", type: .list)).type == .list)
+        #expect(try await parse("Bugs", ParsedTask(title: "Bugs", type: .list)).type == .list, "a plural")
+        #expect(try await parse("Mom's birthday", ParsedTask(title: "Mom's birthday", type: .list)).type == .checkbox)
+        var trip = ParsedTask(title: "Trip", type: .list)
+        trip.items = ["socks", "shirts"]
+        #expect(try await parse("Trip: socks, shirts", trip).items == ["socks", "shirts"])
+    }
+}
+
 // MARK: - Retro's DOS cursor
 
 @MainActor @Suite(.serialized)
@@ -1921,6 +2314,54 @@ struct RetroCaretTests {
         field.text = "abc"
         let fieldCursor = field.caretRect(for: field.endOfDocument)
         #expect(fieldCursor.width > fieldCursor.height)
+    }
+}
+
+// MARK: - Today's date
+
+@Test("Today's date in light mode is readable on the header: 4.5:1 on white and the frosted gray")
+func todayDateContrast() {
+    func luminance(_ color: UIColor) -> Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let linear = { (c: CGFloat) -> Double in
+            let c = Double(c)
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+    let text = luminance(Theme.todayDateLight)
+    for background in [UIColor.white, UIColor(red: 0xF2 / 255.0, green: 0xF2 / 255.0, blue: 0xF7 / 255.0, alpha: 1)] {
+        #expect((luminance(background) + 0.05) / (text + 0.05) >= 4.5)
+    }
+}
+
+// MARK: - Escape
+
+@MainActor @Suite(.serialized)
+struct EscapeKeyTests {
+    @Test("Text views and fields offer Escape ahead of the system's handling")
+    func offersEscape() {
+        EscapeKey.install()
+        for responder in [UITextView() as UIResponder, UITextField()] {
+            let escape = responder.keyCommands?.first { $0.input == UIKeyCommand.inputEscape }
+            #expect(escape != nil, "\(type(of: responder))")
+            #expect(escape?.wantsPriorityOverSystemBehavior == true, "\(type(of: responder))")
+            #expect(escape?.modifierFlags == [], "\(type(of: responder))")
+        }
+    }
+
+    @Test("Escape in a text field is posted for the rename field to cancel")
+    func postsEscape() {
+        EscapeKey.install()
+        let view = UITextView()
+        var sender: AnyObject?
+        let observer = NotificationCenter.default.addObserver(forName: EscapeKey.pressed, object: nil, queue: nil) {
+            sender = $0.object as AnyObject?
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        view.escapePressed()  // posting is immediate
+        #expect(sender === view)
     }
 }
 
@@ -2003,7 +2444,19 @@ struct SeasonTests {
 
     private func mark(_ year: Int, _ month: Int, _ day: Int, from firstWeekday: Int = Week.monday) -> HolidayMark? {
         HolidayMark.of(DayKey(year: year, month: month, day: day), firstWeekday: firstWeekday,
-                       calendar: .weekDates(in: TimeZone(identifier: "America/New_York")!))
+                       calendar: .weekDates(in: TimeZone(identifier: "America/New_York")!), region: "US")
+    }
+
+    @Test("The mark wears a turkey's tail in Thanksgiving's week")
+    func holidayMarkThanksgiving() {
+        // 2026 from Monday: Thanksgiving (Thursday Nov 26) is in Nov 23–29.
+        #expect(mark(2026, 11, 22) == nil)
+        #expect(mark(2026, 11, 23) == .thanksgiving)
+        #expect(mark(2026, 11, 29) == .thanksgiving)
+        #expect(mark(2026, 11, 30) == nil)
+        #expect(HolidayMark.of(DayKey(year: 2026, month: 10, day: 12), firstWeekday: Week.monday,
+                               calendar: .weekDates(in: TimeZone(identifier: "America/Toronto")!), region: "CA") == .thanksgiving,
+                "Canada's in October")
     }
 
     @Test("The mark wears string lights the week before Christmas's week and that week, confetti the week after")
@@ -2039,7 +2492,7 @@ struct SeasonTests {
 
     @Test("The holiday marks' layers are in the app, Retro's its own")
     func holidayMarkImages() {
-        for mark in [HolidayMark.holidaySeason, .newYear] {
+        for mark in [HolidayMark.thanksgiving, .holidaySeason, .newYear] {
             for retro in [false, true] {
                 let layers = mark.layers(retro: retro)
                 for name in [layers.behind, layers.front].compactMap({ $0 }) {
@@ -4336,5 +4789,62 @@ struct ReviewFixStoreTests {
         #expect(flashcards.mode == .oneTime, "a This week only card holds only one-time tasks")
         #expect(flashcards.modeBeforeThisWeekOnly?.mode == .carryOver, "remembering the mode it had")
         #expect(card(relaunched, "Study")?.tasks.first { $0.title == "Essay" }?.mode == .oneTime)
+    }
+}
+
+// MARK: - What's New
+
+/// The header's What's New button: for someone who updated (not a new install), until it's
+/// been opened from there twice; Settings always has What's New.
+struct WhatsNewTests {
+    private func store(_ defaults: UserDefaults, directory: URL, version: String) -> ChecklistStore {
+        ChecklistStore(directory: directory, defaults: defaults, appVersion: version)
+    }
+
+    @Test("A new install of 1.1 gets no button")
+    func newInstall() {
+        let defaults = UserDefaults(suiteName: "WhatsNew-\(UUID().uuidString)")!
+        let directory = makeTempDirectory()
+        #expect(!store(defaults, directory: directory, version: "1.1").showsWhatsNewButton)
+        #expect(!store(defaults, directory: directory, version: "1.1").showsWhatsNewButton, "nor on its next launch")
+    }
+
+    @Test("Updating from 1.0.x shows the button until it's been opened twice")
+    func updateFromOneOh() {
+        let defaults = UserDefaults(suiteName: "WhatsNew-\(UUID().uuidString)")!
+        let directory = makeTempDirectory()
+        _ = store(defaults, directory: directory, version: "1.0.3")  // 1.0.3 didn't record its version
+        defaults.removeObject(forKey: "lastLaunchedVersion")
+        let updated = store(defaults, directory: directory, version: "1.1")
+        #expect(updated.showsWhatsNewButton)
+        #expect(!updated.whatsNewOpenedFromButton(), "first time")
+        updated.finishWhatsNewFromButton()
+        #expect(updated.showsWhatsNewButton, "still there after one")
+        #expect(store(defaults, directory: directory, version: "1.1").showsWhatsNewButton, "and after a relaunch")
+        #expect(updated.whatsNewOpenedFromButton(), "the second time is the last")
+        updated.finishWhatsNewFromButton()
+        #expect(!updated.showsWhatsNewButton)
+        #expect(!store(defaults, directory: directory, version: "1.1").showsWhatsNewButton, "gone for good")
+    }
+
+    @Test("A 1.1.x launch after 1.1 shows nothing new; a 1.0 user updating straight to 1.1.1 still gets it")
+    func laterVersions() {
+        let defaults = UserDefaults(suiteName: "WhatsNew-\(UUID().uuidString)")!
+        let directory = makeTempDirectory()
+        _ = store(defaults, directory: directory, version: "1.1")
+        #expect(!store(defaults, directory: directory, version: "1.1.1").showsWhatsNewButton)
+
+        let other = UserDefaults(suiteName: "WhatsNew-\(UUID().uuidString)")!
+        other.set(true, forKey: "didMigrateStarters_v1")  // launched by 1.0.x
+        #expect(store(other, directory: makeTempDirectory(), version: "1.1.1").showsWhatsNewButton)
+    }
+
+    @Test("Versions compare by number")
+    func versionOrder() {
+        #expect(WhatsNew.isVersion("1.0.3", olderThan: "1.1"))
+        #expect(WhatsNew.isVersion("1.1", olderThan: "1.10"))
+        #expect(!WhatsNew.isVersion("1.1", olderThan: "1.1"))
+        #expect(!WhatsNew.isVersion("1.1.1", olderThan: "1.1"))
+        #expect(!WhatsNew.isVersion("2.0", olderThan: "1.1"))
     }
 }

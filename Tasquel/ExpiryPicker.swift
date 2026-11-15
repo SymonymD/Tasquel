@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// The clock's popover in a card's edit mode: a small month calendar for a task's last day,
-/// picked as a date or as a whole week (that week's last day), from `earliest` on. Set
-/// saves it; Cancel, or a tap outside, leaves things as they were; Remove (once one is set)
-/// takes the expiration away.
+/// The clock's popover in a card's edit mode, and the type and mode popup's Date page: a
+/// small month calendar for a task's last day, picked as a date or as a whole week (that
+/// week's last day), from `earliest` on. Set saves it; Cancel, or a tap outside, leaves
+/// things as they were; Remove (once one is set) takes it away. `title` heads it: "Expires"
+/// at the clock, "Until" in the popup.
 struct ExpiryPicker: View {
     let taskTitle: String
     /// The expiration the task has now, if any.
@@ -18,6 +19,10 @@ struct ExpiryPicker: View {
     let onSet: (_ lastDay: DayKey, _ wholeWeek: Bool) -> Void
     let onRemove: () -> Void
     let onCancel: () -> Void
+    let title: String
+    /// Said under the summary for the day picked, if anything (a This week only card that
+    /// a later date brings back every week).
+    let noteFor: ((DayKey) -> String?)?
 
     @State private var picked: DayKey?
     @State private var wholeWeek: Bool
@@ -27,7 +32,10 @@ struct ExpiryPicker: View {
     init(taskTitle: String, current: DayKey?, currentIsWeek: Bool, earliest: DayKey, today: DayKey,
          firstWeekday: Int, theme: AppearanceMode, rc: RetroColor,
          onSet: @escaping (_ lastDay: DayKey, _ wholeWeek: Bool) -> Void,
-         onRemove: @escaping () -> Void, onCancel: @escaping () -> Void) {
+         onRemove: @escaping () -> Void, onCancel: @escaping () -> Void, title: String = "Expires",
+         noteFor: ((DayKey) -> String?)? = nil) {
+        self.title = title
+        self.noteFor = noteFor
         self.taskTitle = taskTitle
         self.current = current
         self.currentIsWeek = currentIsWeek
@@ -81,12 +89,12 @@ struct ExpiryPicker: View {
     /// "Expires" and Date | Week.
     private var header: some View {
         HStack(spacing: 12) {
-            Text("Expires")
+            Text(title)
                 .font(.system(.headline, design: design))
                 .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                 .accessibilityAddTraits(.isHeader)
-                .accessibilityLabel("\(taskTitle) expires")
-                .accessibilityIdentifier("Expires")
+                .accessibilityLabel(title == "Expires" ? "\(taskTitle) expires" : "\(taskTitle), until")
+                .accessibilityIdentifier(title)
             Spacer(minLength: 0)
             Picker("Pick a", selection: $wholeWeek) {
                 Text("Date").tag(false)
@@ -112,11 +120,21 @@ struct ExpiryPicker: View {
                 .font(.system(.subheadline, design: design).weight(.semibold))
                 .foregroundStyle(Theme.textPrimary(theme, rc: rc))
                 .fixedSize(horizontal: false, vertical: true)
+            if let picked, let note = noteFor?(picked) {
+                Text(note)
+                    .font(.system(.footnote, design: design))
+                    .foregroundStyle(Theme.textSecondary(theme, rc: rc))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 16) {
                 if current != nil {
-                    Button("Remove", role: .destructive, action: onRemove)
-                        .foregroundStyle(Theme.destructive(theme))
-                        .accessibilityLabel("Remove expiration")
+                    // "Remove" alone read as removing the task: an ✕ and the word Date.
+                    Button(role: .destructive, action: onRemove) {
+                        Label("Date", systemImage: "xmark")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .foregroundStyle(Theme.destructive(theme))
+                    .accessibilityLabel("Remove date")
                 }
                 Spacer(minLength: 0)
                 Button("Cancel", action: onCancel)

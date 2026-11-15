@@ -337,6 +337,20 @@ extension ChecklistTask {
         return min(max(Double(day) / Double(total), 0), 1)
     }
 
+    /// A date (a task's last day, from the type and mode popup or the edit mode's clock)
+    /// for a task in the week starting `weekStart`: a one-time task dated after that week
+    /// carries over until then, or it would be gone first. Other modes stay.
+    static func dateMode(_ mode: TaskMode, lastDay: DayKey, weekStart: DayKey) -> TaskMode {
+        mode == .oneTime && lastDay > weekStart.adding(days: 6) ? .carryOver : mode
+    }
+
+    /// A date inside the task's week (not a whole week) is also its day (1 Sunday … 7
+    /// Saturday), so it shows on that day. Nil for a date in a later week.
+    static func dateWeekday(_ lastDay: DayKey, wholeWeek: Bool, weekStart: DayKey, calendar: Calendar) -> Int? {
+        guard !wholeWeek, lastDay >= weekStart, lastDay <= weekStart.adding(days: 6) else { return nil }
+        return calendar.component(.weekday, from: lastDay.date(in: calendar))
+    }
+
     /// Copies (carried over, repeating, or following their source) keep the expiration and
     /// the day.
     mutating func takeExpiry(from source: ChecklistTask) {
@@ -694,6 +708,11 @@ struct Week: Codable, Identifiable, Equatable {
         components.weekday = firstWeekday
         return calendar.date(from: components) ?? date
     }
+}
+
+/// A day the week calendar marks: a task's date, or a day a task has (a day task).
+enum CalendarMark: Equatable {
+    case date, day
 }
 
 // MARK: - Saved Category Template

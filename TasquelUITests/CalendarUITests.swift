@@ -59,6 +59,47 @@ final class CalendarUITests: XCTestCase {
         XCTAssertFalse(plain.buttons["Events"].exists)
     }
 
+    /// On another week, past or future, a house comes out of the week selector in the bottom
+    /// bar: left of it on a later week, at Edit's place on an earlier one (no Edit there, and
+    /// no "Past week" line). It goes back to this week (like the Tasquel mark) and goes away
+    /// there.
+    @MainActor
+    func testHouseGoesBackToThisWeek() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoData"]
+        app.launch()
+        let next = app.buttons["Next week"]
+        XCTAssertTrue(next.waitForExistence(timeout: 10))
+        let bar = app.buttons.matching(NSPredicate(format: "identifier == %@", "Bar Back to This Week")).firstMatch
+        XCTAssertFalse(bar.exists, "not on this week")
+        let title = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch
+        let thisWeek = title.label
+
+        next.tap()
+        XCTAssertTrue(bar.waitForExistence(timeout: 3), "out on next week")
+        sleep(1)
+        XCTAssertLessThan(bar.frame.maxX, app.buttons["Previous week"].frame.minX, "left of the selector")
+        XCTAssertTrue(app.buttons["Edit"].exists, "Edit stays on a later week")
+        bar.tap()
+        XCTAssertTrue(bar.waitForNonExistence(timeout: 3), "gone again on this week")
+        XCTAssertEqual(title.label, thisWeek, "back to this week")
+
+        app.buttons["Previous week"].tap()
+        XCTAssertTrue(bar.waitForExistence(timeout: 3), "out on last week too")
+        sleep(1)
+        XCTAssertGreaterThan(bar.frame.minX, app.buttons["Next week"].frame.maxX, "right of the selector")
+        XCTAssertFalse(app.buttons["Edit"].exists, "at Edit's place: no Edit on a past week")
+        XCTAssertFalse(app.staticTexts["Past week · view only"].exists, "no past-week line")
+        XCTAssertEqual(title.value as? String, "Past week, view only", "VoiceOver still hears it")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label == %@", "Back to This Week")).element(boundBy: 1).exists,
+                       "one house: none beside the mark")
+        app.buttons["This Week"].firstMatch.tap()
+        XCTAssertTrue(bar.waitForNonExistence(timeout: 3), "the mark still goes back")
+        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 3), "and Edit is back")
+        XCTAssertEqual(title.label, thisWeek)
+    }
+
     /// On another week the calendar sheet has This Week (at its top left): on Events it
     /// brings the cards and events back to this week and stays open; on Weeks it goes there
     /// and closes. On this week it isn't there.
