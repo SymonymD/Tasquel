@@ -1,0 +1,53 @@
+Optional(Attributes: Application, 0x10291b0d0, pid: 54504, label: 'Tasquel'
+Element subtree:
+ →Application, 0x10291b0d0, pid: 54504, label: 'Tasquel'
+    Window (Main), 0x102941a90, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x1029401f0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x102940310, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x1029400a0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x102940430, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x102941bb0, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x1029425d0, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x102821290, {{-402.0, 131.0}, {402.0, 445.0}}
+              ScrollView, 0x102827a90, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x102830d10, {{0.0, 131.0}, {402.0, 385.0}}
+                  Button, 0x10281a690, {{16.0, 139.0}, {181.0, 120.0}}, label: 'Open Clients, 0 of 1 tasks complete'
+                  Button, 0x102830210, {{205.0, 139.0}, {181.0, 120.0}}, label: 'Open Home, no tasks yet'
+                  StaticText, 0x10281c770, {{32.0, 283.0}, {103.7, 27.7}}, label: 'Health'
+                  Button, 0x102831580, {{306.0, 275.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Health'
+                  StaticText, 0x102832440, {{32.1, 318.8}, {120.3, 21.0}}, label: '0 of 0 complete'
+                  Button, 0x102832560, {{20.3, 345.3}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x102832680, {{334.0, 384.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Health'
+                Other, 0x1028327a0, {{368.7, 131.0}, {30.0, 681.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x1028328c0, {{395.7, 458.0}, {3.0, 351.0}}
+                Other, 0x1028329e0, {{368.7, 131.0}, {30.0, 681.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x102832b00, {{395.7, 458.0}, {3.0, 351.0}}
+              ScrollView, 0x102832c20, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x102832d40, {{402.0, 131.0}, {402.0, 385.0}}
+              Other, 0x102832e60, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x102832f80, {{0.0, 70.0}, {151.3, 25.3}}
+              StaticText, 0x1028330a0, {{125.3, 70.0}, {151.3, 25.3}}, label: 'Week of Nov 16'
+              Button, 0x1028331c0, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x1028332e0, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x102833400, {{89.0, 92.3}, {224.0, 43.7}}, identifier: 'Week days'
+                Button, 0x102833520, {{89.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Monday', label: 'Monday, November 16'
+                Button, 0x102833640, {{121.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Tuesday', label: 'Tuesday, November 17'
+                Button, 0x102833760, {{153.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Wednesday', label: 'Wednesday, November 18'
+                Button, 0x102833880, {{185.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Thursday', label: 'Thursday, November 19'
+                Button, 0x1028339a0, {{217.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Friday', label: 'Friday, November 20'
+                Button, 0x102833ac0, {{249.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Saturday', label: 'Saturday, November 21'
+                Button, 0x102833be0, {{281.0, 92.3}, {32.0, 43.7}}, identifier: 'Day Sunday', label: 'Sunday, November 22'
+              Button, 0x102833d00, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x102833e20, {{78.0, 791.7}, {45.0, 45.0}}, identifier: 'Bar Back to This Week', label: 'Back to This Week'
+              Button, 0x102833f40, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x102834120, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar.and.person', label: 'Calendar and events'
+              Button, 0x102e06ad0, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x102e06ef0, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+Path to element:
+ →Application, 0x10291b0d0, pid: 54504, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x102942910, pid: 54504, label: 'Tasquel'
+  }
+)

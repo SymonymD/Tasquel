@@ -227,7 +227,7 @@ You picked 1–8, plus 27 and 28 (which turned out to be test artifacts, so noth
 2. **Switch Settings ▸ Week to Sunday and back, on your real data.** Is every dated and day task still on its date, nothing late that shouldn't be, nothing pinned three times (fix 1)?
 3. **Give a task a date for tomorrow.** Is the notification prompt asked then, and does "… expires tomorrow" arrive at 9 AM? Deny notifications, turn them on in iOS Settings, come back: do the footer and Open Settings update, and do reminders arrive for tasks already dated (fix 16)?
 4. **Thanksgiving week, the turkey first.** Launch with `-demoTurkey -demoWhatsNew`: the turkey should run, then the What's New pill slide out (fix 17).
-5. **With Apple Intelligence: Smart Add "Go to the zoo and harass penguins", "dentist december 15", "pay rent till dec 15", "Call mom tomorrow".** Are the names, lists and Set Date offers right?
+5. **With Apple Intelligence: Smart Add "Go to the zoo and harass penguins", "dentist december 15", "lease ends August 31st", "Call mom tomorrow".** Are the names, lists and Set Date offers right?
 6. **Leave the app open past midnight into Monday.** Does it move to the new week, and do Today and late marks update?
 7. **Open the app on a day with tasks due.** Does each card with today's tasks wiggle once, and does Today pulse?
 8. **iPad landscape:** open two cards, then page two weeks away and back, and go in and out of Edit. Do the cards keep their lanes (fix 8)? With a hardware keyboard, does Escape in a rename field bring the old name back?

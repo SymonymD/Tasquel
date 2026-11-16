@@ -1,0 +1,36 @@
+import XCTest
+
+/// PROTOTYPE screenshots: an open card in iPad landscape, full width and half width.
+final class ProtoShotsTests: XCTestCase {
+    func testOpenCardLandscape() throws {
+        let out = URL(fileURLWithPath: "/private/tmp/claude-501/-Volumes-T7-Design-JB-Portfolio-SYMONYM-Tasquel/c2c1eb9b-b059-49df-87cc-82751dbd8d02/scratchpad/proto-shots")
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        for (name, extra) in [("l-half", ["-halfOpenCards"])] {
+            XCUIDevice.shared.orientation = .portrait
+            let app = XCUIApplication()
+            app.launchArguments = ["-demoData", "-demoFirstCard", "Errands"] + extra
+            app.launch()
+            Thread.sleep(forTimeInterval: 1.5)
+            XCUIDevice.shared.orientation = .landscapeRight
+            Thread.sleep(forTimeInterval: 2)
+            XCUIDevice.shared.orientation = .landscapeLeft
+            Thread.sleep(forTimeInterval: 4)
+            let errands = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open Errands,")).firstMatch
+            XCTAssertTrue(errands.waitForExistence(timeout: 8))
+            Thread.sleep(forTimeInterval: 1)
+            errands.tap()
+            Thread.sleep(forTimeInterval: 2.5)
+            try XCUIScreen.main.screenshot().pngRepresentation.write(to: out.appendingPathComponent("\(name)-errands.png"))
+            for (count, card) in [(2, "Fitness"), (3, "Study")] {
+                let button = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open \(card),")).firstMatch
+                guard button.exists else { break }
+                if !button.isHittable { app.swipeUp(velocity: .slow); Thread.sleep(forTimeInterval: 1) }
+                button.tap()
+                Thread.sleep(forTimeInterval: 2.5)
+                try XCUIScreen.main.screenshot().pngRepresentation.write(to: out.appendingPathComponent("\(name)-\(count)-open.png"))
+            }
+            app.terminate()
+        }
+        XCUIDevice.shared.orientation = .portrait
+    }
+}

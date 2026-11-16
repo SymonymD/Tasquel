@@ -478,7 +478,10 @@ enum TaskTextHints {
     }
 
     /// Digits, or an amount in words: "fifteen minutes", "a dozen", "half an hour", "a mile".
+    /// Not an ordinal, "1st" or "15th": that's a day of the month (the model made "pay rent
+    /// 1st of every month" a goal of 1, the user, 2026-11-15).
     private static func hasAmount(_ text: String) -> Bool {
+        let text = text.replacing(#/\b\d{1,2}(st|nd|rd|th)\b/#, with: "")
         if text.contains(where: \.isNumber) { return true }
         let numberWords = #/\b(once|twice|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|dozen|couple|few|several|half|quarter)\b/#
         let oneUnit = #/\b(a|an)\s+(minute|hour|mile|kilometer|km|page|chapter|lap|set|rep|glass|cup|day)\b/#

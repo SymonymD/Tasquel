@@ -1,0 +1,147 @@
+Optional(Attributes: Application, 0x104131a50, pid: 45080, label: 'Tasquel'
+Element subtree:
+ →Application, 0x104131a50, pid: 45080, label: 'Tasquel'
+    Window (Main), 0x104131b70, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x104131f30, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x104132050, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x104131c90, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x104131db0, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x104132170, {{0.0, 62.0}, {402.0, 477.0}}
+              ScrollView, 0x104132290, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x1041323b0, {{-402.0, 132.7}, {402.0, 723.0}}
+              ScrollView, 0x1041324d0, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x1041325f0, {{0.0, 132.7}, {402.0, 530.7}}
+                  StaticText, 0x104132710, {{32.0, 156.7}, {93.0, 27.7}}, label: 'Work'
+                  Button, 0x104132830, {{306.0, 148.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Work'
+                  StaticText, 0x104132950, {{32.1, 192.4}, {120.0, 21.0}}, label: '0 of 2 complete'
+                  Button, 0x104132a70, {{20.3, 220.0}, {44.0, 44.0}}, label: 'Complete Send invoice'
+                  StaticText, 0x104132b90, {{62.7, 231.0}, {104.0, 22.0}}, label: 'Send invoice', value: Friday, late
+                  Button, 0x104132cb0, {{174.7, 221.7}, {72.0, 44.0}}, label: 'Change day of Send invoice'
+                  Button, 0x104132dd0, {{267.3, 220.0}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Send invoice'
+                  Button, 0x104132ef0, {{310.0, 220.0}, {59.7, 44.0}}, label: 'Task options: Checkbox, Repeating'
+                    Image, 0x104133010, {{318.7, 233.3}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x104133130, {{342.7, 234.7}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x104133250, {{20.3, 277.7}, {44.0, 44.0}}, label: 'Complete Gym Mon Wed Fri'
+                  StaticText, 0x104133370, {{62.7, 288.7}, {197.3, 22.0}}, label: 'Gym Mon Wed Fri'
+                  Button, 0x104133490, {{268.7, 277.7}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Gym Mon Wed Fri'
+                  Button, 0x1041335b0, {{311.3, 277.7}, {58.3, 44.0}}, label: 'Task options: Checkbox, One-Time'
+                    Image, 0x1041336d0, {{320.0, 291.0}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x1041337f0, {{343.7, 291.0}, {17.3, 17.3}}, identifier: '1.circle', label: '1.circle'
+                  Image, 0x104133910, {{61.0, 346.7}, {12.7, 15.7}}, identifier: 'sparkles', label: 'Sparkle'
+                  StaticText, 0x104133a30, {{83.0, 346.0}, {228.0, 16.7}}, label: 'Added Gym Mon Wed Fri · one-time'
+                  Button, 0x104133b50, {{330.0, 332.3}, {44.0, 44.0}}, label: 'Undo Smart Add'
+                  TextField, 0x104133c70, {{66.7, 372.7}, {231.0, 21.0}}, identifier: 'Add task', label: 'Add task', placeholderValue: 'Add Task', Keyboard Focused
+                    Other, 0x104133d90, {{66.7, 372.7}, {0.0, 0.0}}, identifier: '_UITextSelectionRangeAdjustmentContainerView'
+                      Other, 0x104133eb0, {{66.7, 372.7}, {0.0, 0.0}}, identifier: 'com.apple.text.grabber.leading'
+                        Other, 0x104133fd0, {{59.4, 359.2}, {16.5, 16.5}}
+                        Other, 0x1041340f0, {{66.7, 372.7}, {2.0, 0.0}}
+                      Other, 0x104134210, {{66.7, 372.7}, {0.0, 0.0}}, identifier: 'com.apple.text.grabber.leading'
+                        Other, 0x104134330, {{59.4, 359.2}, {16.5, 16.5}}
+                        Other, 0x104134450, {{66.7, 372.7}, {2.0, 0.0}}
+                    Other, 0x104134630, {{66.7, 380.2}, {231.0, 10.5}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                      Other, 0x104134750, {{69.7, 387.7}, {283.3, 3.0}}
+                  Button, 0x104134870, {{311.7, 361.0}, {58.3, 44.3}}, label: 'New task options: Checkbox, One-Time'
+                    Image, 0x104134990, {{320.3, 374.3}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x104134ab0, {{344.0, 374.3}, {17.3, 17.3}}, identifier: '1.circle', label: '1.circle'
+                  Button, 0x104134bd0, {{334.0, 404.3}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Work'
+                  Button, 0x104134cf0, {{16.0, 463.3}, {181.0, 120.0}}, label: 'Open Personal, no tasks yet'
+                  Button, 0x104134e10, {{205.0, 463.3}, {181.0, 120.0}}, label: 'Open Side Project, no tasks yet'
+                Other, 0x104134f30, {{369.0, 132.7}, {30.0, 350.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x104135050, {{396.0, 135.7}, {3.0, 328.7}}
+                Other, 0x104135170, {{369.0, 132.7}, {30.0, 350.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x104135290, {{396.0, 135.7}, {3.0, 328.7}}
+              ScrollView, 0x1041353b0, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x1041354d0, {{402.0, 132.7}, {402.0, 442.3}}
+              Other, 0x1041355f0, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x104135710, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x104135830, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x104135950, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x104135a70, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x104135b90, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x104135cb0, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x104135dd0, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x104135ef0, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x104136010, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x104136130, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x104136250, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x104136370, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x104136490, {{338.0, 483.0}, {48.0, 48.0}}, identifier: 'keyboard.chevron.compact.down', label: 'Done'
+    Window, 0x1041365b0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x1041366d0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1041367f0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x104136910, {{0.0, 539.0}, {402.0, 335.0}}
+          Other, 0x104136a30, {{0.0, 539.0}, {402.0, 335.0}}, identifier: 'inputView'
+    Window, 0x104136b50, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x104752d20, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x104754a20, {{0.0, 539.0}, {402.0, 335.0}}
+          Other, 0x10474db80, {{0.0, 539.0}, {402.0, 44.0}}, identifier: 'SystemInputAssistantView'
+            Other, 0x1047554a0, {{0.0, 539.0}, {402.0, 44.0}}
+              Other, 0x1047555c0, {{0.0, 539.0}, {402.0, 44.0}}, identifier: 'CenterPageView'
+                Other, 0x104653130, {{0.0, -61.0}, {402.0, 1244.0}}
+                  ScrollView, 0x10464d300, {{0.0, 539.0}, {402.0, 44.0}}
+                Other, 0x10444a030, {{0.0, 539.0}, {402.0, 44.0}}
+                  Other, 0x104449380, {{0.0, 539.0}, {402.0, 44.0}}, label: 'Typing Predictions'
+                    Other, 0x10442e980, {{0.0, 539.0}, {402.0, 44.0}}
+                      Other, 0x10442db90, {{0.0, 539.0}, {402.0, 44.0}}
+                        Other, 0x10442ad80, {{0.0, 539.0}, {134.0, 44.0}}, label: 'I'
+                        Other, 0x10442fa90, {{134.0, 539.0}, {134.0, 44.0}}, label: 'The'
+                        Other, 0x104641110, {{268.0, 539.0}, {134.0, 44.0}}, label: 'I’m'
+          Other, 0x10464d820, {{0.0, 539.0}, {402.0, 335.0}}
+            Other, 0x104667870, {{0.0, 539.0}, {402.0, 335.0}}
+              Other, 0x104653640, {{0.0, 539.0}, {402.0, 335.0}}
+          Other, 0x104658df0, {{0.0, 583.0}, {402.0, 233.0}}
+            Keyboard, 0x10432ac50, {{0.0, 583.0}, {402.0, 233.0}}
+              Other, 0x10432b680, {{0.0, 583.0}, {402.0, 233.0}}
+                Other, 0x10432b9d0, {{0.0, 583.0}, {402.0, 233.0}}, identifier: 'UIKeyboardLayoutStar Preview'
+                  Key, 0x10432afc0, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x10432bd30, {{4.7, 590.0}, {39.3, 54.0}}, label: 'Q'
+                  Key, 0x10432c080, {{44.0, 590.0}, {39.7, 54.0}}, label: 'W'
+                  Key, 0x10432c400, {{83.7, 590.0}, {39.3, 54.0}}, label: 'E'
+                  Key, 0x10432c770, {{123.0, 590.0}, {39.7, 54.0}}, label: 'R'
+                  Key, 0x10432cae0, {{162.7, 590.0}, {39.3, 54.0}}, label: 'T'
+                  Key, 0x10432ce40, {{202.0, 590.0}, {39.7, 54.0}}, label: 'Y'
+                  Key, 0x10432d1b0, {{241.7, 590.0}, {39.3, 54.0}}, label: 'U'
+                  Key, 0x10432d510, {{281.0, 590.0}, {39.7, 54.0}}, label: 'I'
+                  Key, 0x10432d8a0, {{320.7, 590.0}, {39.3, 54.0}}, label: 'O'
+                  Key, 0x10432dc30, {{360.0, 590.0}, {39.7, 54.0}}, label: 'P'
+                  Key, 0x10432dfa0, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Key, 0x10432e300, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x10432e6a0, {{24.3, 644.0}, {39.3, 54.0}}, label: 'A'
+                  Key, 0x10432ea00, {{63.7, 644.0}, {39.7, 54.0}}, label: 'S'
+                  Key, 0x10432ed90, {{103.3, 644.0}, {39.3, 54.0}}, label: 'D'
+                  Key, 0x10432f100, {{142.7, 644.0}, {39.7, 54.0}}, label: 'F'
+                  Key, 0x10432f470, {{182.3, 644.0}, {39.3, 54.0}}, label: 'G'
+                  Key, 0x10432f800, {{221.7, 644.0}, {39.7, 54.0}}, label: 'H'
+                  Key, 0x10432fb60, {{261.3, 644.0}, {39.3, 54.0}}, label: 'J'
+                  Key, 0x10432fec0, {{300.7, 644.0}, {39.7, 54.0}}, label: 'K'
+                  Key, 0x104330220, {{340.3, 644.0}, {39.3, 54.0}}, label: 'L'
+                  Key, 0x104330590, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Button, 0x104330900, {{4.7, 698.0}, {51.3, 54.0}}, identifier: 'shift', label: 'shift', Selected
+                  Key, 0x104330c60, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x104330fd0, {{63.7, 698.0}, {39.7, 54.0}}, label: 'Z'
+                  Key, 0x104331360, {{103.3, 698.0}, {39.3, 54.0}}, label: 'X'
+                  Key, 0x104331a60, {{142.7, 698.0}, {39.7, 54.0}}, label: 'C'
+                  Key, 0x104331dc0, {{182.3, 698.0}, {39.3, 54.0}}, label: 'V'
+                  Key, 0x104332150, {{221.7, 698.0}, {39.7, 54.0}}, label: 'B'
+                  Key, 0x1043324a0, {{261.3, 698.0}, {39.3, 54.0}}, label: 'N'
+                  Key, 0x104332810, {{300.7, 698.0}, {39.7, 54.0}}, label: 'M'
+                  Key, 0x104332b80, {{0.0, 583.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Key, 0x104332ef0, {{348.0, 698.0}, {51.7, 54.0}}, identifier: 'delete', label: 'delete'
+                  Key, 0x104333270, {{4.7, 752.0}, {98.7, 54.0}}, identifier: 'more', label: 'numbers'
+                  Key, 0x1043335b0, {{103.3, 752.0}, {197.3, 54.0}}, identifier: 'space', label: ' '
+                  Button, 0x104333900, {{300.7, 752.0}, {99.0, 54.0}}, identifier: 'Next:', label: 'next'
+          Other, 0x104333c70, {{0.0, 583.0}, {402.0, 291.0}}
+            Button, 0x104333fd0, {{8.5, 805.7}, {68.1, 68.7}}, label: 'Emoji'
+              StaticText, 0x104334350, {{8.5, 805.7}, {0.0, 0.0}}
+            Button, 0x1043346d0, {{325.4, 805.4}, {68.1, 68.7}}, identifier: 'dictation', label: 'Dictate'
+              StaticText, 0x104334a30, {{325.4, 805.4}, {0.0, 0.0}}
+            Button, 0x104334d90, {{325.4, 805.4}, {68.1, 68.7}}, identifier: 'dictation', label: 'Dictate'
+              StaticText, 0x1043350f0, {{325.4, 805.4}, {0.0, 0.0}}
+Path to element:
+ →Application, 0x104131a50, pid: 45080, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x104658050, pid: 45080, label: 'Tasquel'
+  }
+)

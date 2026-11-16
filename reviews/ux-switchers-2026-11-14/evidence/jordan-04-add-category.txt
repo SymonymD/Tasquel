@@ -1,0 +1,176 @@
+Optional(Attributes: Application, 0x101540750, pid: 25217, label: 'Tasquel'
+Element subtree:
+ →Application, 0x101540750, pid: 25217, label: 'Tasquel'
+    Window (Main), 0x10153def0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x1015455d0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1015456f0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x101545480, {{-402.0, -874.0}, {1206.0, 2622.0}}, identifier: 'PopoverDismissRegion', label: 'dismiss popup'
+          Other, 0x10150c6c0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x101545810, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x101545930, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x101545a50, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x101545b70, {{-402.0, 155.0}, {402.0, 464.0}}
+              ScrollView, 0x101421d60, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x101424c40, {{0.0, 155.0}, {402.0, 484.0}}
+                  Other, 0x101424560, {{16.0, 163.0}, {181.0, 120.0}}, label: 'Errands, no tasks yet'
+                  Button, 0x101424fb0, {{171.3, 144.3}, {44.0, 44.0}}, identifier: 'minus.circle.fill', label: 'Delete Errands'
+                  Button, 0x101424200, {{13.7, 243.7}, {44.0, 44.0}}, identifier: 'Pin Errands', label: 'Pin Errands to the top'
+                  Other, 0x101425310, {{205.0, 163.0}, {181.0, 120.0}}, label: 'Work, no tasks yet'
+                  Button, 0x1014248b0, {{360.3, 144.3}, {44.0, 44.0}}, identifier: 'minus.circle.fill', label: 'Delete Work'
+                  Button, 0x101423ea0, {{202.7, 243.7}, {44.0, 44.0}}, identifier: 'Pin Work', label: 'Pin Work to the top'
+                  Other, 0x101423b40, {{16.0, 291.0}, {181.0, 120.0}}, label: 'Fitness, no tasks yet'
+                  Button, 0x1014237c0, {{171.3, 272.3}, {44.0, 44.0}}, identifier: 'minus.circle.fill', label: 'Delete Fitness'
+                  Button, 0x101423460, {{13.7, 371.7}, {44.0, 44.0}}, identifier: 'Pin Fitness', label: 'Pin Fitness to the top'
+                  Other, 0x101422d20, {{205.0, 291.0}, {181.0, 120.0}}, label: 'Study, no tasks yet'
+                  Button, 0x101408ac0, {{360.3, 272.3}, {44.0, 44.0}}, identifier: 'minus.circle.fill', label: 'Delete Study'
+                  Button, 0x1014080f0, {{202.7, 371.7}, {44.0, 44.0}}, identifier: 'Pin Study', label: 'Pin Study to the top'
+                  Other, 0x101422040, {{16.0, 419.0}, {181.0, 140.0}}, label: 'Appointments, no tasks yet'
+                  Button, 0x10140cb10, {{171.3, 400.3}, {44.0, 44.0}}, identifier: 'minus.circle.fill', label: 'Delete Appointments'
+                  Button, 0x1014282e0, {{13.7, 519.7}, {44.0, 44.0}}, identifier: 'Pin Appointments', label: 'Pin Appointments to the top'
+                  Button, 0x101428630, {{205.0, 419.0}, {181.0, 140.0}}, label: 'Add Category'
+                    Image, 0x1014289b0, {{286.7, 469.0}, {18.0, 18.0}}, identifier: 'plus', label: 'Add'
+                    StaticText, 0x101428d40, {{256.5, 496.5}, {78.0, 14.3}}, label: 'Add Category'
+                Other, 0x1014290b0, {{369.0, 155.0}, {30.0, 657.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x101429400, {{396.0, 359.0}, {3.0, 450.0}}
+                Other, 0x101429790, {{369.0, 155.0}, {30.0, 657.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x101429ae0, {{396.0, 359.0}, {3.0, 450.0}}
+              ScrollView, 0x101429e30, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10142a1a0, {{402.0, 155.0}, {402.0, 484.0}}
+              Other, 0x10142a500, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x10142a880, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x10142ac10, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x10142af90, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Other, 0x10142b330, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x10142b680, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x10142b9e0, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x10142bd50, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x101610ab0, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x1016639c0, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x10121c420, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x10121ce20, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              StaticText, 0x101661570, {{112.0, 134.7}, {178.0, 14.3}}, label: 'Hold and drag a card to move it'
+              Button, 0x101661f50, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x101662070, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x101662190, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x1016622b0, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x1016623d0, {{304.3, 788.0}, {77.7, 52.0}}, label: 'Done Editing'
+      Other, 0x1016624f0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x101662610, {{-402.0, -874.0}, {1206.0, 2622.0}}, identifier: 'PopoverDismissRegion', label: 'dismiss popup'
+        Other, 0x101662730, {{8.0, 415.0}, {386.0, 451.0}}
+          Button, 0x101662850, {{164.5, 410.2}, {73.0, 24.0}}, label: 'Sheet Grabber', value: Half screen
+          Other, 0x101545c90, {{8.0, 415.0}, {386.0, 451.0}}
+            Other, 0x11cb04ae0, {{8.0, 415.0}, {386.0, 451.0}}
+              Other, 0x11cb04c00, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x11cb04d20, {{8.0, 415.0}, {386.0, 451.0}}
+                  Other, 0x11cb04e40, {{8.0, 415.0}, {386.0, 451.0}}
+                    NavigationBar, 0x11cb04f60, {{8.0, 430.4}, {386.0, 51.9}}, identifier: 'Add Category'
+                      StaticText, 0x11cb05080, {{148.2, 441.6}, {105.3, 19.8}}, label: 'Add Category'
+                      Button, 0x11cb051a0, {{340.2, 434.2}, {34.6, 34.6}}, identifier: 'checkmark', label: 'Done'
+                    Other, 0x11cb052c0, {{8.0, 415.0}, {386.0, 451.0}}
+                      Other, 0x11cb053e0, {{8.0, 415.0}, {386.0, 451.0}}
+                        Other, 0x11cb05500, {{8.0, 415.0}, {386.0, 451.0}}
+                          Other, 0x11cb05620, {{8.0, 415.0}, {386.0, 451.0}}
+                            CollectionView, 0x11cb05740, {{8.0, 415.0}, {386.0, 451.0}}
+                              Other, 0x11cb05860, {{-7.4, -419.7}, {416.7, 1014.0}}
+                              Other, 0x11cb05980, {{8.0, 415.0}, {386.0, 451.0}}
+                                Other, 0x11cb05aa0, {{8.0, 415.0}, {386.0, 119.8}}
+                              Other, 0x11cb05be0, {{8.0, 415.0}, {386.0, 451.0}}
+                              Cell, 0x11cb05d00, {{23.4, 515.8}, {355.3, 49.9}}
+                                Other, 0x11cb05e20, {{23.4, 515.8}, {355.3, 49.9}}
+                                  Other, 0x11cb05f40, {{23.4, 515.8}, {355.3, 49.9}}
+                                    Other, 0x11cb06060, {{23.4, 515.8}, {355.3, 49.9}}
+                                Other, 0x101545db0, {{23.4, 515.8}, {355.3, 49.9}}
+                                  Other, 0x101545ed0, {{23.4, 515.8}, {355.3, 49.9}}
+                                    Other, 0x101662970, {{23.4, 515.8}, {355.3, 49.9}}
+                                      Switch, 0x10142c0e0, {{23.4, 515.8}, {355.3, 49.9}}, label: 'This week only', value: 0
+                                        StaticText, 0x101662a90, {{38.7, 531.1}, {108.2, 19.5}}, label: 'This week only'
+                                        Switch, 0x101662bb0, {{304.7, 527.4}, {60.5, 26.9}}, value: 0
+                              Cell, 0x101662cd0, {{23.4, 565.8}, {355.3, 28.5}}
+                                Other, 0x101662df0, {{23.4, 565.8}, {355.3, 28.5}}
+                                Other, 0x101662f10, {{23.4, 565.8}, {355.3, 28.5}}
+                                  Other, 0x101663030, {{23.4, 565.8}, {355.3, 28.5}}
+                                    Other, 0x101663150, {{23.4, 565.8}, {355.3, 28.5}}
+                                      StaticText, 0x101663cc0, {{23.4, 565.8}, {355.3, 28.5}}, label: 'The category is added to this week and later weeks.'
+                              Other, 0x101663de0, {{-7.4, 594.3}, {416.7, 105.6}}
+                              Cell, 0x101663f00, {{23.4, 594.3}, {355.3, 38.7}}
+                                Other, 0x101664020, {{23.4, 594.3}, {355.3, 38.7}}
+                                Other, 0x101664140, {{23.4, 594.3}, {355.3, 38.7}}
+                                  Other, 0x101664260, {{23.4, 594.3}, {355.3, 38.7}}
+                                    Other, 0x101664380, {{23.4, 594.3}, {355.3, 38.7}}
+                                      StaticText, 0x1016644a0, {{23.4, 594.3}, {355.3, 38.7}}, label: 'Create New'
+                              Cell, 0x1016645c0, {{23.4, 633.0}, {355.3, 49.9}}
+                                Other, 0x1016646e0, {{23.4, 633.0}, {355.3, 49.9}}
+                                  Other, 0x101664800, {{23.4, 633.0}, {355.3, 49.9}}
+                                    Other, 0x101664920, {{23.4, 633.0}, {355.3, 49.9}}
+                                Other, 0x101664a40, {{23.4, 633.0}, {355.3, 49.9}}
+                                  Other, 0x101545ff0, {{23.4, 633.0}, {355.3, 49.9}}
+                                    Other, 0x101546110, {{23.4, 633.0}, {355.3, 49.9}}
+                                      Button, 0x101546230, {{23.4, 633.0}, {355.3, 49.9}}, label: 'Create New Category'
+                                        Image, 0x101546350, {{40.0, 647.7}, {20.8, 20.8}}, identifier: 'plus.circle', label: 'Add'
+                                        StaticText, 0x101546470, {{40.0, 647.7}, {194.3, 20.8}}, label: 'Create New Category'
+                              Other, 0x101546590, {{-7.4, 699.9}, {416.7, 1240.3}}
+                              Cell, 0x1015466b0, {{23.4, 699.9}, {355.3, 38.7}}
+                                Other, 0x1015467d0, {{23.4, 699.9}, {355.3, 38.7}}
+                                Other, 0x1015468f0, {{23.4, 699.9}, {355.3, 38.7}}
+                                  Other, 0x101546a10, {{23.4, 699.9}, {355.3, 38.7}}
+                                    Other, 0x101546b30, {{23.4, 699.9}, {355.3, 38.7}}
+                                      StaticText, 0x101546c50, {{23.4, 699.9}, {355.3, 38.7}}, label: 'Saved Categories'
+                              Cell, 0x101546d70, {{23.4, 738.6}, {355.3, 49.9}}
+                                Other, 0x101546e90, {{23.4, 738.6}, {355.3, 49.9}}
+                                  Other, 0x101546fb0, {{23.4, 738.6}, {355.3, 49.9}}
+                                    Other, 0x1015470d0, {{23.4, 738.6}, {355.3, 49.9}}
+                                Other, 0x1015471f0, {{23.4, 738.6}, {355.3, 49.9}}
+                                  Other, 0x101547310, {{23.4, 738.6}, {355.3, 49.9}}
+                                    Other, 0x101547430, {{23.4, 738.6}, {355.3, 49.9}}
+                                      Button, 0x1015477e0, {{23.4, 738.6}, {355.3, 49.9}}, label: 'Errands, Added', Disabled
+                                        Image, 0x101547900, {{38.4, 753.7}, {23.7, 20.2}}, identifier: 'cart', label: 'Shopping Cart', Disabled
+                                        StaticText, 0x101547a20, {{38.4, 753.7}, {95.4, 20.2}}, label: 'Errands', Disabled
+                                        StaticText, 0x10121c750, {{327.7, 756.7}, {35.5, 13.8}}, label: 'Added', Disabled
+                              Cell, 0x10121e350, {{23.4, 788.5}, {355.3, 49.9}}
+                                Other, 0x10121c080, {{23.4, 788.5}, {355.3, 49.9}}
+                                  Other, 0x10121d530, {{23.4, 788.5}, {355.3, 49.9}}
+                                    Other, 0x10121cac0, {{23.4, 788.5}, {355.3, 49.9}}
+                                Other, 0x10121bd00, {{23.4, 788.5}, {355.3, 49.9}}
+                                  Other, 0x10121e6d0, {{23.4, 788.5}, {355.3, 49.9}}
+                                    Other, 0x10121d890, {{23.4, 788.5}, {355.3, 49.9}}
+                                      Button, 0x10121d190, {{23.4, 788.5}, {355.3, 49.9}}, label: 'Work, Added', Disabled
+                                        Image, 0x10121dc10, {{38.4, 803.6}, {23.7, 19.8}}, identifier: 'briefcase', label: 'Briefcase', Disabled
+                                        StaticText, 0x10121ea70, {{38.4, 803.6}, {76.8, 19.8}}, label: 'Work', Disabled
+                                        StaticText, 0x10121ede0, {{327.7, 806.6}, {35.5, 13.8}}, label: 'Added', Disabled
+                              Other, 0x10121f160, {{77.1, 787.6}, {286.1, 1.0}}
+                                Other, 0x10121f4e0, {{77.1, 787.6}, {286.1, 1.0}}
+                              Cell, 0x10121f850, {{23.4, 838.5}, {355.3, 49.9}}
+                                Other, 0x10121fbf0, {{23.4, 838.5}, {355.3, 49.9}}
+                                  Other, 0x10121ff80, {{23.4, 838.5}, {355.3, 49.9}}
+                                    Other, 0x1012202e0, {{23.4, 838.5}, {355.3, 49.9}}
+                                Other, 0x101220630, {{23.4, 838.5}, {355.3, 49.9}}
+                                  Other, 0x101221140, {{23.4, 838.5}, {355.3, 49.9}}
+                                    Other, 0x101221490, {{23.4, 838.5}, {355.3, 49.9}}
+                                      Button, 0x101221800, {{23.4, 838.5}, {355.3, 49.9}}, label: 'Fitness, Added', Disabled
+                                        Image, 0x101221b50, {{41.6, 852.2}, {17.3, 22.4}}, identifier: 'figure.run', label: 'Running', Disabled
+                                        StaticText, 0x101221ea0, {{41.6, 852.2}, {88.0, 22.4}}, label: 'Fitness', Disabled
+                                        StaticText, 0x101222210, {{327.7, 856.6}, {35.5, 13.8}}, label: 'Added', Disabled
+                              Other, 0x101222580, {{77.1, 837.5}, {286.1, 1.0}}
+                                Other, 0x1012228d0, {{77.1, 837.5}, {286.1, 1.0}}
+                              Other, 0x101222c40, {{362.3, 482.2}, {28.8, 329.8}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                                Other, 0x10142c480, {{388.2, 823.8}, {2.9, 6.7}}
+                              Other, 0x10142c7e0, {{362.3, 482.2}, {28.8, 329.8}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                                Other, 0x10142cb70, {{388.2, 823.8}, {2.9, 6.7}}
+                    Other, 0x10142cef0, {{8.0, 415.0}, {386.0, 451.0}}
+                      Other, 0x10142d250, {{8.0, 415.0}, {386.0, 451.0}}
+          Other, 0x10142d5c0, {{8.0, 415.0}, {386.0, 451.0}}
+            Other, 0x10142d920, {{8.0, 415.0}, {386.0, 451.0}}
+              Other, 0x10142dca0, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x10142e040, {{8.0, 415.0}, {386.0, 451.0}}
+                  Other, 0x101547b40, {{8.0, 415.0}, {386.0, 451.0}}
+                    Other, 0x101547c60, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x101547d80, {{8.0, 415.0}, {386.0, 451.0}}
+                  Other, 0x101547ea0, {{8.0, 415.0}, {386.0, 451.0}}
+Path to element:
+ →Application, 0x101540750, pid: 25217, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x1012239c0, pid: 25217, label: 'Tasquel'
+  }
+)

@@ -39,13 +39,20 @@ enum Season: String, CaseIterable {
     ]
 
     /// Today's season. Debug builds take `-demoSeason <spring|summer|fall|winter>`, for
-    /// screenshots.
+    /// screenshots. Worked out again at most once a minute: every Seasonal color asks, and
+    /// each time built a calendar.
     static var current: Season {
         #if DEBUG
         if let forced { return forced }
         #endif
-        return of(Date())
+        let now = Date()
+        if let cached = currentCache, now >= cached.from, now < cached.from.addingTimeInterval(60) { return cached.season }
+        let season = of(now)
+        currentCache = (season, now)
+        return season
     }
+
+    private static var currentCache: (season: Season, from: Date)?
 
     #if DEBUG
     private static let forced: Season? = {
@@ -81,9 +88,13 @@ struct SeasonPalette {
         let light: UInt32
         let dark: UInt32
 
-        var color: Color {
-            Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
-        }
+        /// The phone's light or dark one (`SeasonalScheme`), as a plain color. Not a UIKit
+        /// color that picks as it's drawn: each was a new one, so SwiftUI couldn't tell a
+        /// row hadn't changed and drew it again, and each took a UIKit trait lookup to draw
+        /// (swiping weeks did twice Dark's work, 2026-11-15).
+        var color: Color { color(dark: SeasonalScheme.shared.isDark) }
+
+        func color(dark isDark: Bool) -> Color { Color(hex: isDark ? dark : light) }
     }
 
     let bgTop, bgBottom, card, border, capsule: Tone
@@ -185,17 +196,30 @@ struct SeasonPalette {
 
     /// The card's shadow: tinted and soft in light mode, darker at night.
     var shadowColor: Color {
-        let light = shadow.light, dark = shadow.dark
-        return Color(UIColor {
-            $0.userInterfaceStyle == .dark ? UIColor(hex: dark).withAlphaComponent(0.35) : UIColor(hex: light).withAlphaComponent(0.15)
-        })
+        SeasonalScheme.shared.isDark ? Color(hex: shadow.dark).opacity(0.35) : Color(hex: shadow.light).opacity(0.15)
     }
 }
 
-extension UIColor {
-    convenience init(hex: UInt32) {
-        self.init(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                  blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+/// Whether the phone is set to dark, for the Seasonal colors (`SeasonPalette.Tone.color`).
+/// Seasonal always follows the phone, so every view in it shares one light or dark. The
+/// root view keeps it current (ContentView); views that read it while drawing redraw when
+/// it changes, as with `TextSizeSetting`.
+@Observable
+final class SeasonalScheme {
+    static let shared = SeasonalScheme()
+    /// From the screen at first use, so the first frame is already right.
+    var isDark = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.traitCollection.userInterfaceStyle == .dark
+
+    func follow(_ scheme: ColorScheme) {
+        let dark = scheme == .dark
+        if isDark != dark { isDark = dark }
+    }
+}
+
+extension Color {
+    /// 0xRRGGBB, in sRGB.
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
     }
 }
 
@@ -209,15 +233,20 @@ struct SeasonalBackdrop: View {
     private var palette: SeasonPalette { season.palette }
 
     var body: some View {
+        // Picked here, where a change of light or dark is seen, and handed to the drawings:
+        // a Canvas's drawing isn't watched for it.
+        let isDark = SeasonalScheme.shared.isDark
+        let motifs = palette.motifs.map { $0.color(dark: isDark) }
         GeometryReader { proxy in
             ZStack {
-                LinearGradient(colors: [palette.bgTop.color, palette.bgBottom.color], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [palette.bgTop.color(dark: isDark), palette.bgBottom.color(dark: isDark)],
+                               startPoint: .top, endPoint: .bottom)
                 if season == .summer {
-                    RadialGradient(colors: [palette.motifs[0].color.opacity(0.5), .clear], center: UnitPoint(x: 0.92, y: 0.06),
+                    RadialGradient(colors: [motifs[0].opacity(0.5), .clear], center: UnitPoint(x: 0.92, y: 0.06),
                                    startRadius: 0, endRadius: proxy.size.width * 0.75)
-                    waves
+                    waves(motifs)
                 } else {
-                    scatter
+                    scatter(motifs)
                 }
             }
         }
@@ -226,7 +255,7 @@ struct SeasonalBackdrop: View {
         .accessibilityHidden(true)
     }
 
-    private var scatter: some View {
+    private func scatter(_ motifs: [Color]) -> some View {
         Canvas { context, size in
             var random = SeededRandom(seed: 7)
             let count = season == .winter ? 70 : 26
@@ -235,7 +264,7 @@ struct SeasonalBackdrop: View {
                 let y = random.next() * size.height
                 let scale = 0.6 + random.next() * 0.9
                 let angle = random.next() * 360
-                let color = palette.motifs[index % palette.motifs.count].color
+                let color = motifs[index % motifs.count]
                 var place = context
                 place.translateBy(x: x, y: y)
                 place.rotate(by: .degrees(angle))
@@ -249,7 +278,7 @@ struct SeasonalBackdrop: View {
         }
     }
 
-    private var waves: some View {
+    private func waves(_ motifs: [Color]) -> some View {
         Canvas { context, size in
             for band in 0..<3 {
                 var path = Path()
@@ -261,7 +290,7 @@ struct SeasonalBackdrop: View {
                 path.addLine(to: CGPoint(x: size.width, y: size.height))
                 path.addLine(to: CGPoint(x: 0, y: size.height))
                 path.closeSubpath()
-                context.fill(path, with: .color(palette.motifs[1].color.opacity(0.18 + Double(band) * 0.06)))
+                context.fill(path, with: .color(motifs[1].opacity(0.18 + Double(band) * 0.06)))
             }
         }
     }
@@ -274,7 +303,7 @@ struct SeasonalBackdrop: View {
             turned.fill(Path(ellipseIn: CGRect(x: -r * 0.45, y: -r * 1.6, width: r * 0.9, height: r * 1.4)), with: .color(color.opacity(0.55)))
         }
         context.fill(Path(ellipseIn: CGRect(x: -r * 0.3, y: -r * 0.3, width: r * 0.6, height: r * 0.6)),
-                     with: .color(Color(UIColor(hex: 0xF6D66E)).opacity(0.7)))
+                     with: .color(Color(hex: 0xF6D66E).opacity(0.7)))
     }
 
     private static func leaf(_ context: inout GraphicsContext, scale: Double, color: Color) {

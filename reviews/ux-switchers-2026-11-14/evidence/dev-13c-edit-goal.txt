@@ -1,0 +1,84 @@
+Optional(Attributes: Application, 0x10447cb70, pid: 58198, label: 'Tasquel'
+Element subtree:
+ →Application, 0x10447cb70, pid: 58198, label: 'Tasquel'
+    Window (Main), 0x1044329e0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x1044322e0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1044273c0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x104474a10, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x104431f50, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x104431870, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x104431510, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10442e8b0, {{-402.0, 132.7}, {402.0, 595.0}}
+              ScrollView, 0x104421210, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x10442ec20, {{0.0, 132.7}, {402.0, 927.3}}
+                  Button, 0x10442ef70, {{16.0, 140.7}, {181.0, 120.0}}, label: 'Open Errands, no tasks yet'
+                  Button, 0x10442f2c0, {{205.0, 140.7}, {181.0, 120.0}}, label: 'Open Work, no tasks yet'
+                  Button, 0x10442f9b0, {{16.0, 268.7}, {181.0, 120.0}}, label: 'Open Fitness, 0 of 1 tasks complete'
+                  Button, 0x10442f650, {{205.0, 268.7}, {181.0, 120.0}}, label: 'Open Study, 0 of 1 tasks complete'
+                  StaticText, 0x10442fd00, {{32.0, 412.7}, {105.7, 27.7}}, label: 'Habits'
+                  Button, 0x104430080, {{306.0, 404.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Habits'
+                  StaticText, 0x104430420, {{32.1, 448.4}, {117.7, 21.0}}, label: '0 of 1 complete'
+                  Other, 0x104430af0, {{30.8, 486.4}, {23.2, 23.2}}, label: 'Drink water progress', value: 8 of 56 glasses
+                  StaticText, 0x1044311c0, {{62.7, 487.0}, {237.3, 22.0}}, label: 'Drink water'
+                  Button, 0x104432d70, {{310.0, 476.0}, {59.7, 44.0}}, label: 'Task options: Goal, Repeating'
+                    Image, 0x104431bd0, {{318.7, 489.3}, {17.3, 17.3}}, identifier: 'target', label: 'target'
+                    Image, 0x104432650, {{342.7, 490.7}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x10442db10, {{48.3, 514.0}, {44.0, 44.0}}, identifier: 'slider.horizontal.3', label: 'Edit goal', Selected
+                  ProgressIndicator, 0x10442e1e0, {{91.3, 532.0}, {178.0, 8.0}}, value: 14%
+                  StaticText, 0x10442de80, {{279.5, 527.5}, {32.0, 16.7}}, label: '8/56'
+                  StaticText, 0x1044808f0, {{321.5, 527.5}, {48.3, 16.7}}, label: 'glasses'
+                  StaticText, 0x10442e560, {{59.6, 561.0}, {40.7, 16.7}}, label: 'Target'
+                  Button, 0x10442d430, {{141.3, 553.0}, {96.0, 32.7}}, label: 'Goal unit: Custom'
+                    Button, 0x10441e0d0, {{141.3, 553.0}, {96.0, 32.7}}
+                      StaticText, 0x10442d780, {{151.2, 559.0}, {60.3, 20.7}}, label: 'Custom'
+                      Image, 0x10442d0d0, {{217.3, 563.3}, {8.3, 12.0}}, identifier: 'chevron.up.chevron.down', label: 'Up And Down Chevrons'
+                  TextField, 0x10442cd70, {{245.3, 547.3}, {103.3, 44.3}}, placeholderValue: 'Target', value: 56
+                  TextField, 0x1044198f0, {{356.7, 553.3}, {73.7, 32.3}}, label: 'Unit name, for example pages', placeholderValue: 'Unit', value: glasses
+                  StaticText, 0x104417ac0, {{59.6, 601.5}, {29.7, 16.7}}, label: 'Step'
+                  TextField, 0x104417750, {{141.3, 587.7}, {103.3, 44.3}}, placeholderValue: 'Auto', value: 8
+                  StaticText, 0x104415f40, {{59.6, 647.2}, {31.7, 16.7}}, label: 'Days'
+                  SegmentedControl, 0x10442ca10, {{141.3, 640.0}, {64.0, 31.0}}
+                    Button, 0x104423130, {{141.3, 640.0}, {32.0, 32.0}}, label: '5 days'
+                    Button, 0x10442c690, {{173.3, 640.0}, {32.0, 32.0}}, label: '7 days', Selected
+                  StaticText, 0x10442c330, {{59.6, 679.0}, {143.7, 16.7}}, label: 'Step × 7 days = Target'
+                  Other, 0x10442bfe0, {{59.6, 703.7}, {370.7, 44.0}}
+                    Button, 0x10442bc50, {{59.6, 703.7}, {74.3, 44.0}}, label: 'Delete task'
+                    Button, 0x10442b900, {{158.0, 717.3}, {44.0, 16.7}}, label: 'Cancel editing goal'
+                    Button, 0x10442b580, {{214.0, 703.7}, {216.3, 44.0}}, label: 'Save Goal'
+                      Image, 0x10442b200, {{277.7, 719.3}, {12.7, 12.7}}, identifier: 'checkmark', label: 'Selected', Selected
+                      StaticText, 0x10442aeb0, {{302.9, 716.7}, {68.3, 18.0}}, label: 'Save Goal'
+                  Button, 0x10442ab30, {{20.3, 761.3}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x10442a7b0, {{334.0, 801.0}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Habits'
+                  Button, 0x10442a440, {{16.0, 860.0}, {181.0, 120.0}}, label: 'Open Appointments, no tasks yet'
+                Other, 0x104429b80, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x104429820, {{396.0, 135.7}, {3.0, 639.3}}
+                Other, 0x1044294b0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x104429150, {{396.0, 135.7}, {3.0, 639.3}}
+              ScrollView, 0x104428df0, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x104428a80, {{402.0, 132.7}, {402.0, 754.0}}
+              Other, 0x104428730, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x1044283a0, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x104428040, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x104427cb0, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x104427950, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x104426e30, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x104426ab0, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x104426750, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x1044263d0, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x104426050, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x104425740, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x1044253f0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x1044250a0, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x104424d20, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x1044249b0, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x104424630, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x1044242c0, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x104421e90, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+Path to element:
+ →Application, 0x10447cb70, pid: 58198, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x10461f400, pid: 58198, label: 'Tasquel'
+  }
+)

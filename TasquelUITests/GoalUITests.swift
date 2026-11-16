@@ -745,6 +745,18 @@ final class GoalUITests: XCTestCase {
         // Undo there takes it back.
         app.buttons["Undo adding Call dentist"].tap()
         XCTAssertTrue(dentist.waitForNonExistence(timeout: 3), "taken back")
+
+        // The day was for that task only: back on this week the field is plain again (it
+        // still said "Add Task for Next Sat", the user, 2026-11-15).
+        house.tap()
+        let title = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Week of")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        let deadline = Date().addingTimeInterval(5)
+        while title.label != thisWeek && Date() < deadline { usleep(200_000) }
+        XCTAssertEqual(title.label, thisWeek, "back on this week")
+        let again = app.addTaskField
+        XCTAssertTrue(again.waitForExistence(timeout: 3))
+        XCTAssertEqual(again.placeholderValue, "Add Task", "no day left picked")
     }
 
     /// While Add Task is in use, a new task stays just above the field (by its note), even

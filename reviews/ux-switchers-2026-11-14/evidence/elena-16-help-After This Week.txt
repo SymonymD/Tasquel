@@ -1,0 +1,315 @@
+Optional(Attributes: Application, 0x10796d300, pid: 67578, label: 'Tasquel'
+Element subtree:
+ →Application, 0x10796d300, pid: 67578, label: 'Tasquel'
+    Window (Main), 0x10796d9c0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x10796dd50, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x10796e7c0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x10796e450, {{-402.0, -874.0}, {1206.0, 2622.0}}
+          Other, 0x10796e0b0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x10796f220, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x10796eb20, {{0.0, 62.0}, {402.0, 778.0}}
+              Other, 0x10796eeb0, {{0.0, 0.0}, {402.0, 874.0}}
+              ScrollView, 0x10796b750, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10796bad0, {{-402.0, 132.7}, {402.0, 592.0}}
+              ScrollView, 0x10796be50, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x10796c1f0, {{0.0, 132.7}, {402.0, 338.7}}
+                  Button, 0x10796cf70, {{16.0, 140.7}, {181.0, 122.7}}, label: 'Open Clients, 1 of 2 tasks complete'
+                  Button, 0x10796c560, {{205.0, 140.7}, {181.0, 122.7}}, label: 'Open Home, no tasks yet'
+                  Button, 0x107969b50, {{16.0, 271.3}, {181.0, 120.0}}, label: 'Open Health, 0 of 1 tasks complete'
+                Other, 0x107969ee0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x10796a260, {{396.0, 504.3}, {3.0, 304.7}}
+                Other, 0x10796a5e0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x10796a970, {{396.0, 504.3}, {3.0, 304.7}}
+              ScrollView, 0x10796ad00, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x107967fa0, {{402.0, 132.7}, {402.0, 336.0}}
+              Other, 0x107968310, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x107968680, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x1079689e0, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x107969420, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x1079697b0, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.up.left.and.arrow.down.right', label: 'Open all cards'
+              Other, 0x107966b10, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x107966e70, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x1079671f0, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x107967550, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x1079678c0, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x107967c20, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x1079651f0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x107965590, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x1079658f0, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x107965c70, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x107965ff0, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar.and.person', label: 'Calendar and events'
+              Button, 0x1079640b0, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x107964420, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+      Other, 0x107964780, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x107964af0, {{-402.0, -874.0}, {1206.0, 2622.0}}
+        Other, 0x107964e90, {{16.0, 62.0}, {370.0, 747.4}}
+          Other, 0x1079620e0, {{16.0, 62.0}, {370.0, 747.4}}
+            Other, 0x107962440, {{16.0, 62.0}, {370.0, 747.4}}
+              Other, 0x107962fa0, {{-354.0, -685.4}, {1110.0, 2242.1}}
+              Other, 0x107963330, {{16.0, 62.0}, {370.0, 747.4}}
+                Other, 0x107963690, {{16.0, 62.0}, {370.0, 747.4}}
+                  Other, 0x107963d50, {{16.0, 62.0}, {370.0, 747.4}}
+                    NavigationBar, 0x1079639f0, {{16.0, 76.7}, {370.0, 49.7}}, identifier: 'Settings'
+                      StaticText, 0x107960440, {{170.3, 87.5}, {61.4, 19.0}}, label: 'Settings'
+                      Button, 0x1079607d0, {{334.5, 80.4}, {33.1, 33.1}}, identifier: 'checkmark', label: 'Done'
+                    Other, 0x107961310, {{16.0, 62.0}, {370.0, 747.4}}
+                      Other, 0x107961670, {{16.0, 62.0}, {370.0, 747.4}}
+                        Other, 0x107961a00, {{16.0, 62.0}, {370.0, 747.4}}
+                          Other, 0x107961d70, {{16.0, 62.0}, {370.0, 747.4}}
+                            CollectionView, 0x10795f300, {{16.0, 62.0}, {370.0, 747.4}}
+                              Other, 0x10795f650, {{1.3, 23.0}, {399.5, 141.7}}
+                              Other, 0x10795f9f0, {{16.0, 62.0}, {370.0, 747.4}}
+                                Other, 0x10795fd70, {{16.0, 62.0}, {370.0, 114.9}}
+                              Other, 0x1079600d0, {{16.0, 62.0}, {370.0, 747.4}}
+                                Other, 0x10795e1b0, {{16.0, 62.0}, {370.0, 114.9}}
+                                  Image, 0x10795e500, {{-94.4, -48.4}, {590.9, 220.9}}, identifier: 'AdditionalDimmingOverlay'
+                                  Other, 0x10795e890, {{16.0, 62.0}, {370.0, 55.2}}
+                                  Other, 0x10795ec20, {{16.0, 62.0}, {370.0, 114.9}}
+                                    Other, 0x10795efa0, {{16.0, 62.0}, {370.0, 114.9}}
+                                  Other, 0x10795c990, {{16.0, 62.0}, {370.0, 114.9}}
+                                    Other, 0x10795cd00, {{16.0, 62.0}, {370.0, 114.9}}
+                                  Other, 0x10795d070, {{16.0, 62.0}, {370.0, 114.9}}
+                                    Other, 0x10795d3f0, {{16.0, 62.0}, {370.0, 114.9}}
+                                    Other, 0x10795dab0, {{16.0, 62.0}, {370.0, 114.9}}
+                              Cell, 0x10795de40, {{30.7, 60.2}, {340.5, 47.9}}
+                                Other, 0x10795d760, {{30.7, 60.2}, {340.5, 47.9}}
+                                  Other, 0x10795b470, {{30.7, 60.2}, {340.5, 47.9}}
+                                    Other, 0x10795b810, {{30.7, 60.2}, {340.5, 47.9}}
+                                Other, 0x10795bb80, {{30.7, 60.2}, {340.5, 47.9}}
+                                  Other, 0x10795bee0, {{30.7, 60.2}, {340.5, 47.9}}
+                                    Other, 0x10795c270, {{30.7, 60.2}, {340.5, 47.9}}
+                                      Switch, 0x10795c600, {{30.7, 60.2}, {340.5, 47.9}}, label: 'Expiration Reminders', value: 1
+                                        StaticText, 0x1079772b0, {{82.3, 74.7}, {148.2, 18.7}}, label: 'Expiration Reminders'
+                                        Switch, 0x107966550, {{300.4, 71.2}, {58.0, 25.8}}, value: 1
+                                        Image, 0x10794cb20, {{47.3, 73.4}, {19.0, 21.5}}, identifier: 'bell.badge', label: 'bell.badge'
+                              Cell, 0x1079143f0, {{30.7, 108.0}, {340.5, 56.8}}
+                                Other, 0x107948bd0, {{30.7, 108.0}, {340.5, 56.8}}
+                                Other, 0x10796fb90, {{30.7, 108.0}, {340.5, 56.8}}
+                                  Other, 0x10797ca60, {{30.7, 108.0}, {340.5, 56.8}}
+                                    Other, 0x10797b280, {{30.7, 108.0}, {340.5, 56.8}}
+                                      StaticText, 0x10797b3a0, {{30.7, 108.0}, {340.5, 56.8}}, label: 'A notification at 9 AM the day before a task's date, its last day (set with the calendar in its type and mode options, or the clock in a card's edit mode).'
+                              Other, 0x10797b4c0, {{1.3, 164.8}, {399.5, 204.3}}
+                              Cell, 0x10797b5e0, {{30.7, 164.8}, {340.5, 37.1}}
+                                Other, 0x10797b700, {{30.7, 164.8}, {340.5, 37.1}}
+                                Other, 0x10797b820, {{30.7, 164.8}, {340.5, 37.1}}
+                                  Other, 0x10797b940, {{30.7, 164.8}, {340.5, 37.1}}
+                                    Other, 0x10797ba60, {{30.7, 164.8}, {340.5, 37.1}}
+                                      StaticText, 0x10797bb80, {{30.7, 164.8}, {340.5, 37.1}}, label: 'Categories'
+                              Cell, 0x10797bca0, {{30.7, 201.9}, {340.5, 47.9}}
+                                Other, 0x10797bdc0, {{30.7, 201.9}, {340.5, 47.9}}
+                                  Other, 0x10797bee0, {{30.7, 201.9}, {340.5, 47.9}}
+                                    Other, 0x10797c000, {{30.7, 201.9}, {340.5, 47.9}}
+                                Other, 0x10797c120, {{30.7, 201.9}, {340.5, 47.9}}
+                                  Other, 0x10797c240, {{30.7, 201.9}, {340.5, 47.9}}
+                                    Other, 0x10797c360, {{30.7, 201.9}, {340.5, 47.9}}
+                                      Button, 0x10797c480, {{30.7, 201.9}, {340.5, 47.9}}, label: 'Saved Categories'
+                                        Image, 0x10797c5a0, {{46.4, 213.9}, {20.6, 24.2}}, identifier: 'square.stack', label: 'square.stack'
+                                        StaticText, 0x10797c6c0, {{46.4, 213.9}, {159.2, 24.2}}, label: 'Saved Categories'
+                                        Image, 0x10797dcb0, {{348.0, 220.3}, {6.4, 11.0}}, identifier: 'chevron.forward'
+                              Cell, 0x10797ddd0, {{30.7, 249.8}, {340.5, 47.9}}
+                                Other, 0x10797def0, {{30.7, 249.8}, {340.5, 47.9}}
+                                  Other, 0x10797e010, {{30.7, 249.8}, {340.5, 47.9}}
+                                    Other, 0x10797e130, {{30.7, 249.8}, {340.5, 47.9}}
+                                Other, 0x10797e250, {{30.7, 249.8}, {340.5, 47.9}}
+                                  Other, 0x10797e370, {{30.7, 249.8}, {340.5, 47.9}}
+                                    Other, 0x10797e490, {{30.7, 249.8}, {340.5, 47.9}}
+                                      StaticText, 0x10797e5b0, {{82.3, 264.3}, {74.9, 18.7}}, label: 'Sort Cards'
+                                      Button, 0x10797e6d0, {{45.1, 258.0}, {311.4, 31.6}}, label: 'Sort Cards, Manual'
+                                        StaticText, 0x10797e7f0, {{290.3, 264.5}, {50.9, 18.7}}, label: 'Manual'
+                                      Image, 0x10797e910, {{45.1, 264.2}, {23.0, 19.0}}, identifier: 'arrow.up.arrow.down', label: 'Sort'
+                              Other, 0x10797ea30, {{82.3, 248.8}, {274.3, 0.9}}
+                              Cell, 0x10797eb50, {{30.7, 297.6}, {340.5, 71.5}}
+                                Other, 0x10797ec70, {{30.7, 297.6}, {340.5, 71.5}}
+                                Other, 0x10797ed90, {{30.7, 297.6}, {340.5, 71.5}}
+                                  Other, 0x10797eeb0, {{30.7, 297.6}, {340.5, 71.5}}
+                                    Other, 0x10797efd0, {{30.7, 297.6}, {340.5, 71.5}}
+                                      StaticText, 0x10797f0f0, {{30.7, 297.6}, {340.5, 71.5}}, label: 'Manual: hold and drag cards to move them. Sorted cards rearrange only when you open the app, change week, or close every card, never while you're using them.'
+                              Other, 0x10797f210, {{1.3, 369.1}, {399.5, 189.6}}
+                              Cell, 0x10797f330, {{30.7, 369.1}, {340.5, 37.1}}
+                                Other, 0x10797f450, {{30.7, 369.1}, {340.5, 37.1}}
+                                Other, 0x10797f570, {{30.7, 369.1}, {340.5, 37.1}}
+                                  Other, 0x10797f690, {{30.7, 369.1}, {340.5, 37.1}}
+                                    Other, 0x10797f7b0, {{30.7, 369.1}, {340.5, 37.1}}
+                                      StaticText, 0x10797f8d0, {{30.7, 369.1}, {340.5, 37.1}}, label: 'Calendar'
+                              Cell, 0x10797f9f0, {{30.7, 406.2}, {340.5, 47.9}}
+                                Other, 0x10797fb10, {{30.7, 406.2}, {340.5, 47.9}}
+                                  Other, 0x10797fc30, {{30.7, 406.2}, {340.5, 47.9}}
+                                    Other, 0x10797fd50, {{30.7, 406.2}, {340.5, 47.9}}
+                                Other, 0x10797fe70, {{30.7, 406.2}, {340.5, 47.9}}
+                                  Other, 0x10797ff90, {{30.7, 406.2}, {340.5, 47.9}}
+                                    Other, 0x1079800b0, {{30.7, 406.2}, {340.5, 47.9}}
+                                      Switch, 0x1079801d0, {{30.7, 406.2}, {340.5, 47.9}}, label: 'Show Calendar Events', value: 1
+                                        StaticText, 0x1079802f0, {{82.3, 420.8}, {156.5, 18.7}}, label: 'Show Calendar Events'
+                                        Switch, 0x107980410, {{300.4, 417.3}, {58.0, 25.8}}, value: 1
+                                        Image, 0x107980530, {{46.7, 421.3}, {19.6, 18.1}}, identifier: 'calendar', label: 'Calendar'
+                              Cell, 0x107980650, {{30.7, 454.1}, {340.5, 47.9}}
+                                Other, 0x107980770, {{30.7, 454.1}, {340.5, 47.9}}
+                                  Other, 0x107980890, {{30.7, 454.1}, {340.5, 47.9}}
+                                    Other, 0x1079809b0, {{30.7, 454.1}, {340.5, 47.9}}
+                                Other, 0x107980ad0, {{30.7, 454.1}, {340.5, 47.9}}
+                                  Other, 0x107980bf0, {{30.7, 454.1}, {340.5, 47.9}}
+                                    Other, 0x107980d10, {{30.7, 454.1}, {340.5, 47.9}}
+                                      Button, 0x107980e30, {{30.7, 454.1}, {340.5, 47.9}}, label: 'Calendars, 2 selected'
+                                        Image, 0x107980f50, {{45.5, 468.2}, {22.1, 19.9}}, identifier: 'checklist', label: 'checklist'
+                                        StaticText, 0x107981070, {{45.5, 468.2}, {107.4, 19.9}}, label: 'Calendars'
+                                        StaticText, 0x107981190, {{263.3, 468.7}, {73.0, 18.7}}, label: '2 selected'
+                                        Image, 0x1079812b0, {{348.0, 472.5}, {6.4, 11.0}}, identifier: 'chevron.forward'
+                              Other, 0x1079813d0, {{82.3, 453.2}, {274.3, 0.9}}
+                              Cell, 0x1079814f0, {{30.7, 502.0}, {340.5, 56.8}}
+                                Other, 0x107981610, {{30.7, 502.0}, {340.5, 56.8}}
+                                Other, 0x107981730, {{30.7, 502.0}, {340.5, 56.8}}
+                                  Other, 0x107981850, {{30.7, 502.0}, {340.5, 56.8}}
+                                    Other, 0x107981970, {{30.7, 502.0}, {340.5, 56.8}}
+                                      StaticText, 0x107981a90, {{30.7, 502.0}, {340.5, 56.8}}, label: 'Shows the week's events from the calendar button in the bottom bar. Events stay on your device and are never changed.'
+                              Other, 0x107981bb0, {{1.3, 558.7}, {399.5, 197.0}}
+                              Cell, 0x107981cd0, {{30.7, 558.7}, {340.5, 37.1}}
+                                Other, 0x107981df0, {{30.7, 558.7}, {340.5, 37.1}}
+                                Other, 0x107981f10, {{30.7, 558.7}, {340.5, 37.1}}
+                                  Other, 0x107982030, {{30.7, 558.7}, {340.5, 37.1}}
+                                    Other, 0x107982150, {{30.7, 558.7}, {340.5, 37.1}}
+                                      StaticText, 0x107982270, {{30.7, 558.7}, {340.5, 37.1}}, label: 'Help'
+                              Cell, 0x107982390, {{30.7, 595.8}, {340.5, 47.9}}
+                                Other, 0x1079824b0, {{30.7, 595.8}, {340.5, 47.9}}
+                                  Other, 0x1079825d0, {{30.7, 595.8}, {340.5, 47.9}}
+                                    Other, 0x1079826f0, {{30.7, 595.8}, {340.5, 47.9}}
+                                Other, 0x107982810, {{30.7, 595.8}, {340.5, 47.9}}
+                                  Other, 0x107982930, {{30.7, 595.8}, {340.5, 47.9}}
+                                    Other, 0x107982a50, {{30.7, 595.8}, {340.5, 47.9}}
+                                      Button, 0x107982b70, {{30.7, 595.8}, {340.5, 47.9}}, label: 'How to Use Tasquel'
+                                        Image, 0x107982c90, {{46.7, 609.9}, {19.9, 19.9}}, identifier: 'questionmark.circle', label: 'questionmark.circle'
+                                        StaticText, 0x107982db0, {{46.7, 609.9}, {174.6, 19.9}}, label: 'How to Use Tasquel'
+                              Cell, 0x107982ed0, {{30.7, 643.7}, {340.5, 47.9}}
+                                Other, 0x107982ff0, {{30.7, 643.7}, {340.5, 47.9}}
+                                  Other, 0x107983110, {{30.7, 643.7}, {340.5, 47.9}}
+                                    Other, 0x107983230, {{30.7, 643.7}, {340.5, 47.9}}
+                                Other, 0x107983350, {{30.7, 643.7}, {340.5, 47.9}}
+                                  Other, 0x107983470, {{30.7, 643.7}, {340.5, 47.9}}
+                                    Other, 0x107983590, {{30.7, 643.7}, {340.5, 47.9}}
+                                      Button, 0x1079836b0, {{30.7, 643.7}, {340.5, 47.9}}, label: 'What's New in 1.1'
+                                        Image, 0x1079837d0, {{47.0, 657.5}, {19.0, 20.6}}, identifier: 'gift', label: 'Gift'
+                                        StaticText, 0x1079838f0, {{47.0, 657.5}, {157.4, 20.6}}, label: 'What's New in 1.1'
+                              Other, 0x107983a10, {{82.3, 642.8}, {274.3, 0.9}}
+                              Cell, 0x107983b30, {{30.7, 691.6}, {340.5, 47.9}}
+                                Other, 0x107983c50, {{30.7, 691.6}, {340.5, 47.9}}
+                                  Other, 0x107983d70, {{30.7, 691.6}, {340.5, 47.9}}
+                                    Other, 0x107983e90, {{30.7, 691.6}, {340.5, 47.9}}
+                                Other, 0x107983fb0, {{30.7, 691.6}, {340.5, 47.9}}
+                                  Other, 0x1079840d0, {{30.7, 691.6}, {340.5, 47.9}}
+                                    Other, 0x1079841f0, {{30.7, 691.6}, {340.5, 47.9}}
+                                      Button, 0x107984310, {{30.7, 691.6}, {340.5, 47.9}}, label: 'Show Welcome Tour'
+                                        Image, 0x107984430, {{47.3, 704.1}, {18.4, 22.7}}, identifier: 'sparkles', label: 'Sparkle'
+                                        StaticText, 0x107984550, {{47.3, 704.1}, {177.9, 22.7}}, label: 'Show Welcome Tour'
+                              Other, 0x107984670, {{82.3, 690.6}, {274.3, 0.9}}
+                              Other, 0x107984790, {{1.3, 755.4}, {399.5, 439.6}}
+                              Cell, 0x1079848b0, {{30.7, 755.4}, {340.5, 71.8}}
+                                Other, 0x1079849d0, {{30.7, 755.4}, {340.5, 71.8}}
+                                Other, 0x107984af0, {{30.7, 755.4}, {340.5, 71.8}}
+                                  Other, 0x107984c10, {{30.7, 755.4}, {340.5, 71.8}}
+                                    Other, 0x107984d30, {{30.7, 755.4}, {340.5, 71.8}}
+                                      StaticText, 0x107984e50, {{45.5, 764.6}, {99.4, 18.7}}, label: 'Feature Ideas'
+                                      StaticText, 0x107984f70, {{45.5, 787.0}, {311.1, 31.0}}, label: 'Ideas being considered. They aren't in Tasquel yet. Tick the ones you'd use to help decide what comes next.'
+                              Other, 0x107985090, {{355.6, 126.4}, {27.6, 625.9}}, label: 'Vertical scroll bar, 3 pages', value: 48%
+                                Other, 0x1079851b0, {{380.5, 320.6}, {2.8, 228.6}}
+                              Other, 0x107985420, {{355.6, 126.4}, {27.6, 625.9}}, label: 'Vertical scroll bar, 3 pages', value: 48%
+                                Other, 0x107985540, {{380.5, 320.6}, {2.8, 228.6}}
+                    Other, 0x107985860, {{16.0, 62.0}, {370.0, 747.4}}
+                      Other, 0x107985980, {{16.0, 62.0}, {370.0, 747.4}}
+      Other, 0x107985aa0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x107985bc0, {{-402.0, -874.0}, {1206.0, 2622.0}}
+        Other, 0x107985ce0, {{0.0, 72.0}, {402.0, 802.0}}
+          Other, 0x107985e00, {{0.0, 72.0}, {402.0, 802.0}}
+            Other, 0x107985f20, {{0.0, 72.0}, {402.0, 802.0}}
+              Other, 0x107986040, {{0.0, 72.0}, {402.0, 802.0}}
+                Other, 0x107986160, {{0.0, 72.0}, {402.0, 802.0}}
+                  Other, 0x107986280, {{0.0, 72.0}, {402.0, 802.0}}
+                    NavigationBar, 0x1079863a0, {{0.0, 88.0}, {402.0, 54.0}}, identifier: 'How to Use Tasquel'
+                      StaticText, 0x1079864c0, {{122.7, 99.7}, {156.7, 20.7}}, label: 'How to Use Tasquel'
+                      Button, 0x1079865e0, {{346.0, 92.0}, {36.0, 36.0}}, identifier: 'checkmark', label: 'Done'
+                    Other, 0x107986700, {{0.0, 72.0}, {402.0, 802.0}}
+                      Other, 0x107986820, {{0.0, 72.0}, {402.0, 802.0}}
+                        Other, 0x107986940, {{0.0, 72.0}, {402.0, 802.0}}
+                          Other, 0x107986a60, {{0.0, 72.0}, {402.0, 802.0}}
+                            ScrollView, 0x107986b80, {{0.0, 72.0}, {402.0, 134.0}}
+                              Other, 0x107986ca0, {{-102.0, 72.0}, {504.0, 134.0}}
+                                Button, 0x107986dc0, {{-86.0, 152.0}, {75.3, 44.0}}, label: 'Weekly Checklist'
+                                Button, 0x107986ee0, {{-2.7, 152.0}, {70.3, 44.0}}, label: 'Category Cards'
+                                Button, 0x107987000, {{75.7, 152.0}, {69.0, 44.0}}, label: 'Tasks'
+                                Button, 0x107987120, {{152.7, 152.0}, {71.3, 44.0}}, label: 'Task Types'
+                                Button, 0x107987240, {{232.0, 152.0}, {76.3, 44.0}}, label: 'After This Week', Selected
+                                Button, 0x107987360, {{316.3, 152.0}, {69.7, 44.0}}, label: 'Days and Dates'
+                              Other, 0x107987480, {{0.0, 72.0}, {402.0, 134.0}}
+                                Other, 0x1079875a0, {{0.0, 72.0}, {402.0, 124.8}}
+                              Other, 0x1079876c0, {{0.0, 72.0}, {402.0, 134.0}}
+                                Other, 0x1079877e0, {{0.0, 72.0}, {402.0, 124.8}}
+                                  Image, 0x107987900, {{-120.0, -48.0}, {642.0, 240.0}}, identifier: 'AdditionalDimmingOverlay'
+                                  Other, 0x107987a20, {{0.0, 72.0}, {402.0, 60.0}}
+                                  Other, 0x107987b40, {{0.0, 72.0}, {402.0, 124.8}}
+                                    Other, 0x107987c60, {{0.0, 72.0}, {402.0, 124.8}}
+                                  Other, 0x107987d80, {{0.0, 72.0}, {402.0, 124.8}}
+                                    Other, 0x107987ea0, {{0.0, 72.0}, {402.0, 124.8}}
+                                  Other, 0x107987fc0, {{0.0, 72.0}, {402.0, 124.8}}
+                                    Other, 0x1079880e0, {{0.0, 72.0}, {402.0, 124.8}}
+                                    Other, 0x107988200, {{0.0, 72.0}, {402.0, 124.8}}
+                            CollectionView, 0x107988320, {{0.0, 206.0}, {402.0, 634.0}}
+                              Cell, 0x107988440, {{0.0, 206.0}, {402.0, 634.0}}
+                                Other, 0x107988560, {{0.0, 206.0}, {402.0, 634.0}}
+                                  Other, 0x107988680, {{0.0, 206.0}, {402.0, 634.0}}
+                                    Other, 0x1079887a0, {{0.0, 206.0}, {402.0, 634.0}}
+                                      CollectionView, 0x1079888c0, {{0.0, 206.0}, {402.0, 634.0}}
+                                        Other, 0x1079889e0, {{-16.0, -1062.0}, {434.0, 2996.3}}
+                                        Cell, 0x107988b00, {{16.0, 206.0}, {370.0, 40.3}}
+                                          Other, 0x107988c20, {{16.0, 206.0}, {370.0, 40.3}}
+                                          Other, 0x107988d40, {{16.0, 206.0}, {370.0, 40.3}}
+                                            Other, 0x107988e60, {{16.0, 206.0}, {370.0, 40.3}}
+                                              Other, 0x107988f80, {{16.0, 206.0}, {370.0, 40.3}}
+                                                StaticText, 0x1079890a0, {{16.0, 206.0}, {370.0, 40.3}}, label: 'After This Week'
+                                        Cell, 0x1079891c0, {{16.0, 246.3}, {370.0, 140.0}}
+                                          Other, 0x1079892e0, {{16.0, 246.3}, {370.0, 140.0}}
+                                            Other, 0x107989400, {{16.0, 246.3}, {370.0, 140.0}}
+                                              Other, 0x107989520, {{16.0, 246.3}, {370.0, 140.0}}
+                                          Other, 0x107989640, {{16.0, 246.3}, {370.0, 140.0}}
+                                            Other, 0x107989760, {{16.0, 246.3}, {370.0, 140.0}}
+                                              Other, 0x107989880, {{16.0, 246.3}, {370.0, 140.0}}
+                                                Image, 0x1079899a0, {{34.3, 264.7}, {19.7, 19.7}}, identifier: '1.circle', label: '1.circle'
+                                                StaticText, 0x107989ac0, {{34.3, 264.7}, {108.0, 19.7}}, label: 'One-Time'
+                                                StaticText, 0x107989be0, {{32.0, 289.3}, {328.3, 78.0}}, label: 'This week only. New tasks start as One-Time; a type or mode you pick stays picked for the next task you add to that card, and the field says which (like Add Repeating Goal).'
+                                        Cell, 0x107989d00, {{16.0, 386.3}, {370.0, 120.0}}
+                                          Other, 0x107989e20, {{16.0, 386.3}, {370.0, 120.0}}
+                                            Other, 0x107989f40, {{16.0, 386.3}, {370.0, 120.0}}
+                                              Other, 0x10798a060, {{16.0, 386.3}, {370.0, 120.0}}
+                                          Other, 0x10798a180, {{16.0, 386.3}, {370.0, 120.0}}
+                                            Other, 0x10798a2a0, {{16.0, 386.3}, {370.0, 120.0}}
+                                              Other, 0x10798a3c0, {{16.0, 386.3}, {370.0, 120.0}}
+                                                Image, 0x10798a4e0, {{35.0, 405.3}, {18.3, 18.0}}, identifier: 'arrow.uturn.forward', label: 'Redo'
+                                                StaticText, 0x10798a600, {{35.0, 405.3}, {114.7, 18.0}}, label: 'Carry Over'
+                                                StaticText, 0x10798a720, {{32.0, 429.3}, {310.7, 58.0}}, label: 'If it isn't finished by the end of the week, it moves to next week. A list or sub-tasks bring only what's left; a goal keeps its progress.'
+                                        Other, 0x10798a840, {{72.0, 385.3}, {298.0, 1.0}}
+                                        Cell, 0x10798a960, {{16.0, 506.3}, {370.0, 140.0}}
+                                          Other, 0x10798aa80, {{16.0, 506.3}, {370.0, 140.0}}
+                                            Other, 0x10798aba0, {{16.0, 506.3}, {370.0, 140.0}}
+                                              Other, 0x10798acc0, {{16.0, 506.3}, {370.0, 140.0}}
+                                          Other, 0x10798ade0, {{16.0, 506.3}, {370.0, 140.0}}
+                                            Other, 0x10798af00, {{16.0, 506.3}, {370.0, 140.0}}
+                                              Other, 0x10798b020, {{16.0, 506.3}, {370.0, 140.0}}
+                                                Image, 0x10798b140, {{33.7, 525.3}, {21.0, 18.0}}, identifier: 'repeat', label: 'Repeat 1'
+                                                StaticText, 0x10798b260, {{33.7, 525.3}, {110.7, 18.0}}, label: 'Repeating'
+                                                StaticText, 0x10798b380, {{32.0, 549.3}, {336.0, 78.0}}, label: 'Comes back every week, unchecked, whether or not you finished it. A repeating goal starts from zero; a repeating list keeps its items, with checked ones still checked.'
+                                        Other, 0x10798b4a0, {{72.0, 505.3}, {298.0, 1.0}}
+                                        Other, 0x10798b5c0, {{369.0, 206.0}, {30.0, 606.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x10798b6e0, {{396.0, 802.0}, {3.0, 7.0}}
+                                        Other, 0x10798b800, {{369.0, 206.0}, {30.0, 606.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x10798b920, {{396.0, 802.0}, {3.0, 7.0}}
+                              Other, 0x10798ba40, {{369.0, 206.0}, {30.0, 606.0}}, label: 'Vertical scroll bar, 6 pages', value: 0%
+                                Other, 0x10798bb60, {{396.0, 209.0}, {3.0, 600.0}}
+                              Other, 0x10798bc80, {{369.0, 206.0}, {30.0, 606.0}}, label: 'Vertical scroll bar, 6 pages', value: 0%
+                                Other, 0x10798bda0, {{396.0, 209.0}, {3.0, 600.0}}
+                    Other, 0x10798bec0, {{0.0, 72.0}, {402.0, 802.0}}
+                      Other, 0x10798bfe0, {{0.0, 72.0}, {402.0, 802.0}}
+Path to element:
+ →Application, 0x10796d300, pid: 67578, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x1078683a0, pid: 67578, label: 'Tasquel'
+  }
+)

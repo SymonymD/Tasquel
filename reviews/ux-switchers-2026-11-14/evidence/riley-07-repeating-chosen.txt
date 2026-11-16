@@ -1,0 +1,126 @@
+Optional(Attributes: Application, 0x10734faa0, pid: 42267, label: 'Tasquel'
+Element subtree:
+ →Application, 0x10734faa0, pid: 42267, label: 'Tasquel'
+    Window (Main), 0x107350290, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x107350650, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x107350770, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1073503b0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x1073504d0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x107350890, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x1073509b0, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x107350ad0, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x107350bf0, {{-402.0, 132.7}, {402.0, 467.0}}
+              ScrollView, 0x107350d10, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x107350e30, {{0.0, 132.7}, {402.0, 763.7}}
+                  StaticText, 0x107350f50, {{32.0, 156.7}, {118.7, 27.7}}, label: 'Errands'
+                  Button, 0x107351070, {{306.0, 148.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Errands'
+                  StaticText, 0x107351190, {{32.1, 192.4}, {117.7, 21.0}}, label: '0 of 1 complete'
+                  Button, 0x1073512b0, {{20.3, 220.0}, {44.0, 44.0}}, label: 'Complete Groceries'
+                  StaticText, 0x1073513d0, {{62.7, 231.0}, {195.7, 22.0}}, label: 'Groceries'
+                  Button, 0x1073514f0, {{267.0, 220.0}, {44.0, 44.0}}, identifier: 'Fold Groceries', label: 'Collapse list', value: Groceries
+                  Button, 0x107351610, {{309.7, 220.0}, {60.0, 44.0}}, label: 'Task options: List, Repeating'
+                    Image, 0x107351730, {{318.7, 235.7}, {17.0, 12.3}}, identifier: 'list.bullet', label: 'List'
+                    Image, 0x107351850, {{342.7, 234.7}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x107351970, {{45.7, 266.3}, {44.0, 32.0}}, label: 'Mark milk incomplete', Selected
+                  StaticText, 0x107351a90, {{83.7, 272.7}, {286.0, 19.3}}, label: 'milk'
+                  Button, 0x107351bb0, {{45.7, 299.7}, {44.0, 32.0}}, label: 'Complete eggs'
+                  StaticText, 0x107351cd0, {{83.7, 306.0}, {286.0, 19.3}}, label: 'eggs'
+                  Button, 0x107351df0, {{45.7, 333.0}, {44.0, 32.0}}, label: 'Mark bread incomplete', Selected
+                  StaticText, 0x107351f10, {{83.7, 339.3}, {286.0, 19.3}}, label: 'bread'
+                  Button, 0x107352030, {{45.7, 366.3}, {44.0, 32.0}}, label: 'Complete bananas'
+                  StaticText, 0x107352150, {{83.7, 372.7}, {286.0, 19.3}}, label: 'bananas'
+                  Button, 0x107352270, {{45.7, 399.7}, {44.0, 32.0}}, label: 'Complete coffee'
+                  StaticText, 0x107352390, {{83.7, 406.0}, {286.0, 19.3}}, label: 'coffee'
+                  Button, 0x1073524b0, {{46.0, 423.7}, {44.0, 44.0}}, label: 'Add item to Groceries'
+                  Button, 0x1073525d0, {{20.3, 469.7}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x1073526f0, {{334.0, 509.3}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Errands'
+                  Button, 0x107352810, {{16.0, 568.3}, {181.0, 120.0}}, label: 'Open Work, no tasks yet'
+                  Button, 0x107352930, {{205.0, 568.3}, {181.0, 120.0}}, label: 'Open Fitness, no tasks yet'
+                  Button, 0x107352a50, {{16.0, 696.3}, {181.0, 120.0}}, label: 'Open Study, no tasks yet'
+                  Button, 0x107352b70, {{205.0, 696.3}, {181.0, 120.0}}, label: 'Open Appointments, no tasks yet'
+                Other, 0x107352c90, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x107352db0, {{396.0, 135.7}, {3.0, 632.7}}
+                Other, 0x107352ed0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x107352ff0, {{396.0, 135.7}, {3.0, 632.7}}
+              ScrollView, 0x107353110, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x107353230, {{402.0, 132.7}, {402.0, 763.7}}
+              Other, 0x107353350, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x107353470, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x107353590, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x1073536b0, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x1073537d0, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x1073538f0, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x107353a10, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x107353b30, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x107353c50, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x107353d70, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x107353e90, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x107353fb0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x1073540d0, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x1073541f0, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x107354310, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x107354430, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x107354550, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x107354670, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+      Other, 0x107354790, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1073548b0, {{0.0, 0.0}, {402.0, 874.0}}, identifier: 'PopoverDismissRegion', label: 'dismiss popup'
+        Popover, 0x1073549d0, {{10.0, 72.0}, {316.3, 344.7}}
+          Image, 0x107354af0, {{-140.0, -78.0}, {603.3, 644.7}}
+          Other, 0x107354c10, {{10.0, 72.0}, {316.3, 344.7}}
+            Other, 0x107354d30, {{10.0, 72.0}, {316.3, 344.7}}
+              Other, 0x107354e50, {{10.0, 72.0}, {316.3, 344.7}}
+                Other, 0x107354f70, {{10.0, 72.0}, {316.3, 344.7}}
+                  Other, 0x107355090, {{10.0, 72.0}, {316.3, 344.7}}
+                    Other, 0x1073551b0, {{10.0, 72.0}, {316.3, 344.7}}
+                      Other, 0x1073552d0, {{10.0, 72.0}, {0.0, 0.0}}
+                        Other, 0x1073553f0, {{10.0, 72.0}, {316.3, 344.7}}
+                          Other, 0x107355510, {{10.0, 72.0}, {316.3, 344.7}}
+                            Other, 0x107355630, {{10.0, 72.0}, {316.3, 344.7}}
+                              Other, 0x107355750, {{10.0, 72.0}, {316.3, 344.7}}
+            Other, 0x107355870, {{10.0, 72.0}, {316.3, 344.7}}
+              Other, 0x107355990, {{10.0, 72.0}, {316.3, 344.7}}
+                Other, 0x107235510, {{10.0, 72.0}, {316.3, 344.7}}
+                  StaticText, 0x107235630, {{26.0, 88.0}, {31.3, 14.3}}, label: 'TYPE'
+                  Button, 0x107235750, {{26.0, 108.3}, {129.7, 44.0}}, label: 'Checkbox'
+                    Image, 0x107235870, {{39.3, 123.0}, {15.0, 15.0}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    StaticText, 0x107235990, {{66.0, 121.3}, {68.7, 18.0}}, label: 'Checkbox'
+                  Button, 0x107235ab0, {{26.0, 158.3}, {129.7, 44.0}}, label: 'Goal'
+                    Image, 0x107235bd0, {{39.3, 173.0}, {15.0, 15.0}}, identifier: 'target', label: 'target'
+                    StaticText, 0x107235cf0, {{66.0, 171.3}, {31.3, 18.0}}, label: 'Goal'
+                  Button, 0x107235e10, {{26.0, 208.3}, {129.7, 44.0}}, label: 'List', Selected
+                    Image, 0x107235f30, {{39.3, 224.7}, {15.0, 11.0}}, identifier: 'list.bullet', label: 'List'
+                    StaticText, 0x107236140, {{66.0, 221.3}, {24.7, 18.0}}, label: 'List'
+                  StaticText, 0x107236260, {{167.7, 88.0}, {109.0, 14.3}}, label: 'AFTER THIS WEEK'
+                  Button, 0x10773ff00, {{167.7, 108.3}, {129.7, 44.0}}, label: 'One-Time'
+                    Image, 0x107740320, {{181.0, 123.0}, {15.0, 15.0}}, identifier: '1.circle', label: '1.circle'
+                    StaticText, 0x107741620, {{207.7, 121.3}, {68.0, 18.0}}, label: 'One-Time'
+                  Button, 0x107741740, {{167.7, 158.3}, {129.7, 44.0}}, label: 'Carry Over'
+                    Image, 0x107741860, {{181.7, 173.3}, {14.0, 14.0}}, identifier: 'arrow.uturn.forward', label: 'Redo'
+                    StaticText, 0x107741980, {{207.7, 171.7}, {71.3, 17.3}}, label: 'Carry Over'
+                  Button, 0x107741aa0, {{167.7, 208.3}, {129.7, 44.0}}, label: 'Repeating', Selected
+                    Image, 0x107741bc0, {{180.7, 223.7}, {15.7, 13.3}}, identifier: 'repeat', label: 'Repeat 1'
+                    StaticText, 0x10712b0b0, {{207.7, 221.3}, {69.3, 18.0}}, label: 'Repeating'
+                  StaticText, 0x10712a640, {{26.0, 266.3}, {24.7, 14.3}}, label: 'DAY'
+                  Other, 0x107126540, {{26.0, 286.7}, {271.3, 36.0}}
+                    Button, 0x10712b8b0, {{26.0, 286.7}, {26.7, 36.0}}, label: 'Any day', Selected
+                    Button, 0x10712c330, {{56.7, 286.7}, {26.7, 36.0}}, label: 'Monday'
+                    Button, 0x10712c450, {{87.3, 286.7}, {26.3, 36.0}}, label: 'Tuesday'
+                    Button, 0x10712c570, {{117.7, 286.7}, {26.7, 36.0}}, label: 'Wednesday'
+                    Button, 0x10712c690, {{148.3, 286.7}, {26.7, 36.0}}, label: 'Thursday'
+                    Button, 0x10712c7b0, {{179.0, 286.7}, {26.7, 36.0}}, label: 'Friday'
+                    Button, 0x10712c8d0, {{209.7, 286.7}, {26.3, 36.0}}, label: 'Saturday'
+                    Button, 0x10712c9f0, {{240.0, 286.7}, {26.7, 36.0}}, label: 'Sunday'
+                    Button, 0x10712cb10, {{270.7, 286.7}, {26.7, 36.0}}, identifier: 'calendar', label: 'Add a date'
+                  StaticText, 0x10712cc30, {{26.0, 336.7}, {220.7, 15.7}}, label: 'Comes back every week, unchecked'
+                  Button, 0x10712cd50, {{26.0, 366.3}, {271.3, 34.3}}, label: 'Done'
+    Window, 0x10712ce70, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x10712cf90, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x10712d0b0, {{0.0, 0.0}, {402.0, 874.0}}
+Path to element:
+ →Application, 0x10734faa0, pid: 42267, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x107490140, pid: 42267, label: 'Tasquel'
+  }
+)

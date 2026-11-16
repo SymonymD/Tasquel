@@ -2300,9 +2300,10 @@ struct AddTaskRowCard: View {
     @State private var newTitle = ""
     @State private var newType: TaskType = .checkbox
     @State private var newMode: TaskMode = .oneTime
-    /// A day picked in the picker for the card's new tasks (it stays picked, like type and
-    /// mode); `didPickDay` once one (or Any) was. Until then they get the day picked in the
-    /// day strip, if any.
+    /// A day picked in the picker for the task being typed, like its date: for that task only
+    /// (kept for the next one, the field said "Add Task for Next Sat" after the task had gone
+    /// to next week, the user, 2026-11-15); `didPickDay` once one (or Any) was. Until then
+    /// tasks get the day picked in the day strip, if any.
     @State private var newDay: Int?
     @State private var didPickDay = false
     /// A date picked for the task being typed (its last day): for that task only.
@@ -2965,6 +2966,8 @@ struct AddTaskRowCard: View {
         pickedMode = false
         newDate = nil
         newDateIsWeek = false
+        newDay = nil
+        didPickDay = false
         let dateQuestion = typedDate.map { " Set its date to \(Self.spokenDate($0.day))? Set Date is above." } ?? ""
         let nextWeekSaid = nextWeek != nil ? ", in next week: its day has gone by this week" : ""
         AccessibilityNotification.Announcement("Added \(Self.describe(parsed))\(nextWeekSaid)\(isDuplicate ? ", already in this card" : ""). Undo is above.\(nextWeek == nil ? dateQuestion : "")").post()
@@ -3049,7 +3052,13 @@ struct AddTaskRowCard: View {
         guard let typed = TypedLines(text) else { return }
         // Every finished line at once (pasted lines too). One change to the field's text, so
         // keys typed right after Return aren't lost.
-        let kept = typed.lines.filter { !addTask($0, keepTyping: true) }
+        // A day or date picked is for the next task, and pasted lines are tasks added at once:
+        // each gets it.
+        let day = newDay, pickedDay = didPickDay, date = newDate, dateIsWeek = newDateIsWeek
+        let kept = typed.lines.filter { line in
+            newDay = day; didPickDay = pickedDay; newDate = date; newDateIsWeek = dateIsWeek
+            return !addTask(line, keepTyping: true)
+        }
         newTitle = typed.leftover(keeping: kept)
         if typed.lines.isEmpty && typed.rest.isEmpty { isFocused = false }
     }
@@ -3107,6 +3116,8 @@ struct AddTaskRowCard: View {
         pickedMode = false
         newDate = nil
         newDateIsWeek = false
+        newDay = nil
+        didPickDay = false
         // Not when it went into another week: the screen goes there, so the keyboard goes
         // first, while this field can still give it up.
         if nextWeek != nil {

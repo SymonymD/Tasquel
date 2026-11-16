@@ -1,0 +1,65 @@
+Optional(Attributes: Application, 0x10645dab0, pid: 57474, label: 'Tasquel'
+Element subtree:
+ →Application, 0x10645dab0, pid: 57474, label: 'Tasquel'
+    Window (Main), 0x10645de00, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x10645f970, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x10645f2b0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x10645ef20, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x10645e160, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x10645f620, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x106460050, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x1064603a0, {{-402.0, 132.7}, {402.0, 595.0}}
+              ScrollView, 0x106460710, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x106460a70, {{0.0, 132.7}, {402.0, 701.0}}
+                  Button, 0x106460df0, {{16.0, 140.7}, {181.0, 122.7}}, label: 'Open Errands, 0 of 2 tasks complete'
+                  Button, 0x106461180, {{205.0, 140.7}, {181.0, 122.7}}, label: 'Open Work, no tasks yet'
+                  Button, 0x106461500, {{16.0, 271.3}, {181.0, 120.0}}, label: 'Open Fitness, no tasks yet'
+                  Button, 0x1064618a0, {{205.0, 271.3}, {181.0, 120.0}}, label: 'Open Study, no tasks yet'
+                  StaticText, 0x106461bf0, {{32.0, 415.3}, {100.3, 27.7}}, label: 'Home'
+                  Button, 0x106461f50, {{306.0, 407.3}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Home'
+                  StaticText, 0x1064622c0, {{32.1, 451.1}, {117.7, 21.0}}, label: '0 of 1 complete'
+                  Button, 0x106462650, {{20.3, 478.7}, {44.0, 44.0}}, label: 'Complete Pay water bill', value: expires in 14 days...
+                  StaticText, 0x1064629f0, {{62.7, 489.7}, {107.7, 22.0}}, label: 'Pay water bill'
+                  Button, 0x106462d50, {{165.0, 480.3}, {44.0, 44.0}}, label: 'Change date of Pay water bill'
+                  Button, 0x1064630e0, {{269.3, 478.7}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Pay water bill'
+                  Button, 0x106463460, {{312.0, 478.7}, {57.7, 44.0}}, label: 'Task options: Checkbox, Carry Over'
+                    Image, 0x1064637c0, {{320.7, 492.0}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x106463b30, {{344.7, 492.7}, {16.0, 16.0}}, identifier: 'arrow.uturn.forward', label: 'Redo'
+                  Button, 0x106463e90, {{20.3, 535.0}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x106464210, {{334.0, 574.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Home'
+                  Button, 0x1064645b0, {{16.0, 633.7}, {181.0, 120.0}}, label: 'Open Appointments, 0 of 1 tasks complete'
+                Other, 0x106464910, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x1064653f0, {{396.0, 142.0}, {3.0, 667.0}}
+                Other, 0x106465770, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x106465ad0, {{396.0, 142.0}, {3.0, 667.0}}
+              ScrollView, 0x106465e50, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x1064661a0, {{402.0, 132.7}, {402.0, 698.3}}
+              Other, 0x106466500, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x106466880, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x106466bf0, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x106466f50, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x1064672b0, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x106467630, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x1064679b0, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x106467d10, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x106468090, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x1064683f0, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x106468760, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x106468ac0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x106468e40, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x1064691a0, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x106546fd0, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x106545bc0, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x10653b500, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x10653dde0, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+    Window, 0x10653ecb0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x10652bb40, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x106531440, {{0.0, 0.0}, {402.0, 874.0}}
+Path to element:
+ →Application, 0x10645dab0, pid: 57474, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x10672a1f0, pid: 57474, label: 'Tasquel'
+  }
+)

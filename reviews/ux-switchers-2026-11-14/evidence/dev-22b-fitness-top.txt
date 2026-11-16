@@ -1,0 +1,105 @@
+Optional(Attributes: Application, 0x101232b80, pid: 68579, label: 'Tasquel'
+Element subtree:
+ →Application, 0x101232b80, pid: 68579, label: 'Tasquel'
+    Window (Main), 0x10122e780, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x101234a50, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x10123a2d0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x101234900, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x101239aa0, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x10123a3f0, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x10123a510, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10123ad10, {{-402.0, 132.7}, {402.0, 595.0}}
+              ScrollView, 0x10123ae30, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x10123af50, {{0.0, 132.7}, {402.0, 1099.7}}
+                  Button, 0x10123b070, {{16.0, 140.7}, {181.0, 120.0}}, label: 'Open Errands, 0 of 1 tasks complete'
+                  Button, 0x10123b190, {{205.0, 140.7}, {181.0, 120.0}}, label: 'Open Work, no tasks yet'
+                  StaticText, 0x10123b2b0, {{32.0, 284.7}, {107.3, 27.7}}, label: 'Fitness'
+                  Button, 0x10123b3d0, {{306.0, 276.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Fitness'
+                  StaticText, 0x10123b4f0, {{32.1, 320.4}, {120.7, 21.0}}, label: '0 of 6 complete'
+                  Button, 0x10123b610, {{20.3, 348.0}, {44.0, 44.0}}, label: 'Complete Gym'
+                  StaticText, 0x10123b730, {{62.7, 350.7}, {82.0, 38.7}}, label: 'Gym', value: Monday, late, dupl...
+                  Button, 0x10123b850, {{152.7, 359.0}, {83.7, 44.0}}, label: 'Change day of Gym'
+                  Button, 0x10123b970, {{267.3, 348.0}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Gym'
+                  Button, 0x10123ba90, {{310.0, 348.0}, {59.7, 44.0}}, label: 'Task options: Checkbox, Repeating'
+                    Image, 0x10123bbb0, {{318.7, 361.3}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x10123bcd0, {{342.7, 362.7}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x10123bdf0, {{20.3, 405.7}, {44.0, 44.0}}, label: 'Complete Gym'
+                  StaticText, 0x10123bf10, {{62.7, 408.3}, {82.0, 38.7}}, label: 'Gym', value: Wednesday, late, d...
+                  Button, 0x10123c030, {{152.7, 416.7}, {84.3, 44.0}}, label: 'Change day of Gym'
+                  Button, 0x10123c150, {{267.3, 405.7}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Gym'
+                  Button, 0x10123c270, {{310.0, 405.7}, {59.7, 44.0}}, label: 'Task options: Checkbox, Repeating'
+                    Image, 0x10123c390, {{318.7, 419.0}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x10161b420, {{342.7, 420.3}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x101621bd0, {{20.3, 463.0}, {44.0, 44.0}}, label: 'Complete Gym MWF'
+                  StaticText, 0x101514990, {{62.7, 474.0}, {85.7, 22.0}}, label: 'Gym MWF', value: Friday, late
+                  Button, 0x1015175e0, {{156.3, 464.7}, {72.0, 44.0}}, label: 'Change day of Gym MWF'
+                  Button, 0x10123c4b0, {{267.3, 463.0}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Gym MWF'
+                  Button, 0x10123c5d0, {{310.0, 463.0}, {59.7, 44.0}}, label: 'Task options: Checkbox, Repeating'
+                    Image, 0x10123c6f0, {{318.7, 476.3}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x10161d3f0, {{342.7, 477.7}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Other, 0x1015070b0, {{30.8, 530.8}, {23.2, 23.2}}, label: 'Run progress', value: 1 of 3
+                  StaticText, 0x10150a020, {{62.7, 531.3}, {237.3, 22.0}}, label: 'Run'
+                  Button, 0x101505dc0, {{310.0, 520.3}, {59.7, 44.0}}, label: 'Task options: Goal, Repeating'
+                    Image, 0x106c57920, {{318.7, 533.7}, {17.3, 17.3}}, identifier: 'target', label: 'target'
+                    Image, 0x106c06800, {{342.7, 535.0}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x106c190a0, {{48.3, 558.3}, {44.0, 44.0}}, identifier: 'slider.horizontal.3', label: 'Edit goal'
+                  ProgressIndicator, 0x106c40fb0, {{91.3, 576.3}, {245.3, 8.0}}, value: 33%
+                  StaticText, 0x106c31f10, {{346.8, 571.8}, {23.0, 16.7}}, label: '1/3'
+                  Button, 0x106c3dd80, {{136.0, 582.3}, {78.0, 46.7}}, label: 'Remove 1'
+                  Button, 0x106c07b60, {{214.0, 582.3}, {78.0, 46.7}}, label: 'Add 1'
+                  Other, 0x106c077e0, {{30.8, 644.1}, {23.2, 23.2}}, label: 'Gym progress', value: 0 of 3
+                  StaticText, 0x106c07460, {{62.7, 644.7}, {237.3, 22.0}}, label: 'Gym', value: duplicate
+                  Button, 0x106c070f0, {{310.0, 633.7}, {59.7, 44.0}}, label: 'Task options: Goal, Repeating'
+                    Image, 0x106c06da0, {{318.7, 647.0}, {17.3, 17.3}}, identifier: 'target', label: 'target'
+                    Image, 0x1017338b0, {{342.7, 648.3}, {18.0, 15.0}}, identifier: 'repeat', label: 'Repeat 1'
+                  Button, 0x101734bf0, {{48.3, 671.7}, {44.0, 44.0}}, identifier: 'slider.horizontal.3', label: 'Edit goal'
+                  ProgressIndicator, 0x101734d10, {{91.3, 689.7}, {245.3, 8.0}}, value: 0%
+                  StaticText, 0x101734e30, {{346.8, 685.2}, {23.0, 16.7}}, label: '0/3'
+                  Button, 0x101734f50, {{136.0, 695.7}, {78.0, 46.7}}, label: 'Remove 1', Disabled
+                  Button, 0x101735070, {{214.0, 695.7}, {78.0, 46.7}}, label: 'Add 1'
+                  Button, 0x101735190, {{20.3, 747.0}, {44.0, 44.0}}, label: 'Complete Sign up for 10K'
+                  StaticText, 0x1017352b0, {{62.7, 758.0}, {197.3, 22.0}}, label: 'Sign up for 10K'
+                  Button, 0x1017353d0, {{268.7, 747.0}, {44.0, 44.0}}, identifier: 'plus', label: 'Add sub-task to Sign up for 10K'
+                  Button, 0x1017354f0, {{311.3, 747.0}, {58.3, 44.0}}, label: 'Task options: Checkbox, One-Time'
+                    Image, 0x101735610, {{320.0, 760.3}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x101735730, {{343.7, 760.3}, {17.3, 17.3}}, identifier: '1.circle', label: '1.circle'
+                  Button, 0x101735850, {{20.3, 803.3}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x101735970, {{334.0, 842.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Fitness'
+                  Button, 0x101735a90, {{16.0, 901.7}, {181.0, 120.0}}, label: 'Open Study, 0 of 1 tasks complete'
+                  Button, 0x101735dd0, {{205.0, 901.7}, {181.0, 120.0}}, label: 'Open Appointments, no tasks yet'
+                  Button, 0x101735ef0, {{16.0, 1029.7}, {181.0, 122.7}}, label: 'Open Habits, 0 of 2 tasks complete'
+                Other, 0x101736010, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x101734040, {{396.0, 135.7}, {3.0, 464.7}}
+                Other, 0x101734160, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x101734280, {{396.0, 135.7}, {3.0, 464.7}}
+              ScrollView, 0x1017343a0, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x1017344c0, {{402.0, 132.7}, {402.0, 1042.3}}
+              Other, 0x1017345e0, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x101734700, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x101734820, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x101734940, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x101734a60, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x1017363f0, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x101736510, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x101736630, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x101736a50, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x101736b70, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x101736c90, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x101736db0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x101736ed0, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x101736ff0, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x101737110, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x101737230, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x101737350, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x101737470, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+    Window, 0x101737590, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x1017376b0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1017377d0, {{0.0, 0.0}, {402.0, 874.0}}
+Path to element:
+ →Application, 0x101232b80, pid: 68579, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x10161d730, pid: 68579, label: 'Tasquel'
+  }
+)

@@ -1,0 +1,69 @@
+Optional(Attributes: Application, 0x105a3e760, pid: 52313, label: 'Tasquel'
+Element subtree:
+ →Application, 0x105a3e760, pid: 52313, label: 'Tasquel'
+    Window (Main), 0x10580a040, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x105805b70, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x1058084e0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x105809b90, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x105806770, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x105815ce0, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x10580d940, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10580a310, {{-402.0, 132.7}, {402.0, 723.0}}
+              ScrollView, 0x105812890, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x105813110, {{0.0, 132.7}, {402.0, 571.7}}
+                  StaticText, 0x10580f9c0, {{32.0, 156.7}, {111.3, 27.7}}, label: 'Clients'
+                  Button, 0x1058151e0, {{306.0, 148.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Clients'
+                  StaticText, 0x105815930, {{32.1, 192.4}, {117.7, 21.0}}, label: '0 of 1 complete'
+                  Button, 0x10580a8e0, {{20.3, 221.3}, {44.0, 44.0}}, label: 'Complete Acme website redesign', value: expires in 10 days...
+                  StaticText, 0x1036062f0, {{62.7, 221.3}, {197.7, 44.0}}, label: 'Acme website redesign'
+                  Button, 0x10360af20, {{176.3, 234.0}, {44.0, 44.0}}, label: 'Change date of Acme website redesign'
+                  Button, 0x103645790, {{269.0, 221.3}, {44.0, 44.0}}, identifier: 'Fold Acme website redesign', label: 'Collapse list', value: Acme website redes...
+                  Button, 0x103646180, {{311.7, 221.3}, {58.0, 44.0}}, label: 'Task options: List, Carry Over'
+                    Image, 0x103641e90, {{320.7, 237.0}, {17.0, 12.3}}, identifier: 'list.bullet', label: 'List'
+                    Image, 0x103646560, {{344.7, 235.3}, {16.0, 16.0}}, identifier: 'arrow.uturn.forward', label: 'Redo'
+                  Button, 0x103640b70, {{45.7, 269.0}, {44.0, 32.0}}, label: 'Complete Wireframes'
+                  StaticText, 0x103640c90, {{83.7, 275.3}, {286.0, 19.3}}, label: 'Wireframes'
+                  Button, 0x103640db0, {{45.7, 302.3}, {44.0, 32.0}}, label: 'Complete Moodboard'
+                  StaticText, 0x103640ed0, {{83.7, 308.7}, {286.0, 19.3}}, label: 'Moodboard'
+                  Button, 0x103649850, {{45.7, 335.7}, {44.0, 32.0}}, label: 'Complete Client review'
+                  StaticText, 0x103649970, {{83.7, 342.0}, {286.0, 19.3}}, label: 'Client review'
+                  Button, 0x103649a90, {{46.0, 359.7}, {44.0, 44.0}}, label: 'Add item to Acme website redesign'
+                  Button, 0x103649bb0, {{20.3, 405.7}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x103649cd0, {{334.0, 445.3}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Clients'
+                  Button, 0x103649df0, {{16.0, 504.3}, {181.0, 120.0}}, label: 'Open Home, no tasks yet'
+                  Button, 0x103649f10, {{205.0, 504.3}, {181.0, 120.0}}, label: 'Open Health, no tasks yet'
+                Other, 0x10364a030, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x10364a150, {{396.0, 274.0}, {3.0, 535.0}}
+                Other, 0x10364a270, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x10364a390, {{396.0, 274.0}, {3.0, 535.0}}
+              ScrollView, 0x10364a4b0, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x10364a5d0, {{402.0, 132.7}, {402.0, 571.7}}
+              Other, 0x10364a6f0, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x10364a810, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x10364abc0, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x10364ace0, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x10364ae00, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x10364af20, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x10364b040, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x10364b160, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x10364c760, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x10364c880, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x10364c9a0, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x10364ced0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x10364cff0, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x10364d110, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x10364d230, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x10364d350, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar.and.person', label: 'Calendar and events'
+              Button, 0x10364d470, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x10364d590, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+    Window, 0x103655250, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x103655370, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x103655490, {{0.0, 0.0}, {402.0, 874.0}}
+Path to element:
+ →Application, 0x105a3e760, pid: 52313, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x105932a00, pid: 52313, label: 'Tasquel'
+  }
+)

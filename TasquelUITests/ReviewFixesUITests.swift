@@ -130,7 +130,39 @@ final class ReviewFixesUITests: XCTestCase {
         XCTAssertLessThan(brightness, 0.35, "the rows went dark with the phone")
     }
 
+    /// Seasonal's colors are plain colors for the phone's light or dark (`SeasonalScheme`, set
+    /// by ContentView), no longer UIKit colors that picked as they were drawn (they made
+    /// swiping weeks lag, 2026-11-15). The cards and backdrop must still follow a switch
+    /// made while the app is open, both ways.
+    @MainActor
+    func testSeasonalScreenFollowsTheDarkSwitch() throws {
+        XCUIDevice.shared.appearance = .light
+        let app = launch(["-demoData", "-demoAppearance", "seasonal", "-demoSeason", "fall"])
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Open ")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        sleep(1)
+        XCTAssertGreaterThan(cardBrightness(card.frame, app), 0.75, "a fall card is cream in light mode")
+        XCUIDevice.shared.appearance = .dark
+        sleep(3)
+        XCTAssertLessThan(cardBrightness(card.frame, app), 0.35, "the cards went dark with the phone")
+        XCTAssertLessThan(Self.brightness(atX: 0.04, y: 0.995), 0.35, "so did what's behind them")
+        XCUIDevice.shared.appearance = .light
+        sleep(3)
+        XCTAssertGreaterThan(cardBrightness(card.frame, app), 0.75, "and light again")
+    }
+
     // MARK: Helpers
+
+    /// The median brightness along a line across a card's lower part, clear of a stray word.
+    @MainActor
+    private func cardBrightness(_ frame: CGRect, _ app: XCUIApplication) -> CGFloat {
+        let screen = app.frame
+        let samples = (2...8).map { step in
+            Self.brightness(atX: Double((frame.minX + frame.width * CGFloat(step) / 10) / screen.width),
+                            y: Double((frame.minY + frame.height * 0.82) / screen.height))
+        }
+        return samples.sorted()[samples.count / 2]
+    }
 
     @MainActor
     private func launch(_ arguments: [String]) -> XCUIApplication {

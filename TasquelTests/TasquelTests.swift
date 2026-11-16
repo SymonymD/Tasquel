@@ -2297,6 +2297,16 @@ struct SmartAddNamingTests {
         #expect(try await parse("Day 3 run 5 miles", goal("Run", 5)).type == .goal, "a real amount besides the label")
     }
 
+    @Test("An ordinal (\"1st\", \"15th\") is a day of the month, not an amount: no goal of 1")
+    func ordinalsAreNotAmounts() async throws {
+        // The user's phone, 2026-11-15: the model made this a goal of 1.
+        let rent = try await parse("pay rent 1st of every month", goal("Pay rent", 1, mode: .repeating))
+        #expect(rent.type == .checkbox && rent.goalTarget == nil)
+        #expect(rent.mode == .oneTime, "no monthly repeat in 1.1, and not every week")
+        #expect(try await parse("Water plants on the 15th", goal("Water plants", 15)).type == .checkbox)
+        #expect(try await parse("Read 20 pages by the 15th", goal("Read", 20)).type == .goal, "a real amount besides the day")
+    }
+
     @Test("Real amounts still make goals")
     func amountsStayGoals() async throws {
         var pages = goal("Read", 20)

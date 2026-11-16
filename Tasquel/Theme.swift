@@ -82,7 +82,7 @@ enum Theme {
     /// kept a dynamic color's light value when the sheet went dark (Settings, 2026-11-15).
     static func cardFill(_ m: AppearanceMode, scheme: ColorScheme?) -> Color {
         guard isSeasonal(m), let scheme else { return cardFill(m) }
-        return Color(UIColor(hex: scheme == .dark ? season.card.dark : season.card.light))
+        return season.card.color(dark: scheme == .dark)
     }
 
     static func cardFill(_ m: AppearanceMode) -> Color {

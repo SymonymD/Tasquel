@@ -1,0 +1,166 @@
+Optional(Attributes: Application, 0x101e36690, pid: 63528, label: 'Tasquel'
+Element subtree:
+ →Application, 0x101e36690, pid: 63528, label: 'Tasquel'
+    Window (Main), 0x101e3b9f0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x101e3bdb0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x101e3bed0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x103c3e1a0, {{-402.0, -874.0}, {1206.0, 2622.0}}
+          Other, 0x103c3e5c0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x103c3e6e0, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x103c3e800, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x103c3e920, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x101e3bb10, {{-402.0, 132.7}, {402.0, 713.7}}
+              ScrollView, 0x101e3bc30, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x103c3ea40, {{0.0, 132.7}, {402.0, 534.0}}
+                  StaticText, 0x103c3eb60, {{32.0, 156.7}, {128.0, 27.7}}, label: 'Clients'
+                  Button, 0x103c3ec80, {{291.7, 148.7}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'Edit Clients'
+                  StaticText, 0x103c3eda0, {{32.1, 192.4}, {96.7, 21.0}}, label: '1 of 2 complete'
+                  Button, 0x103c3eec0, {{26.0, 232.0}, {44.0, 44.3}}, label: 'Mark Send Acme invoice incomplete', Selected
+                  StaticText, 0x103c3efe0, {{74.0, 221.3}, {79.3, 65.7}}, label: 'Send Acme invoice', value: today
+                  Button, 0x103c3f100, {{268.7, 232.0}, {44.0, 44.3}}, identifier: 'plus', label: 'Add sub-task to Send Acme invoice'
+                  Button, 0x103c3f220, {{311.3, 232.0}, {58.3, 44.3}}, label: 'Task options: Checkbox, One-Time'
+                    Image, 0x103c3f410, {{320.0, 245.7}, {17.3, 17.3}}, identifier: 'checkmark.circle', label: 'Selected', Selected
+                    Image, 0x103c3f530, {{343.7, 245.7}, {17.3, 17.3}}, identifier: '1.circle', label: '1.circle'
+                  Button, 0x103c3f650, {{161.3, 256.0}, {85.0, 44.0}}, label: 'Change day of Send Acme invoice'
+                  Button, 0x10383ee90, {{26.0, 311.7}, {44.0, 44.0}}, label: 'Complete Acme website redesign', value: expires in 10 days...
+                  StaticText, 0x10383fb10, {{74.0, 303.3}, {147.3, 60.3}}, label: 'Acme website redesign', value: 1 of 3 items checked
+                  Button, 0x10383f6f0, {{269.0, 311.7}, {44.0, 44.0}}, identifier: 'Fold Acme website redesign', label: 'Expand list', value: Acme website redes...
+                  Button, 0x103840e10, {{311.7, 311.7}, {58.0, 44.0}}, label: 'Task options: List, Carry Over'
+                    Image, 0x103840f30, {{320.7, 327.3}, {17.0, 12.3}}, identifier: 'list.bullet', label: 'List'
+                    Image, 0x101e3bff0, {{344.7, 325.7}, {16.0, 16.0}}, identifier: 'arrow.uturn.forward', label: 'Redo'
+                  Button, 0x101e3c110, {{216.0, 333.7}, {44.0, 44.0}}, label: 'Change date of Acme website redesign'
+                  Button, 0x101e3c230, {{18.0, 377.7}, {44.0, 44.0}}, label: 'Add task'
+                  Button, 0x101e3c350, {{309.9, 412.3}, {60.0, 44.0}}, label: 'Close Clients'
+                  Button, 0x101e3c470, {{16.0, 466.7}, {181.0, 120.0}}, label: 'Open Home, no tasks yet'
+                  Button, 0x101e3c590, {{205.0, 466.7}, {181.0, 120.0}}, label: 'Open Health, 0 of 1 tasks complete'
+                Other, 0x101e3c6b0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x101e3c7d0, {{396.0, 504.3}, {3.0, 304.7}}
+                Other, 0x101e3c8f0, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                  Other, 0x103841050, {{396.0, 504.3}, {3.0, 304.7}}
+              ScrollView, 0x103841170, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x103841290, {{402.0, 132.7}, {402.0, 452.3}}
+              Other, 0x1038413b0, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x1038414d0, {{0.0, 70.0}, {208.0, 25.3}}
+              StaticText, 0x103c3f770, {{97.0, 70.0}, {208.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x103c3f890, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x103c3f9b0, {{346.0, 60.7}, {44.0, 44.0}}, label: 'Close all cards'
+              Other, 0x103c3fad0, {{80.3, 93.0}, {241.3, 44.0}}, identifier: 'Week days'
+                Button, 0x103c3fbf0, {{80.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x103c3fd10, {{112.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x103c3fe30, {{144.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x103c3ff50, {{176.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x101f64890, {{208.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x101f06030, {{243.6, 93.0}, {42.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x101f74a20, {{289.7, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x101f0c330, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'terminal', label: 'Settings'
+              Button, 0x101f0c6b0, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x101f0ca20, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar.and.person', label: 'Calendar and events'
+              Button, 0x101f0cda0, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x101f0bfc0, {{302.3, 788.0}, {79.7, 52.0}}, label: 'Edit'
+      Other, 0x101f0bc70, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x101f0b570, {{-402.0, -874.0}, {1206.0, 2622.0}}
+        Other, 0x101f0a690, {{0.0, 62.0}, {402.0, 812.0}}
+          Other, 0x101f0aea0, {{0.0, 62.0}, {402.0, 812.0}}
+            Other, 0x101f09fb0, {{0.0, 62.0}, {402.0, 812.0}}
+              Other, 0x101f0a330, {{0.0, 62.0}, {402.0, 812.0}}
+                Other, 0x101f09c40, {{0.0, 62.0}, {402.0, 812.0}}
+                  Other, 0x101f0b220, {{0.0, 62.0}, {402.0, 812.0}}
+                    NavigationBar, 0x101f0b8e0, {{0.0, 78.0}, {402.0, 54.0}}, identifier: '> SETTINGS_'
+                      StaticText, 0x101f098b0, {{147.3, 89.7}, {107.3, 20.7}}, label: '> SETTINGS_'
+                      Other, 0x101f09550, {{294.3, 82.0}, {87.7, 36.0}}, label: 'Done'
+                        Other, 0x101f09200, {{294.3, 82.0}, {87.7, 36.0}}
+                          Button, 0x101f08760, {{294.3, 82.0}, {87.7, 36.0}}, label: 'Done'
+                    Other, 0x101f08e70, {{0.0, 62.0}, {402.0, 812.0}}
+                      Other, 0x101f08ae0, {{0.0, 62.0}, {402.0, 812.0}}
+                        Other, 0x101f083e0, {{0.0, 62.0}, {402.0, 812.0}}
+                          Other, 0x101f075e0, {{0.0, 62.0}, {402.0, 812.0}}
+                            ScrollView, 0x101f07250, {{0.0, 62.0}, {402.0, 812.0}}
+                              Other, 0x101f06f00, {{0.0, 62.0}, {402.0, 812.0}}
+                                Other, 0x101f08060, {{0.0, 62.0}, {402.0, 124.8}}
+                              Other, 0x101f07cc0, {{0.0, 62.0}, {402.0, 812.0}}
+                              Other, 0x101f06ba0, {{0.0, 132.0}, {402.0, 1880.3}}
+                                StaticText, 0x101f07940, {{16.0, 148.0}, {89.3, 14.3}}, label: '[APPEARANCE]'
+                                Button, 0x101f0d0f0, {{28.0, 182.3}, {346.0, 44.0}}, label: 'System'
+                                Button, 0x101f0d440, {{28.0, 232.3}, {346.0, 44.0}}, label: 'Light'
+                                Button, 0x101f0dd50, {{28.0, 282.3}, {346.0, 44.0}}, label: 'Dark'
+                                Button, 0x101f0e0d0, {{28.0, 332.3}, {346.0, 44.0}}, label: 'Seasonal, now Fall'
+                                Button, 0x101f0e450, {{28.0, 382.3}, {346.0, 44.0}}, label: 'Retro', Selected
+                                  StaticText, 0x101f0e7b0, {{28.0, 395.3}, {65.0, 18.0}}, label: '> RETRO'
+                                  StaticText, 0x101f0eb30, {{346.0, 395.3}, {28.0, 18.0}}, label: '[*]'
+                                Switch, 0x101f0f650, {{28.0, 432.3}, {346.0, 28.0}}, label: '> Match App Icon to Theme', value: 1
+                                  StaticText, 0x101f0f9b0, {{28.0, 437.3}, {232.0, 18.0}}, label: '> Match App Icon to Theme'
+                                  Switch, 0x101f0fd40, {{313.0, 432.3}, {63.0, 28.0}}, value: 1
+                                StaticText, 0x101f100a0, {{16.0, 488.3}, {119.0, 14.3}}, label: '[TERMINAL_COLOR]'
+                                Button, 0x101f10430, {{28.0, 522.7}, {44.0, 53.3}}, label: 'Green', Selected
+                                Button, 0x101f10780, {{82.0, 522.7}, {44.0, 53.3}}, label: 'Amber'
+                                Button, 0x101f10af0, {{136.0, 522.7}, {44.0, 53.3}}, label: 'Blue'
+                                Button, 0x101f10e50, {{190.0, 522.7}, {44.0, 53.3}}, label: 'White'
+                                Button, 0x101f111b0, {{244.0, 522.7}, {44.0, 53.3}}, label: 'Red'
+                                Button, 0x101f11520, {{298.0, 522.7}, {44.0, 53.3}}, label: 'Purple'
+                                StaticText, 0x101f11880, {{16.0, 604.0}, {44.7, 14.3}}, label: '[WEEK]'
+                                StaticText, 0x101f11bf0, {{28.0, 645.3}, {148.7, 18.0}}, label: '> Week Starts On'
+                                Button, 0x101f12140, {{272.0, 632.3}, {48.0, 44.0}}, label: 'Sunday'
+                                Button, 0x101f124b0, {{326.0, 632.3}, {48.0, 44.0}}, label: 'Monday', Selected
+                                StaticText, 0x101f12830, {{16.0, 698.3}, {81.7, 14.3}}, label: '[REMINDERS]'
+                                Switch, 0x101f12bb0, {{28.0, 732.7}, {346.0, 28.0}}, label: '> Expiration Reminders', value: 1
+                                  StaticText, 0x101f12f00, {{28.0, 737.7}, {204.0, 18.0}}, label: '> Expiration Reminders'
+                                  Switch, 0x101f13280, {{313.0, 732.7}, {63.0, 28.0}}, value: 1
+                                StaticText, 0x101f13600, {{28.0, 766.7}, {346.0, 62.3}}, label: 'A notification at 9 AM the day before a task's date, its last day (set with the calendar in its type and mode options, or the clock in a card's edit mode).'
+                                StaticText, 0x101f13950, {{16.0, 857.0}, {89.3, 14.3}}, label: '[CATEGORIES]'
+                                Button, 0x101f13ce0, {{28.0, 891.3}, {346.0, 44.0}}, label: '> Saved Categories'
+                                Button, 0x101f14030, {{303.7, 941.3}, {70.3, 44.0}}, label: 'Sort Cards', value: Manual
+                                  Button, 0x101f14390, {{303.7, 941.3}, {70.3, 44.0}}
+                                    StaticText, 0x101f14710, {{303.7, 954.3}, {55.7, 18.0}}, label: 'MANUAL'
+                                    Image, 0x101f14a70, {{364.7, 957.7}, {8.0, 11.3}}, identifier: 'chevron.up.chevron.down', label: 'Up And Down Chevrons'
+                                StaticText, 0x101f14dd0, {{16.0, 1013.3}, {74.3, 14.3}}, label: '[CALENDAR]'
+                                Switch, 0x101f15130, {{28.0, 1047.7}, {346.0, 28.0}}, label: '> Show Calendar Events', value: 1
+                                  StaticText, 0x101f15480, {{28.0, 1052.7}, {204.0, 18.0}}, label: '> Show Calendar Events'
+                                  Switch, 0x101f15810, {{313.0, 1047.7}, {63.0, 28.0}}, value: 1
+                                Button, 0x101f15b80, {{28.0, 1081.7}, {346.0, 44.0}}, label: '> Calendars, 2 selected'
+                                  StaticText, 0x101f15ee0, {{28.0, 1094.7}, {102.0, 18.0}}, label: '> Calendars'
+                                  StaticText, 0x101f16260, {{299.7, 1096.5}, {74.3, 14.3}}, label: '2 selected'
+                                StaticText, 0x101f16920, {{16.0, 1153.7}, {44.7, 14.3}}, label: '[HELP]'
+                                Button, 0x101f16c70, {{28.0, 1188.0}, {346.0, 44.0}}, label: '> How to Use Tasquel'
+                                Button, 0x101f16fc0, {{28.0, 1238.0}, {346.0, 44.0}}, label: '> What's New in 1.1'
+                                Button, 0x101f17350, {{28.0, 1288.0}, {346.0, 44.0}}, label: '> Show Welcome Tour'
+                                StaticText, 0x101f176b0, {{16.0, 1360.0}, {111.3, 14.3}}, label: '[FEATURE_IDEAS]'
+                                StaticText, 0x101f17a00, {{28.0, 1394.3}, {346.0, 46.3}}, label: 'Ideas being considered. They aren't in Tasquel yet. Tick the ones you'd use to help decide what comes next.'
+                                Button, 0x101f17d80, {{28.0, 1446.7}, {346.0, 44.0}}, label: 'Sync Across Devices, Your tasks on your iPhone and iPad'
+                                  Image, 0x101f18120, {{69.3, 1453.3}, {18.7, 13.0}}, identifier: 'icloud', label: 'Icloud'
+                                  StaticText, 0x101f18490, {{69.3, 1451.5}, {204.3, 18.0}}, label: 'Sync Across Devices'
+                                  StaticText, 0x101f187f0, {{68.0, 1471.5}, {252.3, 14.3}}, label: 'Your tasks on your iPhone and iPad'
+                                Button, 0x101f18b50, {{28.0, 1496.7}, {346.0, 50.3}}, label: 'Stats & Charts, See how your weeks, goals and habits went'
+                                  Image, 0x101f18ec0, {{70.0, 1498.7}, {16.7, 13.7}}, identifier: 'chart.bar.xaxis', label: 'chart.bar.xaxis'
+                                  StaticText, 0x101f19210, {{70.0, 1496.7}, {156.7, 18.0}}, label: 'Stats & Charts'
+                                  StaticText, 0x1038415f0, {{68.0, 1516.7}, {222.7, 30.3}}, label: 'See how your weeks, goals and habits went'
+                                Button, 0x101d07770, {{28.0, 1553.0}, {346.0, 50.3}}, label: 'Locked Categories, Categories that stay hidden until you unlock them'
+                                  Image, 0x101d5fa60, {{70.0, 1554.3}, {10.0, 14.7}}, identifier: 'lock', label: 'Lock'
+                                  StaticText, 0x103841710, {{70.0, 1553.0}, {177.7, 18.0}}, label: 'Locked Categories'
+                                  StaticText, 0x101d671c0, {{68.0, 1573.0}, {282.0, 30.3}}, label: 'Categories that stay hidden until you unlock them'
+                                TextField, 0x101d66360, {{28.0, 1621.3}, {346.0, 20.0}}, placeholderValue: 'anything_else>'
+                                  Other, 0x101d7d5f0, {{28.0, 1628.3}, {346.0, 10.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                    Other, 0x101d41350, {{31.0, 1635.3}, {340.0, 3.0}}
+                                Button, 0x101d40150, {{28.0, 1659.3}, {346.0, 44.0}}, label: '> Send', Disabled
+                                StaticText, 0x101d64080, {{28.0, 1709.3}, {341.3, 14.3}}, label: 'anonymous // sends picks, comment, app version'
+                                StaticText, 0x101d6a300, {{16.0, 1751.7}, {67.0, 14.3}}, label: '[SUPPORT]'
+                                Button, 0x101f19570, {{28.0, 1786.0}, {346.0, 44.0}}, label: '> Support'
+                                Button, 0x103a04480, {{28.0, 1836.0}, {346.0, 44.0}}, label: '> Privacy Policy'
+                                StaticText, 0x103a045a0, {{16.0, 1908.0}, {52.0, 14.3}}, label: '[ABOUT]'
+                                StaticText, 0x103a14ed0, {{28.0, 1942.3}, {65.0, 18.0}}, label: 'Version'
+                                StaticText, 0x103a1dea0, {{327.3, 1942.3}, {46.7, 18.0}}, label: '1.0.3'
+                                StaticText, 0x103c40070, {{28.0, 1966.3}, {46.7, 18.0}}, label: 'Build'
+                                StaticText, 0x103c40190, {{355.3, 1966.3}, {18.7, 18.0}}, label: '11'
+                              Other, 0x103c404b0, {{369.0, 132.0}, {30.0, 680.0}}, label: 'Vertical scroll bar, 3 pages', value: 0%
+                                Other, 0x101f165b0, {{396.0, 135.0}, {3.0, 275.7}}
+                              Other, 0x101f198d0, {{369.0, 132.0}, {30.0, 680.0}}, label: 'Vertical scroll bar, 3 pages', value: 0%
+                                Other, 0x101f19c50, {{396.0, 135.0}, {3.0, 275.7}}
+                    Other, 0x101f19fe0, {{0.0, 62.0}, {402.0, 812.0}}
+                      Other, 0x101f1a350, {{0.0, 62.0}, {402.0, 812.0}}
+Path to element:
+ →Application, 0x101e36690, pid: 63528, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x103c3adb0, pid: 63528, label: 'Tasquel'
+  }
+)

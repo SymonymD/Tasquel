@@ -404,6 +404,7 @@ struct ContentView: View {
             sortOrderWatcher
             addedElsewhereFollower
             columnsFollower
+            schemeFollower
         }
         // Midnight (or a time zone change) while the app is open.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
@@ -438,15 +439,16 @@ struct ContentView: View {
     }
 
     /// Opening the app (at launch, or back from a real trip away) on a day some tasks are
-    /// for: each card in this week holding one that isn't done wiggles once, 0.5s, one after
-    /// another in the grid's order, top to bottom (the user asked, 2026-11-12). Not in Edit,
-    /// with Reduce Motion, or with throwaway data (UI tests, demo).
+    /// for: each closed card in this week holding one that isn't done wiggles once, 0.5s, one
+    /// after another in the grid's order, top to bottom (the user asked, 2026-11-12). Not an
+    /// open card, whose tasks are in view (the user, 2026-11-15), nor in Edit, with Reduce
+    /// Motion, or with throwaway data (UI tests, demo).
     private func wiggleCardsWithTodaysTasks() {
         wiggleSequence?.cancel()
         guard !reduceMotion, !isEditing, !ChecklistStore.launchesWithThrowawayData,
               let week = store.selectedWeek, store.isCurrentWeek(week) else { return }
         let day = store.currentDay
-        let ids = gridEntries(for: week).map(\.category).filter { category in
+        let ids = gridEntries(for: week).filter { !expandedCategoryKeys.contains($0.id) }.map(\.category).filter { category in
             category.tasks.contains { !$0.isCompleted && $0.day(inWeekStarting: week.startDay, firstWeekday: store.firstWeekday) == day }
         }.map(\.id)
         guard !ids.isEmpty else { return }
@@ -956,6 +958,20 @@ struct ContentView: View {
         let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
         guard let style = screen?.traitCollection.userInterfaceStyle, style != .unspecified else { return colorScheme }
         return style == .dark ? .dark : .light
+    }
+
+    /// The phone's light or dark, for the Seasonal colors (`SeasonalScheme`): this screen's
+    /// while it follows the phone, the screen's traits while it's set Light or Dark (the phone
+    /// may change meanwhile, and Seasonal be picked later). Out of `body`, which is at the
+    /// type checker's limit.
+    private var schemeFollower: some View {
+        Color.clear
+            .onChange(of: colorScheme, initial: true) { followPhoneScheme() }
+            .onChange(of: store.appearanceMode) { followPhoneScheme() }
+    }
+
+    private func followPhoneScheme() {
+        SeasonalScheme.shared.follow(store.colorScheme == nil ? colorScheme : deviceColorScheme)
     }
 
     private func collapseAllCards() {
@@ -1571,7 +1587,7 @@ struct ContentView: View {
                             // count only: other weeks' cards have other IDs. Zeroed while its page was
                             // off to the side, the count changed twice on a swipe there and back, and
                             // each change wiggled it again.)
-                            .modifier(CardWiggle(trigger: wiggleTicks[entry.category.id] ?? 0, isExpanded: isExpanded))
+                            .modifier(CardWiggle(trigger: wiggleTicks[entry.category.id] ?? 0))
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.cardGridSpace)) } action: { frame in
                                 cardFrameStore.frames[week.startDay, default: [:]][entry.id] = frame
                             }
@@ -2704,18 +2720,17 @@ private struct WindowSizeReader: UIViewRepresentable {
 }
 
 /// One slight wiggle, 0.5s, each time `trigger` goes up while the card is on screen (a card
-/// with a task for today, as the app opens; `wiggleCardsWithTodaysTasks`). An open card,
-/// being bigger, turns less. It plays its own count (`plays`), which starts at zero in every
+/// with a task for today, as the app opens; `wiggleCardsWithTodaysTasks`). It plays its own
+/// count (`plays`), which starts at zero in every
 /// card built: a card built again with a count above zero (this week's page, coming back to
 /// it from later weeks) wiggled again on the user's phone, iOS 27 (2026-11-12; a 26.3
 /// simulator doesn't).
 private struct CardWiggle: ViewModifier {
     let trigger: Int
-    let isExpanded: Bool
     @State private var plays = 0
 
     func body(content: Content) -> some View {
-        let angle = isExpanded ? 0.6 : 2.0
+        let angle = 2.0
         content.keyframeAnimator(initialValue: 0.0, trigger: plays) { view, degrees in
             view.rotationEffect(.degrees(degrees))
         } keyframes: { _ in

@@ -1,0 +1,94 @@
+Optional(Attributes: Application, 0x102b21670, pid: 65921, label: 'Tasquel'
+Element subtree:
+ →Application, 0x102b21670, pid: 65921, label: 'Tasquel'
+    Window (Main), 0x102e21ca0, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x102e21660, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x102c39bb0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x102c111b0, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x102c19cb0, {{0.0, 0.0}, {402.0, 874.0}}
+              Other, 0x102c1a200, {{0.0, 62.0}, {402.0, 778.0}}
+              ScrollView, 0x102c3ba10, {{-402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x102c47ea0, {{-402.0, 132.7}, {402.0, 595.0}}
+              ScrollView, 0x101e2a520, {{0.0, 0.0}, {402.0, 874.0}}
+                Other, 0x101e2b100, {{0.0, 132.7}, {402.0, 1158.0}}
+                  Button, 0x102e22d70, {{16.0, 140.7}, {181.0, 120.0}}, label: 'Open Errands, no tasks yet'
+                  Button, 0x102e23190, {{205.0, 140.7}, {181.0, 120.0}}, label: 'Open Work, no tasks yet'
+                  Button, 0x102b208c0, {{16.0, 268.7}, {181.0, 120.0}}, label: 'Open Fitness, no tasks yet'
+                  Button, 0x102b1fe80, {{205.0, 268.7}, {181.0, 120.0}}, label: 'Open Study, no tasks yet'
+                  Button, 0x102e1dfa0, {{32.0, 415.3}, {41.7, 34.3}}, label: 'Icon: Folder'
+                    Button, 0x102e235b0, {{32.0, 415.3}, {41.7, 34.3}}
+                      Image, 0x102e236d0, {{40.7, 422.7}, {24.3, 19.7}}, identifier: 'folder', label: 'Move'
+                  TextField, 0x102e237f0, {{81.7, 412.7}, {228.3, 39.3}}, label: 'Category name', placeholderValue: 'Category name', value: Family
+                  Button, 0x102e23910, {{305.3, 410.3}, {44.3, 44.0}}, identifier: 'checkmark.circle.fill', label: 'Done editing Family'
+                  StaticText, 0x102e23a30, {{32.1, 460.1}, {120.3, 21.0}}, label: '0 of 5 complete'
+                  Button, 0x102e23b50, {{20.3, 499.7}, {44.0, 44.3}}, label: 'Complete Take out trash'
+                  StaticText, 0x102e23c70, {{113.3, 537.3}, {79.0, 16.7}}, label: ' Tue · late'
+                  StaticText, 0x102e23d90, {{62.7, 489.0}, {131.7, 65.7}}, label: 'Take out trash', value: Tuesday, late
+                  Button, 0x102d31630, {{203.0, 499.7}, {44.0, 44.3}}, identifier: 'Expiration Take out trash', label: 'Set expiration for Take out trash'
+                  Button, 0x102d349e0, {{244.3, 499.7}, {44.0, 44.3}}, identifier: 'Pin Take out trash', label: 'Pin Take out trash to the top'
+                  Button, 0x102d2c230, {{285.7, 499.7}, {44.0, 44.3}}, identifier: 'trash', label: 'Delete Take out trash'
+                  Button, 0x102d35450, {{20.3, 593.0}, {44.0, 44.0}}, label: 'Complete Renew passport by December 26', value: expires in 42 days...
+                  StaticText, 0x102b234b0, {{172.0, 641.0}, {17.3, 16.7}}
+                  StaticText, 0x102b21990, {{62.7, 571.0}, {131.7, 87.7}}, label: 'Renew passport by December 26'
+                  Button, 0x102d35570, {{203.0, 593.0}, {44.0, 44.0}}, identifier: 'Expiration Renew passport by December 26', label: 'Change expiration of Renew passport by December 26', value: expires in 42 days...
+                  Button, 0x102d35690, {{244.3, 593.0}, {44.0, 44.0}}, identifier: 'Pin Renew passport by December 26', label: 'Pin Renew passport by December 26 to the top'
+                  Button, 0x102b23820, {{285.7, 593.0}, {44.0, 44.0}}, identifier: 'trash', label: 'Delete Renew passport by December 26'
+                  Button, 0x102b242a0, {{20.3, 674.7}, {44.0, 44.0}}, label: 'Complete Sign permission slip'
+                  StaticText, 0x102b24610, {{62.7, 674.7}, {132.0, 44.0}}, label: 'Sign permission slip'
+                  Button, 0x102b24970, {{203.3, 674.7}, {44.0, 44.0}}, identifier: 'Expiration Sign permission slip', label: 'Set expiration for Sign permission slip'
+                  Button, 0x102b24d10, {{244.7, 674.7}, {44.0, 44.0}}, identifier: 'Pin Sign permission slip', label: 'Pin Sign permission slip to the top'
+                  Button, 0x102b25070, {{286.0, 674.7}, {44.0, 44.0}}, identifier: 'trash', label: 'Delete Sign permission slip'
+                  Button, 0x102b25770, {{20.3, 734.7}, {44.0, 44.0}}, label: 'Complete Buy birthday gift for Ava'
+                  StaticText, 0x10283dc60, {{62.7, 734.7}, {131.7, 44.0}}, label: 'Buy birthday gift for Ava'
+                  Button, 0x10283d560, {{203.0, 734.7}, {44.0, 44.0}}, identifier: 'Expiration Buy birthday gift for Ava', label: 'Set expiration for Buy birthday gift for Ava'
+                  Button, 0x10283c440, {{244.3, 734.7}, {44.0, 44.0}}, identifier: 'Pin Buy birthday gift for Ava', label: 'Pin Buy birthday gift for Ava to the top'
+                  Button, 0x10283ede0, {{285.7, 734.7}, {44.0, 44.0}}, identifier: 'trash', label: 'Delete Buy birthday gift for Ava'
+                  Button, 0x10283fbb0, {{20.3, 793.7}, {44.0, 44.0}}, label: 'Complete Plan Ava's party'
+                  StaticText, 0x10283f150, {{62.7, 804.7}, {131.7, 22.0}}, label: 'Plan Ava's party'
+                  Button, 0x10283ff00, {{203.0, 793.7}, {44.0, 44.0}}, identifier: 'Expiration Plan Ava's party', label: 'Set expiration for Plan Ava's party'
+                  Button, 0x10283cb10, {{244.3, 793.7}, {44.0, 44.0}}, identifier: 'Pin Plan Ava's party', label: 'Pin Plan Ava's party to the top'
+                  Button, 0x10283d1d0, {{285.7, 793.7}, {44.0, 44.0}}, identifier: 'trash', label: 'Delete Plan Ava's party'
+                  Button, 0x10283ea50, {{45.7, 840.0}, {44.0, 32.0}}, identifier: 'minus.circle.fill', label: 'Delete sub-task order cake'
+                  StaticText, 0x10283e6c0, {{83.7, 846.3}, {286.0, 19.3}}, label: 'order cake'
+                  Button, 0x102840600, {{45.7, 873.3}, {44.0, 32.0}}, identifier: 'minus.circle.fill', label: 'Delete sub-task send invites'
+                  StaticText, 0x1028441c0, {{83.7, 879.7}, {286.0, 19.3}}, label: 'send invites'
+                  Button, 0x102840950, {{45.7, 906.7}, {44.0, 32.0}}, identifier: 'minus.circle.fill', label: 'Delete sub-task book bounce house'
+                  StaticText, 0x102b25400, {{83.7, 913.0}, {286.0, 19.3}}, label: 'book bounce house'
+                  Switch, 0x102907ff0, {{32.1, 961.3}, {337.9, 28.0}}, label: 'This week only', value: 0
+                    StaticText, 0x102e23eb0, {{32.1, 965.1}, {114.0, 20.7}}, label: 'This week only'
+                    Switch, 0x102e23fd0, {{309.0, 961.3}, {63.0, 28.0}}, value: 0
+                  StaticText, 0x102a53480, {{32.1, 991.5}, {325.3, 33.0}}, label: 'Turning this on makes its carry-over and repeating tasks one-time.'
+                  Button, 0x102a52810, {{334.0, 1031.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close Family'
+                  Button, 0x102a50650, {{16.0, 1090.7}, {181.0, 120.0}}, label: 'Open Appointments, 0 of 1 tasks complete'
+                Other, 0x102a53c00, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x102a53d20, {{396.0, 135.7}, {3.0, 490.3}}
+                Other, 0x102a53e40, {{369.0, 132.7}, {30.0, 679.3}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                  Other, 0x102a53f60, {{396.0, 135.7}, {3.0, 490.3}}
+              ScrollView, 0x102a54080, {{402.0, 0.0}, {402.0, 874.0}}, Disabled
+                Other, 0x102a541a0, {{402.0, 132.7}, {402.0, 858.7}}
+              Other, 0x10283f840, {{0.0, 70.0}, {402.0, 25.3}}
+              Other, 0x102841aa0, {{0.0, 70.0}, {141.0, 25.3}}
+              StaticText, 0x102843ac0, {{130.5, 70.0}, {141.0, 25.3}}, label: 'Week of Nov 9'
+              Button, 0x102841750, {{12.0, 60.7}, {44.0, 44.0}}, label: 'This Week'
+              Button, 0x102842c20, {{346.0, 60.7}, {44.0, 44.0}}, identifier: 'arrow.down.right.and.arrow.up.left', label: 'Close all cards'
+              Other, 0x102842890, {{82.0, 93.0}, {238.3, 44.0}}, identifier: 'Week days'
+                Button, 0x102843760, {{82.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Monday', label: 'Monday, November 9'
+                Button, 0x102842520, {{114.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Tuesday', label: 'Tuesday, November 10'
+                Button, 0x1028421c0, {{146.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Wednesday', label: 'Wednesday, November 11'
+                Button, 0x10283f4c0, {{178.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Thursday', label: 'Thursday, November 12'
+                Button, 0x10283dfd0, {{210.0, 93.0}, {32.0, 44.0}}, identifier: 'Day Friday', label: 'Friday, November 13'
+                Button, 0x102840ce0, {{245.2, 93.0}, {39.8, 44.0}}, identifier: 'Day Saturday', label: 'Today, Saturday, November 14'
+                Button, 0x102845ae0, {{288.3, 93.0}, {32.0, 44.0}}, identifier: 'Day Sunday', label: 'Sunday, November 15'
+              Button, 0x10290cd30, {{20.0, 788.0}, {52.0, 52.0}}, identifier: 'gearshape.fill', label: 'Settings'
+              Button, 0x102b20560, {{135.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.left', label: 'Previous week'
+              Button, 0x102b25ae0, {{179.0, 788.0}, {44.0, 52.0}}, identifier: 'calendar', label: 'Go to week'
+              Button, 0x102b23f10, {{223.0, 788.0}, {44.0, 52.0}}, identifier: 'chevron.right', label: 'Next week'
+              Button, 0x102c47b10, {{315.0, 788.0}, {67.0, 52.0}}, label: 'Edit'
+Path to element:
+ →Application, 0x102b21670, pid: 65921, label: 'Tasquel'
+Query chain:
+ →Find: Target Application 'com.symonym.Tasquel'
+  Output: {
+    Application, 0x102b261d0, pid: 65921, label: 'Tasquel'
+  }
+)
