@@ -1412,11 +1412,10 @@ struct ContentView: View {
             WeekDayStrip(weekStart: (arrivingWeek ?? week).startDay, today: DayKey(today, in: store.calendar),
                          todayDate: today, theme: theme, rc: rc,
                          selectedWeekday: dayFilter, firstWeekday: store.firstWeekday,
-                         onSelect: { weekday in
-                             withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
-                                 dayFilter = dayFilter == weekday ? nil : weekday
-                             }
-                         })
+                         // No day filter in 1.1: the pills only show the days (the user,
+                         // 2026-11-15: it wasn't clear what a tap did; 1.2 makes the strip one
+                         // button for the week's day and dated tasks). `dayFilter` stays nil.
+                         onSelect: nil)
                 // Capped: at the largest accessibility sizes the seven pills came to ~675pt
                 // and stretched the whole screen past both edges, the bar's Settings and
                 // Edit off it. (Here, not inside: its @ScaledMetric sizes read this

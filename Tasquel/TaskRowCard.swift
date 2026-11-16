@@ -870,7 +870,7 @@ struct TaskRowCard: View {
         let retro = Theme.isRetro(theme)
         let name = isTaskDay ? "Today" : Weekday.name(day)
         let shown = retro ? name.uppercased() : name
-        let color = isLate ? Theme.late(theme) : isDueToday ? Theme.expirySet(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)
+        let color = isLate ? Theme.late(theme) : isDueToday ? Theme.expirySetText(theme, rc: rc) : Theme.textSecondary(theme, rc: rc)
         let label = Text(verbatim: isLate ? (retro ? "[\(shown) LATE]" : "\(shown)\u{00A0}·\u{00A0}late") : (retro ? "[\(shown)]" : shown))
         // A calendar for a repeating task's day, a timer for this week's or until done (as
         // closed cards' marks); none with a date, whose calendar follows.
@@ -891,7 +891,7 @@ struct TaskRowCard: View {
         let retro = Theme.isRetro(theme)
         return Text("\(Image(systemName: "calendar"))\u{00A0}\(retro ? shown.uppercased() : shown)")
             .font(.expandedCard(.caption1, weight: .semibold, design: retro ? .monospaced : .default))
-            .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.expirySet(theme, rc: rc))
+            .foregroundStyle(task.isCompleted ? Theme.textSecondary(theme, rc: rc) : Theme.expirySetText(theme, rc: rc))
     }
 
     /// Past weeks are view only: nothing there can be fixed, so nothing is marked.

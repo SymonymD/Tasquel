@@ -4,7 +4,7 @@ Paste into App Store Connect yourself. It states only what the code and this rev
 
 ## What's New in This Version
 
-- Days for tasks: give a task a day of the week in its options, or type "on Friday" in Smart Add. On its day it reads Today, and once the day has gone by unfinished it's marked late. Tap a day at the top to see just that day's tasks. A new task for a day that's already gone by this week goes into next week.
+- Days for tasks: give a task a day of the week in its options, or type "on Friday" in Smart Add. On its day it reads Today, and once the day has gone by unfinished it's marked late. A new task for a day that's already gone by this week goes into next week.
 - Dates and reminders: give a task a date, its last day. A one-time task moves into that week, and a carry-over task comes along until then. A notification reminds you at 9 AM the day before. Smart Add spots dates you type and offers to set them.
 - Pins: keep up to two cards first in the grid, and up to two tasks at the top of a card.
 - Progress rings: a card's ring fills as you go, counting each step of a goal and each item of a list.

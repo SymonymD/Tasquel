@@ -2470,6 +2470,11 @@ struct SeasonTests {
                                      ("repeating", p.repeating)] {
                     #expect(ratio(pick(tone), card) >= 3, "\(mode): \(name)")
                 }
+                // Small text on the card and on the header (the 2026-11-15 review).
+                for (name, tone) in [("done text", p.doneText), ("past day", p.pastDay)] {
+                    #expect(ratio(pick(tone), card) >= 4.5, "\(mode): \(name) on the card")
+                    #expect(ratio(pick(tone), pick(p.bgTop)) >= 4.5, "\(mode): \(name) on the header")
+                }
             }
         }
     }

@@ -91,6 +91,9 @@ struct WeekDayStrip: View {
         // full-color border (the user, 2026-11-15: swapped; two testers read green past days
         // as "done").
         let todayGreen = Theme.dotComplete(theme, rc: rc)
+        // In Seasonal a past day's whole pill takes the season's past-day color: its accent is
+        // green in Spring, which made past days read as done again (the 2026-11-15 review).
+        let pastColor = Theme.isSeasonal(theme) ? Theme.pastDayDate(theme, rc: rc) : accent
         return Group {
             if isSelected {
                 // The picked day: filled in, with its name ("Thu", today's date on today).
@@ -108,7 +111,7 @@ struct WeekDayStrip: View {
                 // As wide as its date needs ("22nd").
                 Text(Self.ordinal(day.day))
                     .font(Theme.isRetro(theme) ? .system(.caption2, design: .monospaced).bold() : .caption2.bold())
-                    .foregroundStyle(Theme.expirySet(theme, rc: rc))
+                    .foregroundStyle(Theme.expirySetText(theme, rc: rc))
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 7)
@@ -131,8 +134,8 @@ struct WeekDayStrip: View {
             }
         }
         .background {
-            shape.fill(isPast ? accent.opacity(0.14) : Color.clear)
-            shape.stroke(isToday ? todayGreen : isPast ? accent : Theme.textTertiary(theme, rc: rc).opacity(0.8),
+            shape.fill(isPast ? pastColor.opacity(0.14) : Color.clear)
+            shape.stroke(isToday ? todayGreen : isPast ? pastColor : Theme.textTertiary(theme, rc: rc).opacity(0.8),
                          lineWidth: isToday ? 1.5 : 1)
         }
     }

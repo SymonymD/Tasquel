@@ -59,7 +59,8 @@ You picked 1–8, plus 27 and 28 (which turned out to be test artifacts, so noth
 - **24:** the bottom bar ignores the keyboard's safe area, so it stays down behind a sheet's keyboard.
 - **25:** an undated "2/29" is the next Feb 29 (the code reviewer's test re-enabled).
 - **Lane rule (8):** you confirmed it.
-- **Left for you:** 13 (contrast: see the comparison page, https://claude.ai/artifact/B5Wfrvm6adc9PmnQzvC8i6) and 15 (44pt day pills need wider spacing). 26 is in the web copy.
+- **13, contrast (you approved the proposals, https://claude.ai/artifact/B5Wfrvm6adc9PmnQzvC8i6):** in Seasonal light, small text in the done green (today's date, "Today", date marks) uses each season's deeper `doneText`, and past days' dates its `pastDay` (Spring's a plum, no longer green like today); the late and Duplicate orange is #B05300 in every light look. `SeasonTests` checks them at 4.5:1 on the card and the header. Seasonal screenshots 08–11 re-taken.
+- **15, day pill taps:** the day filter is off in 1.1 (your call: it wasn't clear what a tap did), so the pills only show the days and take no taps; 1.2's plan makes the whole strip one button. What's New, Help and the submission notes no longer mention it. 26 is in the web copy.
 
 **Regression reviewer (after the first batch), six findings, five caused by the fixes, all fixed:**
 - Fix 1: a Just this week card's dated or day task was left behind by a week-start switch. Now the card stops being just this week, the later week gets it back, and the task moves there. A moved task now arrives unpinned (it could make a third pin).

@@ -115,9 +115,10 @@ enum Theme {
     static func completionPartial(_ m: AppearanceMode) -> Color { isSeasonal(m) ? season.partial.color : isRetro(m) ? .yellow : .orange }
     static func completionNone(_ m: AppearanceMode) -> Color { dotIncomplete(m) }
 
-    /// Orange that keeps 4:1 on a card: deeper in light mode (system orange is about 2:1 on white).
+    /// Orange that keeps 4.5:1 on a card: deeper in light mode (system orange is about 2:1 on
+    /// white; #C75E00 came to 3.7–4.2, so it's #B05300, the 2026-11-15 review).
     private static let strongOrange = Color(UIColor {
-        $0.userInterfaceStyle == .dark ? .systemOrange : UIColor(red: 0.78, green: 0.37, blue: 0, alpha: 1)
+        $0.userInterfaceStyle == .dark ? .systemOrange : UIColor(red: 0xB0 / 255.0, green: 0x53 / 255.0, blue: 0, alpha: 1)
     })
     /// A pin that's on (a card's or task's in edit mode); the bright color in Retro.
     static func pinned(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
@@ -129,6 +130,12 @@ enum Theme {
     static func duplicate(_ m: AppearanceMode) -> Color { isRetro(m) ? .yellow : strongOrange }
     /// An expiring task's ring (the days gone by) and its clock in a card's edit mode: green,
     /// deeper in light mode so it keeps 4:1 on a card.
+    /// The same green as small text (today's date on its pill, "Today", a task's date): in
+    /// Seasonal the season's deeper `doneText`, which keeps 4.5:1 where `done` didn't.
+    static func expirySetText(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
+        isSeasonal(m) ? season.doneText.color : expirySet(m, rc: rc)
+    }
+
     static func expirySet(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         if isSeasonal(m) { return season.done.color }
         return isRetro(m) ? retroPalette(rc).bright
@@ -146,7 +153,8 @@ enum Theme {
     static func pastDayDate(_ m: AppearanceMode, rc: RetroColor = .green) -> Color {
         switch m {
         case .system, .light: Color(UIColor { $0.userInterfaceStyle == .dark ? .systemBlue : pastDayDateLight })
-        case .dark, .retro, .seasonal: accent(m, rc: rc)
+        case .dark, .retro: accent(m, rc: rc)
+        case .seasonal: season.pastDay.color
         }
     }
     /// #0060DF: 5.6:1 on white.

@@ -92,6 +92,12 @@ struct SeasonPalette {
     let checkbox, goal, list: Tone
     let oneTime, carry, repeating: Tone
     let shadow: Tone
+    /// Small text in the done color (today's date on its pill, "Today", a date after a name):
+    /// `done` deepened in light mode to 4.5:1 on the card and header, where `done` (icons and
+    /// rings, 3:1) came to 3.1–3.9 (the 2026-11-15 review; the user approved the shades).
+    let doneText: Tone
+    /// Past days' dates on the day strip: 4.5:1, and in Spring not green, which read as done.
+    let pastDay: Tone
     /// The backdrop's motifs (petals, sun and waves, leaves, snow).
     let motifs: [Tone]
 
@@ -119,6 +125,7 @@ struct SeasonPalette {
         oneTime: .init(light: 0x7E8D81, dark: 0xA99AA2), carry: .init(light: 0xB8771A, dark: 0xF2C266),
         repeating: .init(light: 0x2F8F87, dark: 0x6FD1C5),
         shadow: .init(light: 0xC47A8C, dark: 0x000000),
+        doneText: .init(light: 0x307B49, dark: 0x7FD39A), pastDay: .init(light: 0x9352A4, dark: 0xD3A0E6),
         motifs: [.init(light: 0xF4B6C8, dark: 0xC98AA0), .init(light: 0xF9CFDA, dark: 0xA9789A), .init(light: 0xBFE3C3, dark: 0x5F9E73)])
 
     /// Sky over sand (ocean teal, a sun glow); at night, a deep-sea evening with a sunset.
@@ -136,6 +143,7 @@ struct SeasonPalette {
         oneTime: .init(light: 0x7893A2, dark: 0x8FB2C2), carry: .init(light: 0xC27A08, dark: 0xFFC14D),
         repeating: .init(light: 0x16937A, dark: 0x49D6A8),
         shadow: .init(light: 0x0C8AA3, dark: 0x000000),
+        doneText: .init(light: 0x127662, dark: 0x49D6A8), pastDay: .init(light: 0x097388, dark: 0x4FD1E8),
         motifs: [.init(light: 0xFFD66B, dark: 0xFF9F5A), .init(light: 0x9ED9EA, dark: 0x2F6E8A)])
 
     /// Warm parchment (burnt orange, amber, cranberry, olive); in the evening, cozy browns.
@@ -153,6 +161,7 @@ struct SeasonPalette {
         oneTime: .init(light: 0x8C7561, dark: 0xB39A86), carry: .init(light: 0xC07612, dark: 0xF2B33D),
         repeating: .init(light: 0x5D7A2E, dark: 0x9CBF5A),
         shadow: .init(light: 0x7A3E16, dark: 0x000000),
+        doneText: .init(light: 0x58661C, dark: 0xA9C24E), pastDay: .init(light: 0x9F4411, dark: 0xF2894A),
         motifs: [.init(light: 0xD9822B, dark: 0xD9822B), .init(light: 0xB8452A, dark: 0xB8452A),
                  .init(light: 0x9C6B2E, dark: 0x9C6B2E), .init(light: 0xE0A93B, dark: 0xE0A93B)])
 
@@ -171,6 +180,7 @@ struct SeasonPalette {
         oneTime: .init(light: 0x7A8BA3, dark: 0x8CA1C2), carry: .init(light: 0xB08420, dark: 0xF2C766),
         repeating: .init(light: 0x24866F, dark: 0x6CE0BE),
         shadow: .init(light: 0x2569B0, dark: 0x000000),
+        doneText: .init(light: 0x207863, dark: 0x6CE0BE), pastDay: .init(light: 0x2569B0, dark: 0x7CC4FF),
         motifs: [.init(light: 0x8FB8E0, dark: 0xFFFFFF), .init(light: 0xB8D3EE, dark: 0xBFDCFF)])
 
     /// The card's shadow: tinted and soft in light mode, darker at night.

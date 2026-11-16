@@ -476,9 +476,8 @@ final class GoalUITests: XCTestCase {
         XCTAssertTrue(options.waitForExistence(timeout: 3), "type and mode are back outside edit mode")
     }
 
-    /// A task's day, picked in its type and mode picker, shows after its name and sorts it;
-    /// tapping a day in the strip at the top shows only that day's tasks (and those with no
-    /// day), and Show All brings the rest back.
+    /// A task's day, picked in its type and mode picker, shows after its name and sorts it.
+    /// The day pills at the top take no taps in 1.1 (the day filter waits for 1.2).
     @MainActor
     func testTaskDayAndDayFilter() throws {
         let app = launchFresh(["-isolatedDataID", "days-\(UUID().uuidString)"])
@@ -515,12 +514,7 @@ final class GoalUITests: XCTestCase {
         XCTAssertLessThan(app.staticTexts["Party"].frame.minY, app.staticTexts["Gym"].frame.minY, "Friday before Saturday")
         XCTAssertLessThan(app.staticTexts["Gym"].frame.minY, app.staticTexts["Bank"].frame.minY, "days before no day")
 
-        app.buttons["Day Friday"].tap()
-        XCTAssertTrue(app.staticTexts["Gym"].waitForNonExistence(timeout: 3), "Saturday's task is hidden")
-        XCTAssertTrue(app.staticTexts["Party"].exists, "Friday's shows")
-        XCTAssertTrue(app.staticTexts["Bank"].exists, "and so does one with no day")
-        app.buttons["Show All"].tap()
-        XCTAssertTrue(app.staticTexts["Gym"].waitForExistence(timeout: 3), "Show All brings it back")
+        XCTAssertFalse(app.buttons["Day Friday"].exists, "the day pills take no taps")
     }
 
     @MainActor

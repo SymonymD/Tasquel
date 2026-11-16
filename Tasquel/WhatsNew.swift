@@ -20,7 +20,7 @@ enum WhatsNew {
 
     static let items: [Item] = [
         Item(symbol: "calendar", title: "Days for Tasks",
-             detail: "Give a task a day of the week in its options, or type “on Friday” in Smart Add. On its day it reads Today, and its card gives a little wiggle when you open the app. Tap a day at the top to see just that day's tasks. A new task for a day that's already gone by this week goes into next week.",
+             detail: "Give a task a day of the week in its options, or type “on Friday” in Smart Add. On its day it reads Today, and its card gives a little wiggle when you open the app. A new task for a day that's already gone by this week goes into next week.",
              color: .blue),
         Item(symbol: "clock", title: "Dates and Reminders",
              detail: "Give a task a date: a one-time task goes into that week, and a carry-over one comes along until then. The date shows after its name, and a notification reminds you the day before. Smart Add spots dates you type.",
